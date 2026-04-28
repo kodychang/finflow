@@ -18,6 +18,7 @@ The current implementation is a dependency-free static web app because this work
 12. Separate platform operator admin from the customer workspace
 13. Generate business forms and auto-create customer records through search-to-create flows
 14. Show a simple tax-readiness dashboard: annual profit/loss, missing evidence, next actions, and official policy alerts
+15. Edit customer/vendor master data inline with Japanese tax fields such as registration number, corporate number, address, and contact person
 
 ## Run Locally
 

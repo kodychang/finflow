@@ -150,9 +150,57 @@ let feedbackTickets = [
 ];
 
 let customers = [
-  { id: "cus-001", name: "株式会社サンプル", ownerType: "company", email: "accounting@example.jp", phone: "03-0000-0000", source: "invoice", revenue: 280000 },
-  { id: "cus-002", name: "Meta Ads", ownerType: "company", email: "", phone: "", source: "receipt", revenue: 0 },
-  { id: "cus-003", name: "NTT Docomo", ownerType: "personal", email: "", phone: "", source: "receipt", revenue: 0 },
+  {
+    id: "cus-001",
+    name: "株式会社サンプル",
+    ownerType: "company",
+    invoiceNumber: "T1234567890123",
+    corporateNumber: "1234567890123",
+    postalCode: "100-0001",
+    address: "東京都千代田区千代田1-1",
+    contactName: "経理担当",
+    department: "経理部",
+    email: "accounting@example.jp",
+    phone: "03-0000-0000",
+    paymentTerms: "月末締め翌月末払い",
+    source: "invoice",
+    revenue: 280000,
+    memo: "請求書発行先。インボイス登録番号確認済み。",
+  },
+  {
+    id: "cus-002",
+    name: "Meta Ads",
+    ownerType: "company",
+    invoiceNumber: "",
+    corporateNumber: "",
+    postalCode: "",
+    address: "",
+    contactName: "",
+    department: "",
+    email: "",
+    phone: "",
+    paymentTerms: "カード決済",
+    source: "receipt",
+    revenue: 0,
+    memo: "広告費支払先。領収書とカード明細の照合が必要。",
+  },
+  {
+    id: "cus-003",
+    name: "NTT Docomo",
+    ownerType: "personal",
+    invoiceNumber: "",
+    corporateNumber: "",
+    postalCode: "",
+    address: "",
+    contactName: "",
+    department: "",
+    email: "",
+    phone: "",
+    paymentTerms: "口座/カード引落",
+    source: "receipt",
+    revenue: 0,
+    memo: "個人利用と事業利用割合を確認。",
+  },
 ];
 
 let generatedForms = [
@@ -412,10 +460,18 @@ function findOrCreateCustomer(query, ownerType = "company", source = "manual") {
     id: `cus-${Date.now()}`,
     name,
     ownerType,
+    invoiceNumber: "",
+    corporateNumber: "",
+    postalCode: "",
+    address: "",
+    contactName: "",
+    department: "",
     email: "",
     phone: "",
+    paymentTerms: "",
     source,
     revenue: 0,
+    memo: "",
   };
   customers.unshift(customer);
   return { customer, created: true };
@@ -872,26 +928,61 @@ function formTemplateLabel(template) {
 
 function renderCustomers() {
   const query = customerSearch.value.trim().toLowerCase();
-  const visible = customers.filter((customer) => `${customer.name} ${customer.email} ${customer.phone}`.toLowerCase().includes(query));
+  const visible = customers.filter((customer) =>
+    `${customer.name} ${customer.email} ${customer.phone} ${customer.invoiceNumber} ${customer.corporateNumber} ${customer.address} ${customer.contactName}`
+      .toLowerCase()
+      .includes(query),
+  );
   const createHint = query && visible.length === 0 ? `<article class="feedback-ticket"><strong>没有找到「${escapeHtml(customerSearch.value)}」</strong><span>点击“搜索不到，建立新客户”会直接建立。</span></article>` : "";
   document.querySelector("#customer-list").innerHTML =
     createHint +
     visible
       .map(
         (customer) => `
-          <article class="customer-card">
-            <div>
-              <strong>${escapeHtml(customer.name)}</strong>
-              <span>${customer.ownerType === "company" ? "法人客户" : "个人客户"} / 来源: ${customer.source}</span>
+          <article class="customer-card" data-customer-id="${customer.id}">
+            <div class="customer-card-header">
+              <div>
+                <strong>${escapeHtml(customer.name)}</strong>
+                <span>${customer.ownerType === "company" ? "法人客户" : "个人客户"} / 来源: ${customer.source} / 売上 ${yen.format(customer.revenue)}</span>
+              </div>
+              <button class="secondary-button" data-save-customer="${customer.id}">保存</button>
             </div>
-            <div class="number">
-              <strong>${yen.format(customer.revenue)}</strong>
-              <span>${escapeHtml(customer.email || "未登记Email")}</span>
+            <div class="customer-edit-grid">
+              ${customerInput(customer, "name", "客户/厂商名")}
+              <label>
+                区分
+                <select data-customer-field="ownerType">
+                  <option value="company" ${customer.ownerType === "company" ? "selected" : ""}>法人</option>
+                  <option value="personal" ${customer.ownerType === "personal" ? "selected" : ""}>个人</option>
+                </select>
+              </label>
+              ${customerInput(customer, "invoiceNumber", "登録番号")}
+              ${customerInput(customer, "corporateNumber", "法人番号")}
+              ${customerInput(customer, "postalCode", "郵便番号")}
+              ${customerInput(customer, "address", "住所")}
+              ${customerInput(customer, "contactName", "联系人")}
+              ${customerInput(customer, "department", "部署")}
+              ${customerInput(customer, "email", "Email")}
+              ${customerInput(customer, "phone", "电话")}
+              ${customerInput(customer, "paymentTerms", "付款条件")}
+              <label class="wide">
+                备注 / 报税确认事项
+                <textarea data-customer-field="memo" rows="2">${escapeHtml(customer.memo || "")}</textarea>
+              </label>
             </div>
           </article>
         `,
       )
       .join("");
+}
+
+function customerInput(customer, field, label) {
+  return `
+    <label>
+      ${label}
+      <input data-customer-field="${field}" value="${escapeHtml(customer[field] || "")}" />
+    </label>
+  `;
 }
 
 function renderFeedback() {
@@ -1276,6 +1367,21 @@ customerSearch.addEventListener("input", renderCustomers);
 document.querySelector("#create-customer-button").addEventListener("click", () => {
   const result = findOrCreateCustomer(customerSearch.value, "company", "search_create");
   customerSearch.value = result.customer.name;
+  renderCustomers();
+});
+
+document.querySelector("#customer-list").addEventListener("input", (event) => {
+  const card = event.target.closest("[data-customer-id]");
+  const field = event.target.dataset.customerField;
+  if (!card || !field) return;
+  const customer = customers.find((item) => item.id === card.dataset.customerId);
+  if (!customer) return;
+  customer[field] = event.target.value;
+});
+
+document.querySelector("#customer-list").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-save-customer]");
+  if (!button) return;
   renderCustomers();
 });
 

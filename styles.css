@@ -937,25 +937,50 @@ tbody tr.selected {
 }
 
 .customer-card {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 14px;
 }
 
+.customer-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 12px;
+}
+
 .customer-card strong,
-.customer-card span {
+.customer-card span,
+.customer-card label {
   display: block;
 }
 
-.customer-card span {
+.customer-card span,
+.customer-card label {
   color: var(--muted);
   font-size: 12px;
+}
+
+.customer-card span {
   margin-top: 4px;
+}
+
+.customer-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.customer-edit-grid input,
+.customer-edit-grid select,
+.customer-edit-grid textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px;
+  margin-top: 5px;
 }
 
 .feedback-form {
@@ -1103,6 +1128,10 @@ tbody tr.selected {
   }
 
   .inline-form {
+    grid-template-columns: 1fr;
+  }
+
+  .customer-edit-grid {
     grid-template-columns: 1fr;
   }
 

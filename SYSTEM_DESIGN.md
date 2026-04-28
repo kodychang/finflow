@@ -399,6 +399,23 @@ Generated forms should remain editable drafts until the user confirms them. In p
 
 Customer records should be automatically proposed from invoices, contracts, bank deposits, receipts, and manually generated forms.
 
+Customer master data should support Japanese tax and business document requirements:
+
+- customer/vendor name
+- individual or corporation classification
+- qualified invoice registration number
+- corporate number
+- postal code
+- address
+- phone
+- email
+- contact person
+- department
+- payment terms
+- source document
+- revenue / transaction summary
+- notes for tax filing confirmation
+
 All search boxes that reference entities such as customer, project, account, vendor, tag, or category should follow this pattern:
 
 ```text
