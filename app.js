@@ -1625,6 +1625,10 @@ function renderViews() {
     document.querySelector(`#${view}-view`).classList.toggle("hidden", view !== currentView);
   });
 
+  document.querySelectorAll(".home-only").forEach((section) => {
+    section.classList.toggle("hidden", currentView !== "documents");
+  });
+
   document.querySelectorAll("[data-view]").forEach((button) => {
     button.classList.toggle("active", button.dataset.view === currentView);
   });
