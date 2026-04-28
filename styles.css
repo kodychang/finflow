@@ -220,6 +220,16 @@ button {
   margin-bottom: 14px;
 }
 
+.operator-switch {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .notice-item {
   display: flex;
   justify-content: space-between;
@@ -265,6 +275,32 @@ button {
   gap: 10px;
   padding: 12px;
   border-bottom: 1px solid var(--line);
+}
+
+.directory-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px 12px 0;
+}
+
+.directory-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8faf8;
+  padding: 10px;
+  text-align: left;
+}
+
+.directory-card strong,
+.directory-card span {
+  display: block;
+}
+
+.directory-card span {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
 }
 
 .segmented-control {
@@ -777,6 +813,58 @@ tbody tr.selected {
   align-items: start;
 }
 
+.form-builder-layout,
+.customer-layout {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
+  align-items: start;
+}
+
+.generated-list,
+.customer-list {
+  display: grid;
+  gap: 10px;
+}
+
+.search-create-panel {
+  display: grid;
+  gap: 10px;
+  background: #f8faf8;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.search-create-panel input {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px;
+}
+
+.customer-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.customer-card strong,
+.customer-card span {
+  display: block;
+}
+
+.customer-card span {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
 .feedback-form {
   display: grid;
   gap: 10px;
@@ -911,7 +999,10 @@ tbody tr.selected {
 
   .plan-grid,
   .admin-grid,
-  .feedback-layout {
+  .feedback-layout,
+  .form-builder-layout,
+  .customer-layout,
+  .directory-grid {
     grid-template-columns: 1fr;
   }
 

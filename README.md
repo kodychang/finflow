@@ -15,6 +15,8 @@ The current implementation is a dependency-free static web app because this work
 9. Track file creation time, document issue date, and due / contract deadline
 10. Manage subscriptions, employee account quotas, roles, announcements, ads, and feedback tickets
 11. Stage OCR results for user review before archiving into personal, corporate, tax, bank, invoice, receipt, or contract directories
+12. Separate platform operator admin from the customer workspace
+13. Generate business forms and auto-create customer records through search-to-create flows
 
 ## Run Locally
 

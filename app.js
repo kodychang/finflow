@@ -62,8 +62,8 @@ const subscriptionPlans = [
 ];
 
 const rolePermissions = {
-  owner: "全权限 / 账单 / 后台 / 删除",
-  admin: "会员 / 员工 / 公告 / 广告",
+  owner: "用户侧全权限 / 账单 / 员工 / 删除",
+  admin: "用户侧成员 / 文件 / 规则管理",
   accountant: "文件确认 / 报税预估 / 导出",
   staff: "上传 / 编辑自己文件",
   viewer: "只读 / 下载授权文件",
@@ -102,6 +102,16 @@ let ads = [
 
 let feedbackTickets = [
   { id: "fb-001", type: "ocr", priority: "high", status: "open", message: "NTT收据税额识别需要人工确认。", createdAt: "2026-04-28 11:20" },
+];
+
+let customers = [
+  { id: "cus-001", name: "株式会社サンプル", ownerType: "company", email: "accounting@example.jp", phone: "03-0000-0000", source: "invoice", revenue: 280000 },
+  { id: "cus-002", name: "Meta Ads", ownerType: "company", email: "", phone: "", source: "receipt", revenue: 0 },
+  { id: "cus-003", name: "NTT Docomo", ownerType: "personal", email: "", phone: "", source: "receipt", revenue: 0 },
+];
+
+let generatedForms = [
+  { id: "form-001", template: "invoice", customer: "株式会社サンプル", ownerType: "company", amount: 280000, status: "draft", createdAt: "2026-04-28 12:00" },
 ];
 
 let documents = [
@@ -227,6 +237,8 @@ const taxInputIds = ["personal-deductions", "business-tax-rate", "corporate-loca
 const announcementForm = document.querySelector("#announcement-form");
 const adForm = document.querySelector("#ad-form");
 const feedbackForm = document.querySelector("#feedback-form");
+const businessFormGenerator = document.querySelector("#business-form-generator");
+const customerSearch = document.querySelector("#customer-search");
 
 function mockOcrProvider(file) {
   const lower = file.name.toLowerCase();
@@ -347,6 +359,23 @@ function employeeUsage() {
   return employees.filter((employee) => employee.role !== "owner").length;
 }
 
+function findOrCreateCustomer(query, ownerType = "company", source = "manual") {
+  const name = String(query || "").trim() || "未命名客户";
+  const existing = customers.find((customer) => customer.name.toLowerCase() === name.toLowerCase());
+  if (existing) return { customer: existing, created: false };
+  const customer = {
+    id: `cus-${Date.now()}`,
+    name,
+    ownerType,
+    email: "",
+    phone: "",
+    source,
+    revenue: 0,
+  };
+  customers.unshift(customer);
+  return { customer, created: true };
+}
+
 function guessCategory(name) {
   if (name.includes("ads") || name.includes("広告")) return "広告宣伝費";
   if (name.includes("train") || name.includes("taxi") || name.includes("交通")) return "交通費";
@@ -399,6 +428,31 @@ function renderTable() {
       render();
     });
   });
+}
+
+function renderDirectories() {
+  const directories = [
+    { key: "company/invoices", label: "法人 / 发票・請求書" },
+    { key: "company/receipts", label: "法人 / 领收书" },
+    { key: "company/contracts", label: "法人 / 契约书" },
+    { key: "company/tax", label: "法人 / 税务" },
+    { key: "company/bank", label: "法人 / 银行账户" },
+    { key: "personal/receipts", label: "个人 / 领收书" },
+    { key: "personal/tax", label: "个人 / 税务" },
+    { key: "personal/bank", label: "个人 / 银行账户" },
+  ];
+  document.querySelector("#directory-grid").innerHTML = directories
+    .map((directory) => {
+      const count = documents.filter((doc) => doc.target_directory === directory.key && doc.archive_status === "archived").length;
+      const pending = documents.filter((doc) => suggestDirectory(doc) === directory.key && doc.archive_status !== "archived").length;
+      return `
+        <button class="directory-card" data-directory-filter="${directory.key}">
+          <strong>${directory.label}</strong>
+          <span>已归档 ${count} / 待确认 ${pending}</span>
+        </button>
+      `;
+    })
+    .join("");
 }
 
 function directoryLabel(directory) {
@@ -643,6 +697,60 @@ function renderAdmin() {
     .join("");
 }
 
+function renderGeneratedForms() {
+  document.querySelector("#generated-forms").innerHTML = generatedForms
+    .map(
+      (formItem) => `
+        <article class="feedback-ticket">
+          <strong>${formTemplateLabel(formItem.template)} - ${escapeHtml(formItem.customer)}</strong>
+          <div class="ticket-meta">
+            <span>${formItem.ownerType === "company" ? "法人" : "个人"}</span>
+            <span>${yen.format(formItem.amount)}</span>
+            <span>${formItem.status}</span>
+            <span>${formItem.createdAt}</span>
+          </div>
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function formTemplateLabel(template) {
+  const labels = {
+    invoice: "請求書",
+    quotation: "見積書",
+    receipt: "領収書",
+    delivery_note: "納品書",
+    payment_request: "支払依頼書",
+    tax_summary: "报税资料整理表",
+  };
+  return labels[template] || template;
+}
+
+function renderCustomers() {
+  const query = customerSearch.value.trim().toLowerCase();
+  const visible = customers.filter((customer) => `${customer.name} ${customer.email} ${customer.phone}`.toLowerCase().includes(query));
+  const createHint = query && visible.length === 0 ? `<article class="feedback-ticket"><strong>没有找到「${escapeHtml(customerSearch.value)}」</strong><span>点击“搜索不到，建立新客户”会直接建立。</span></article>` : "";
+  document.querySelector("#customer-list").innerHTML =
+    createHint +
+    visible
+      .map(
+        (customer) => `
+          <article class="customer-card">
+            <div>
+              <strong>${escapeHtml(customer.name)}</strong>
+              <span>${customer.ownerType === "company" ? "法人客户" : "个人客户"} / 来源: ${customer.source}</span>
+            </div>
+            <div class="number">
+              <strong>${yen.format(customer.revenue)}</strong>
+              <span>${escapeHtml(customer.email || "未登记Email")}</span>
+            </div>
+          </article>
+        `,
+      )
+      .join("");
+}
+
 function renderFeedback() {
   document.querySelector("#feedback-list").innerHTML = feedbackTickets
     .map(
@@ -780,7 +888,7 @@ function renderTraining() {
 }
 
 function renderViews() {
-  ["documents", "income", "tax", "membership", "admin", "accounts", "feedback", "training"].forEach((view) => {
+  ["documents", "income", "tax", "membership", "admin", "accounts", "forms", "customers", "feedback", "training"].forEach((view) => {
     document.querySelector(`#${view}-view`).classList.toggle("hidden", view !== currentView);
   });
 
@@ -792,6 +900,7 @@ function renderViews() {
 function render() {
   renderViews();
   renderNotices();
+  renderDirectories();
   renderTable();
   renderDetail();
   updateMetrics();
@@ -800,6 +909,8 @@ function render() {
   renderMembership();
   renderAdmin();
   renderAccounts();
+  renderGeneratedForms();
+  renderCustomers();
   renderFeedback();
   renderTraining();
 }
@@ -880,6 +991,14 @@ document.querySelectorAll("[data-view]").forEach((button) => {
 });
 
 searchInput.addEventListener("input", renderTable);
+
+document.querySelector("#directory-grid").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-directory-filter]");
+  if (!button) return;
+  currentFilter = "all";
+  searchInput.value = button.dataset.directoryFilter;
+  renderTable();
+});
 
 document.querySelector("#plan-grid").addEventListener("click", (event) => {
   const button = event.target.closest("[data-plan-id]");
@@ -984,6 +1103,34 @@ feedbackForm.addEventListener("submit", (event) => {
   });
   feedbackForm.reset();
   render();
+});
+
+businessFormGenerator.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const data = new FormData(businessFormGenerator);
+  const ownerType = data.get("owner_type");
+  const amount = Number(data.get("amount") || 0);
+  const result = findOrCreateCustomer(data.get("customer_query"), ownerType, "form");
+  if (amount > 0) result.customer.revenue += amount;
+  generatedForms.unshift({
+    id: `form-${Date.now()}`,
+    template: data.get("template"),
+    customer: result.customer.name,
+    ownerType,
+    amount,
+    status: "draft",
+    createdAt: new Date().toLocaleString("ja-JP"),
+  });
+  businessFormGenerator.reset();
+  render();
+});
+
+customerSearch.addEventListener("input", renderCustomers);
+
+document.querySelector("#create-customer-button").addEventListener("click", () => {
+  const result = findOrCreateCustomer(customerSearch.value, "company", "search_create");
+  customerSearch.value = result.customer.name;
+  renderCustomers();
 });
 
 document.querySelector("#feedback-list").addEventListener("change", (event) => {

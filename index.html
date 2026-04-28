@@ -22,8 +22,9 @@
           <button class="nav-item" data-view="income">収入分析</button>
           <button class="nav-item" data-view="tax">税額予測</button>
           <button class="nav-item" data-view="membership">会員・権限</button>
-          <button class="nav-item" data-view="admin">后台管理</button>
           <button class="nav-item" data-view="accounts">口座整理</button>
+          <button class="nav-item" data-view="forms">表单生成</button>
+          <button class="nav-item" data-view="customers">客户管理</button>
           <button class="nav-item" data-view="feedback">客户反馈</button>
           <button class="nav-item" data-view="training">学習データ</button>
         </nav>
@@ -86,6 +87,11 @@
 
         <section class="notice-strip" id="notice-strip" aria-label="Announcements"></section>
 
+        <section class="operator-switch">
+          <span>当前视角: 用户工作台</span>
+          <button class="secondary-button" data-view="admin">平台经营者后台</button>
+        </section>
+
         <section class="content-grid">
           <section class="center-panel" id="documents-view">
             <div class="panel-toolbar">
@@ -99,6 +105,8 @@
               </div>
               <input id="search-input" class="search-input" placeholder="検索: 店舗名、分類、金額" />
             </div>
+
+            <div class="directory-grid" id="directory-grid"></div>
 
             <div class="drop-zone" id="drop-zone">
               <div>
@@ -155,7 +163,7 @@
               <div class="plan-grid" id="plan-grid"></div>
               <div class="section-heading compact">
                 <h3>员工账号与角色</h3>
-                <p>Owner 可管理账单与后台，Accountant 可确认财务资料，Staff 可上传文件，Viewer 只读。</p>
+                <p>Owner 可管理用户侧账单与员工，Accountant 可确认财务资料，Staff 可上传文件，Viewer 只读。平台经营者后台不对普通用户开放。</p>
               </div>
               <div class="employee-toolbar">
                 <button class="confirm-button" id="add-employee-button">增加员工账号</button>
@@ -180,8 +188,8 @@
 
           <section class="center-panel hidden" id="admin-view">
             <div class="section-heading">
-              <h3>后台关系系统</h3>
-              <p>运营团队可以管理会员、订阅权益、行政服务内容、广告与公告。</p>
+              <h3>平台经营者后台</h3>
+              <p>仅平台运营者可见。用户工作台不显示此入口，用于管理用户、订阅、服务内容、公告、广告与反馈。</p>
             </div>
             <div class="admin-grid">
               <section class="admin-card">
@@ -225,6 +233,63 @@
                 </form>
                 <div id="ad-list"></div>
               </section>
+            </div>
+          </section>
+
+          <section class="center-panel hidden" id="forms-view">
+            <div class="section-heading">
+              <h3>商业表单生成</h3>
+              <p>根据客户、个人/法人、已确认文件和交易资料生成商务需要的表单。</p>
+            </div>
+            <div class="form-builder-layout">
+              <form id="business-form-generator" class="feedback-form">
+                <label>
+                  表单类型
+                  <select name="template">
+                    <option value="invoice">請求書 / Invoice</option>
+                    <option value="quotation">見積書 / Quotation</option>
+                    <option value="receipt">領収書 / Receipt</option>
+                    <option value="delivery_note">納品書 / Delivery note</option>
+                    <option value="payment_request">支払依頼書</option>
+                    <option value="tax_summary">报税资料整理表</option>
+                  </select>
+                </label>
+                <label>
+                  归属
+                  <select name="owner_type">
+                    <option value="company">法人</option>
+                    <option value="personal">个人</option>
+                  </select>
+                </label>
+                <label>
+                  客户搜索
+                  <input name="customer_query" placeholder="搜索客户；没有结果会自动建立" />
+                </label>
+                <label>
+                  金额
+                  <input name="amount" type="number" min="0" step="1" placeholder="自动带入或手动输入" />
+                </label>
+                <label class="wide">
+                  摘要
+                  <textarea name="memo" rows="3" placeholder="表单用途、项目、付款条件"></textarea>
+                </label>
+                <button class="confirm-button" type="submit">生成表单</button>
+              </form>
+              <div class="generated-list" id="generated-forms"></div>
+            </div>
+          </section>
+
+          <section class="center-panel hidden" id="customers-view">
+            <div class="section-heading">
+              <h3>客户管理</h3>
+              <p>从上传文件、发票、合同、银行入金中自动建立客户。搜索不到时直接新建。</p>
+            </div>
+            <div class="customer-layout">
+              <div class="search-create-panel">
+                <input id="customer-search" placeholder="搜索客户名称、Email、电话；没有结果会显示新建" />
+                <button class="confirm-button" id="create-customer-button">搜索不到，建立新客户</button>
+              </div>
+              <div class="customer-list" id="customer-list"></div>
             </div>
           </section>
 
@@ -478,8 +543,9 @@
       <button data-view="income">収入</button>
       <button data-view="tax">税額</button>
       <button data-view="membership">会员</button>
-      <button data-view="admin">后台</button>
       <button data-view="accounts">口座</button>
+      <button data-view="forms">表单</button>
+      <button data-view="customers">客户</button>
       <button data-view="feedback">反馈</button>
       <button data-view="training">学習</button>
     </nav>

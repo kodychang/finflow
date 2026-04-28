@@ -360,6 +360,51 @@ Admin relationship system:
 - Advertisement campaign placement and active windows
 - Feedback ticket intake, assignment, status, and audit trail
 
+Platform admin is a separate operator surface. Normal customer organizations must not see platform admin navigation or APIs. Customer-side `owner` and `admin` roles can manage their own organization, billing, employees, files, and rules only.
+
+## Customer Workspace Requirements
+
+Customer-side document structure must support personal and corporate separation for future tax filing.
+
+Required directories:
+
+- company invoices
+- company receipts
+- company contracts
+- company tax documents
+- company bank and card statements
+- personal receipts
+- personal tax documents
+- personal bank and card statements
+- pending review
+
+The user must be able to search, edit, and reclassify files later during tax preparation. Directory assignment should be based on confirmed metadata, not only AI suggestions.
+
+## Business Form Generation
+
+Users should be able to generate common business documents from confirmed records and customer data:
+
+- invoices
+- quotations
+- receipts
+- delivery notes
+- payment request forms
+- tax summary sheets
+
+Generated forms should remain editable drafts until the user confirms them. In production, generated PDFs should be stored as derived files linked to the source customer, project, and financial transaction.
+
+## Customer Management And Search-To-Create
+
+Customer records should be automatically proposed from invoices, contracts, bank deposits, receipts, and manually generated forms.
+
+All search boxes that reference entities such as customer, project, account, vendor, tag, or category should follow this pattern:
+
+```text
+search existing -> if no result -> show create action -> create new record inline -> use the new record immediately
+```
+
+This reduces bookkeeping friction while still keeping structured records for tax filing and later correction.
+
 ## Japan Tax Estimate Requirements
 
 The tax module must support both `individual_business` and `corporation` estimate modes. It should not represent estimates as final filing advice.
