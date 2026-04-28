@@ -10,6 +10,8 @@ file upload -> object storage -> preprocessing -> OCR provider -> AI parser -> u
 
 The first production milestone should avoid building a full accounting product. The main asset is the long-term dataset made from original files, OCR text, AI output, user corrections, and final financial records.
 
+Uploaded files must first enter a staging area. AI may suggest a target directory and extracted fields, but the file is not finalized into personal, corporate, tax, contract, bank, receipt, or invoice folders until the user confirms or edits the result.
+
 ## Target Architecture
 
 ```text
@@ -369,6 +371,37 @@ Required behavior:
 - Keep user-editable assumptions for deductions, blue return treatment, personal business tax category, consumption tax status, simplified taxation, two-year sales tests, and invoice registration status.
 - Save every estimate snapshot with the exact rule version and assumptions used.
 - Show warnings when required data is missing, such as unconfirmed files, missing issue date, missing tax rate, mixed company/personal account, or missing invoice registration number.
+
+## Japan OCR And Review Workflow
+
+OCR and AI extraction must be optimized for Japanese business and tax documents.
+
+Target document standards:
+
+- Qualified invoice / invoice system documents: registration number, issuer, counterparty, issue date, tax rate, tax amount, total amount, payment due date.
+- Receipts: shop name, address, phone, transaction date, payment method, amount, tax rate, tax amount, whether business deductible.
+- Contracts: parties, execution date, effective date, renewal date, cancellation notice period, payment terms, taxable payments.
+- Bank and credit card statements: account owner, transaction date, value date, description, amount, balance, matched document candidate.
+- Tax documents: tax office / municipality, tax type, period, amount, due date, payment status.
+
+Review and archive rules:
+
+- New uploads are `pending_review`.
+- AI writes suggestions only: `owner_type`, `document_type`, `transaction_type`, category, target directory, and extracted fields.
+- Users must confirm or edit results before the document becomes `archived`.
+- The final archive directory is written only after confirmation.
+- User edits are saved as training samples, including changed fields and the previous AI output.
+
+Low token OCR strategy:
+
+- Run local preprocessing first: image cleanup, page split, thumbnail, hash, text layer extraction if PDF contains text.
+- Use OCR text and compact layout summaries before calling a vision model.
+- Send only cropped regions or low-confidence snippets to GPT/Gemini.
+- Use strict JSON schemas and short category enums.
+- Cache OCR text, AI output, and file hash to avoid repeated calls.
+- Re-run AI only when user changes key fields or confidence is below threshold.
+- Route easy Japanese receipts through PaddleOCR or text OCR first; reserve GPT/Gemini for complex or ambiguous documents.
+- Batch documents by type and use shared instructions instead of repeating long prompts per file.
 
 Initial official rule sources to model:
 

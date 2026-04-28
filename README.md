@@ -14,6 +14,7 @@ The current implementation is a dependency-free static web app because this work
 8. Keep original file names while generating storage-safe renamed file names
 9. Track file creation time, document issue date, and due / contract deadline
 10. Manage subscriptions, employee account quotas, roles, announcements, ads, and feedback tickets
+11. Stage OCR results for user review before archiving into personal, corporate, tax, bank, invoice, receipt, or contract directories
 
 ## Run Locally
 
@@ -61,3 +62,9 @@ The static mock should become:
 - Team 6: JPY 2,500 per month, includes 6 additional employee accounts
 
 The prototype simulates plan switching locally. Production should integrate a payment provider, webhooks, invoice history, failed payment handling, cancellation, renewal dates, and permission enforcement on the API.
+
+## OCR Review And Token Control
+
+Uploads first enter `AI待确认 / 未归档`. AI suggests Japanese business/tax fields and a target directory, but the user must confirm or edit the result before the document is archived.
+
+The intended production flow reduces AI token usage by using local preprocessing, OCR text extraction, file hashing, field schemas, cropped low-confidence regions, and cached AI outputs before calling GPT/Gemini vision models.

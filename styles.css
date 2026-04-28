@@ -178,7 +178,7 @@ button {
 
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -472,6 +472,45 @@ tbody tr.selected {
 
 .detail-form textarea {
   resize: vertical;
+}
+
+.review-workflow {
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.review-workflow h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.workflow-step {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 5px 0;
+}
+
+.workflow-step span {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #eef2ef;
+  color: var(--muted);
+}
+
+.workflow-step.done {
+  color: var(--ink);
+}
+
+.workflow-step.done span {
+  background: #e8f7ee;
+  color: var(--ok);
 }
 
 .wide {

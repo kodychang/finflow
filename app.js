@@ -23,6 +23,13 @@ const incomeTaxBrackets = [
   { min: 40000000, max: Infinity, rate: 0.45, deduction: 4796000 },
 ];
 
+const aiPipelineRules = [
+  "先用本地预处理/基础OCR抽取文字与版面，避免整份文件直接送AI",
+  "只把关键字段、低置信度片段、表格摘要送到视觉/语言模型",
+  "日本发票检查登録番号、税率、税额、发行日、对方名称、付款期限",
+  "AI只给建议目录，用户确认后才写入个人/法人/税务/合同目录",
+];
+
 const accounts = [
   { name: "会社銀行口座", type: "bank", owner: "company", balance: 1840000, mixed: false, progress: 86 },
   { name: "会社クレジットカード", type: "credit_card", owner: "company", balance: -246800, mixed: false, progress: 72 },
@@ -105,6 +112,10 @@ let documents = [
     renamed_name: "20260401_MetaAds_receipt_30000.pdf",
     fileType: "PDF",
     status: "review",
+    archive_status: "pending_review",
+    target_directory: "pending_review",
+    ai_strategy: "token_saver",
+    standard_profile: "jp_invoice",
     document_type: "receipt",
     owner_type: "company",
     transaction_type: "expense",
@@ -124,6 +135,7 @@ let documents = [
     confidence: 0.91,
     need_review: false,
     summary: "4月分広告費。カード明細との照合候補あり。",
+    review_notes: "日本インボイス检查: 金额、税率、税额已识别；登録番号缺失，建议用户确认。AI建议目录: 法人 / 领收书。",
     ocr_text: "Meta Ads Receipt 2026-04-01 JPY 30,000 Tax 2,727",
     hash: "sha256:demo-meta",
     language: "ja/en",
@@ -135,6 +147,10 @@ let documents = [
     renamed_name: "20260420_株式会社サンプル_invoice_280000.png",
     fileType: "IMG",
     status: "done",
+    archive_status: "archived",
+    target_directory: "company/invoices",
+    ai_strategy: "token_saver",
+    standard_profile: "jp_invoice",
     document_type: "invoice",
     owner_type: "company",
     transaction_type: "income",
@@ -154,6 +170,7 @@ let documents = [
     confidence: 0.96,
     need_review: false,
     summary: "Web制作案件の請求書。未入金として管理。",
+    review_notes: "日本請求書检查: 発行日、登録番号、税率、金额、期限均有。用户确认后已归档。",
     ocr_text: "請求書 株式会社サンプル 合計 280,000円 登録番号 T1234567890123",
     hash: "sha256:demo-invoice",
     language: "ja",
@@ -165,6 +182,10 @@ let documents = [
     renamed_name: "20260411_NTTDocomo_receipt_8900.pdf",
     fileType: "PDF",
     status: "review",
+    archive_status: "pending_review",
+    target_directory: "pending_review",
+    ai_strategy: "balanced",
+    standard_profile: "jp_invoice",
     document_type: "receipt",
     owner_type: "personal",
     transaction_type: "expense",
@@ -184,6 +205,7 @@ let documents = [
     confidence: 0.74,
     need_review: true,
     summary: "個人カード支払い。事業利用割合の確認が必要。",
+    review_notes: "个人/事业混用风险。建议确认业务使用比例后再归档到个人或法人目录。",
     ocr_text: "ご利用料金 8,900円 2026年4月 NTT Docomo",
     hash: "sha256:demo-phone",
     language: "ja",
@@ -218,6 +240,8 @@ function mockOcrProvider(file) {
   const vendor = isIncome ? "新規クライアント" : isBank ? "銀行明細" : "未確認店舗";
   const documentType = isBank ? "bank_statement" : isContract ? "contract" : isIncome ? "invoice" : "receipt";
   const extension = file.name.includes(".") ? file.name.split(".").pop() : "file";
+  const ownerType = lower.includes("personal") || lower.includes("個人") ? "personal" : "company";
+  const standardProfile = isBank ? "jp_bank" : isContract ? "jp_contract" : "jp_invoice";
 
   return {
     id: `doc-${Date.now()}-${Math.round(Math.random() * 9999)}`,
@@ -226,8 +250,12 @@ function mockOcrProvider(file) {
     renamed_name: buildRenamedName({ issued_at: issuedAt, vendor, document_type: documentType, amount, extension }),
     fileType: file.name.split(".").pop()?.toUpperCase() || "FILE",
     status: "review",
+    archive_status: "pending_review",
+    target_directory: "pending_review",
+    ai_strategy: "token_saver",
+    standard_profile: standardProfile,
     document_type: documentType,
-    owner_type: lower.includes("personal") || lower.includes("個人") ? "personal" : "company",
+    owner_type: ownerType,
     transaction_type: isIncome ? "income" : "expense",
     date: issuedAt,
     created_at: toDatetimeLocal(file.lastModified ? new Date(file.lastModified) : new Date()),
@@ -245,10 +273,31 @@ function mockOcrProvider(file) {
     confidence: Number((0.62 + Math.random() * 0.27).toFixed(2)),
     need_review: true,
     summary: "AI仮解析。ユーザー確認後に学習サンプルとして保存されます。",
+    review_notes: buildReviewNotes({ document_type: documentType, owner_type: ownerType, vendor, amount, issued_at: issuedAt, due_at: dueAt, invoice_number: "" }),
     ocr_text: `OCR mock: ${file.name} / amount ${amount} / generated at ${new Date().toISOString()}`,
     hash: `sha256:${file.name.length}-${file.size}-${file.lastModified}`,
     language: languageSelect.value === "ja" ? "ja/zh/en" : languageSelect.value,
   };
+}
+
+function suggestDirectory(doc) {
+  const owner = doc.owner_type === "personal" ? "personal" : "company";
+  if (doc.document_type === "invoice") return `${owner}/invoices`;
+  if (doc.document_type === "contract") return `${owner}/contracts`;
+  if (doc.document_type === "bank_statement") return `${owner}/bank`;
+  if (doc.document_type === "tax_document" || doc.category === "税金") return `${owner}/tax`;
+  return `${owner}/receipts`;
+}
+
+function buildReviewNotes(doc) {
+  const checks = [
+    doc.issued_at ? "发行日已识别" : "发行日缺失",
+    doc.amount ? "金额已识别" : "金额缺失",
+    doc.tax_amount !== undefined ? "税额候选已识别" : "税额缺失",
+    doc.invoice_number ? "登録番号已识别" : "登録番号未识别，需用户确认是否必要",
+    doc.due_at ? "期限已识别" : "期限未识别或不适用",
+  ];
+  return `日本商务/税务标准检查: ${checks.join(" / ")}。AI建议目录: ${suggestDirectory(doc)}。为节省Token，仅提交关键字段和低置信度片段给AI复核。`;
 }
 
 function buildRenamedName(doc) {
@@ -315,7 +364,8 @@ function filteredDocuments() {
       (currentFilter === "unreviewed" && doc.status === "review") ||
       (currentFilter === "company" && doc.owner_type === "company") ||
       (currentFilter === "personal" && doc.owner_type === "personal") ||
-      (currentFilter === "tax" && (doc.category === "税金" || doc.document_type === "tax_document"));
+      (currentFilter === "tax" && (doc.category === "税金" || doc.document_type === "tax_document")) ||
+      (currentFilter === "staged" && doc.archive_status !== "archived");
     const text = `${doc.name} ${doc.vendor} ${doc.category} ${doc.amount}`.toLowerCase();
     return filterMatch && text.includes(query);
   });
@@ -327,6 +377,7 @@ function renderTable() {
       (doc) => `
         <tr data-id="${doc.id}" class="${doc.id === selectedId ? "selected" : ""}">
           <td><span class="status-badge ${doc.status === "done" ? "done" : "review"}">${doc.status === "done" ? "確認済" : "未確認"}</span></td>
+          <td>${directoryLabel(doc.target_directory)}</td>
           <td>${doc.renamed_name}</td>
           <td>${doc.date}</td>
           <td>${doc.issued_at || "-"}</td>
@@ -350,6 +401,21 @@ function renderTable() {
   });
 }
 
+function directoryLabel(directory) {
+  const labels = {
+    pending_review: "AI待确认",
+    "company/receipts": "法人/领收书",
+    "company/invoices": "法人/发票",
+    "company/contracts": "法人/契约",
+    "company/tax": "法人/税务",
+    "company/bank": "法人/银行",
+    "personal/receipts": "个人/领收书",
+    "personal/tax": "个人/税务",
+    "personal/bank": "个人/银行",
+  };
+  return labels[directory] || directory || "AI待确认";
+}
+
 function selectedDocument() {
   return documents.find((doc) => doc.id === selectedId) || documents[0];
 }
@@ -365,12 +431,27 @@ function renderDetail() {
   document.querySelector("#preview-name").textContent = doc.renamed_name || doc.name;
   document.querySelector("#preview-meta").textContent = `original: ${doc.original_name || doc.name} / ${doc.fileType} / ${doc.language} / ${doc.hash}`;
   document.querySelector(".preview-icon").textContent = doc.fileType.slice(0, 4);
+  document.querySelector("#confirm-button").textContent = doc.archive_status === "archived" ? "已归档 / 更新确认" : "确认并归档";
 
   [...form.elements].forEach((field) => {
     if (field.name && doc[field.name] !== undefined) {
       field.value = doc[field.name];
     }
   });
+  renderWorkflowSteps(doc);
+}
+
+function renderWorkflowSteps(doc) {
+  const steps = [
+    { label: "上传文件/照片", done: true },
+    { label: "本地预处理与版面OCR", done: true },
+    { label: "AI按日本商务/税务标准抽取字段", done: true },
+    { label: "用户确认个人/法人、类别、金额、期限", done: doc.archive_status === "archived" },
+    { label: `写入目录: ${directoryLabel(doc.target_directory)}`, done: doc.archive_status === "archived" },
+  ];
+  document.querySelector("#workflow-steps").innerHTML = steps
+    .map((step) => `<div class="workflow-step ${step.done ? "done" : ""}"><span>${step.done ? "✓" : "•"}</span>${step.label}</div>`)
+    .join("");
 }
 
 function updateMetrics() {
@@ -383,6 +464,9 @@ function updateMetrics() {
   document.querySelector("#monthly-expense").textContent = yen.format(expense);
   document.querySelector("#monthly-profit").textContent = yen.format(income - expense);
   document.querySelector("#review-count").textContent = `${review}件`;
+  const archived = documents.filter((doc) => doc.archive_status === "archived").length;
+  const saving = Math.round(55 + (archived / Math.max(documents.length, 1)) * 25);
+  document.querySelector("#token-saving").textContent = `${saving}%`;
 }
 
 function renderIncome() {
@@ -737,6 +821,10 @@ function commitFormChanges() {
     const extension = (doc.original_name || doc.name || "file").split(".").pop();
     doc.renamed_name = buildRenamedName({ ...doc, extension });
   }
+  if (doc.target_directory === "pending_review") {
+    doc.target_directory = suggestDirectory(doc);
+  }
+  doc.review_notes = doc.review_notes || buildReviewNotes(doc);
 
   const changed = Object.keys(doc).filter((key) => before[key] !== doc[key]);
   return { doc, changed };
@@ -752,11 +840,13 @@ document.querySelector("#confirm-button").addEventListener("click", () => {
   const result = commitFormChanges();
   if (!result) return;
   result.doc.status = "done";
+  result.doc.archive_status = "archived";
+  result.doc.target_directory = result.doc.target_directory === "pending_review" ? suggestDirectory(result.doc) : result.doc.target_directory;
   result.doc.need_review = false;
   result.doc.confidence = Math.max(result.doc.confidence, 0.95);
   trainingSamples.unshift({
     id: `sample-${Date.now()}`,
-    file: result.doc.name,
+    file: `${result.doc.renamed_name} -> ${result.doc.target_directory}`,
     engine: "mock-gpt-vision",
     fields: result.changed.length ? result.changed.join(", ") : "no_user_change",
     time: new Date().toLocaleString("ja-JP"),

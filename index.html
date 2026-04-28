@@ -77,6 +77,11 @@
             <strong id="review-count">0件</strong>
             <small>低信頼度・重複候補を含む</small>
           </article>
+          <article>
+            <span>AI使用量削減</span>
+            <strong id="token-saving">0%</strong>
+            <small>局所OCR・低信頼度のみAI再判定</small>
+          </article>
         </section>
 
         <section class="notice-strip" id="notice-strip" aria-label="Announcements"></section>
@@ -90,6 +95,7 @@
                 <button data-filter="company">会社</button>
                 <button data-filter="personal">個人</button>
                 <button data-filter="tax">税務</button>
+                <button data-filter="staged">归档待ち</button>
               </div>
               <input id="search-input" class="search-input" placeholder="検索: 店舗名、分類、金額" />
             </div>
@@ -106,6 +112,7 @@
                 <thead>
                   <tr>
                     <th>状態</th>
+                    <th>归档目录</th>
                     <th>保存名</th>
                     <th>日付</th>
                     <th>発行日</th>
@@ -313,6 +320,37 @@
 
             <form id="detail-form" class="detail-form">
               <label class="wide">
+                归档目标目录
+                <select name="target_directory">
+                  <option value="pending_review">AI待确认 / 未归档</option>
+                  <option value="company/receipts">法人 / 领收书</option>
+                  <option value="company/invoices">法人 / 发票・請求書</option>
+                  <option value="company/contracts">法人 / 契约书</option>
+                  <option value="company/tax">法人 / 税务文件</option>
+                  <option value="company/bank">法人 / 银行・账户</option>
+                  <option value="personal/receipts">个人 / 领收书</option>
+                  <option value="personal/tax">个人 / 税务文件</option>
+                  <option value="personal/bank">个人 / 银行・账户</option>
+                </select>
+              </label>
+              <label>
+                AI识别策略
+                <select name="ai_strategy">
+                  <option value="token_saver">省Token优先</option>
+                  <option value="balanced">平衡</option>
+                  <option value="full_audit">完整审查</option>
+                </select>
+              </label>
+              <label>
+                日本标准检查
+                <select name="standard_profile">
+                  <option value="jp_invoice">日本インボイス/税务</option>
+                  <option value="jp_business">日本商务文书</option>
+                  <option value="jp_bank">日本银行・信用卡明细</option>
+                  <option value="jp_contract">日本契约期限</option>
+                </select>
+              </label>
+              <label class="wide">
                 保存ファイル名
                 <input name="renamed_name" />
               </label>
@@ -417,10 +455,19 @@
                 <textarea name="summary" rows="3"></textarea>
               </label>
               <label class="wide">
+                AI归档理由与检查结果
+                <textarea name="review_notes" rows="4"></textarea>
+              </label>
+              <label class="wide">
                 OCR原文
                 <textarea name="ocr_text" rows="5"></textarea>
               </label>
             </form>
+
+            <div class="review-workflow">
+              <h4>确认后才归档</h4>
+              <div id="workflow-steps"></div>
+            </div>
           </aside>
         </section>
       </main>
