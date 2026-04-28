@@ -444,6 +444,26 @@ Dashboard signals:
 - low-confidence OCR results
 - official policy alerts
 
+## Bank And Card Transaction Strategy
+
+Bank and credit card API integrations should not block the MVP.
+
+Recommended rollout:
+
+1. MVP: manual transaction entry, CSV import, bank statement PDF/image upload, and AI reconciliation against invoices and receipts.
+2. Phase 2: import templates for common Japanese banks and credit card CSV formats.
+3. Phase 3: optional integration with accounting platforms such as freee or Money Forward where user authorization and API terms allow it.
+4. Phase 4: direct bank or card API aggregation only after legal, security, OAuth, consent, and maintenance requirements are clear.
+
+Reasoning:
+
+- Japanese bank API coverage and terms vary by institution.
+- Direct financial data access requires strong user consent, security review, token handling, and revocation workflows.
+- Aggregators and accounting APIs may require commercial contracts and ongoing maintenance.
+- Small businesses can still get most value from uploading bank statements and confirming matched transactions.
+
+The product should treat API connection as a convenience feature, not a required dependency. Users must always be able to complete tax-readiness work by manual input and file upload.
+
 ## Official Government Update Sources
 
 Policy and tax update feeds should prefer official sources:

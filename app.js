@@ -31,11 +31,23 @@ const aiPipelineRules = [
 ];
 
 const accounts = [
-  { name: "会社銀行口座", type: "bank", owner: "company", balance: 1840000, mixed: false, progress: 86 },
-  { name: "会社クレジットカード", type: "credit_card", owner: "company", balance: -246800, mixed: false, progress: 72 },
-  { name: "個人銀行口座", type: "bank", owner: "personal", balance: 930000, mixed: true, progress: 54 },
-  { name: "PayPay", type: "payment", owner: "mixed", balance: 128000, mixed: true, progress: 38 },
+  { name: "会社銀行口座", type: "bank", owner: "company", balance: 1840000, mixed: false, progress: 86, connection: "manual_csv" },
+  { name: "会社クレジットカード", type: "credit_card", owner: "company", balance: -246800, mixed: false, progress: 72, connection: "manual_csv" },
+  { name: "個人銀行口座", type: "bank", owner: "personal", balance: 930000, mixed: true, progress: 54, connection: "manual" },
+  { name: "PayPay", type: "payment", owner: "mixed", balance: 128000, mixed: true, progress: 38, connection: "statement_upload" },
 ];
+
+let bankTransactions = [
+  { id: "txn-001", account: "会社銀行口座", date: "2026-04-20", description: "株式会社サンプル 入金", amount: 280000, type: "income", source: "manual_csv", matched: "client_invoice_0420.png" },
+  { id: "txn-002", account: "会社クレジットカード", date: "2026-04-01", description: "Meta Ads", amount: -30000, type: "expense", source: "statement_upload", matched: "meta_ads_receipt_april.pdf" },
+  { id: "txn-003", account: "個人銀行口座", date: "2026-04-11", description: "NTT Docomo", amount: -8900, type: "expense", source: "manual", matched: "business ratio review" },
+];
+
+const bankConnectionStrategy = {
+  defaultMode: "manual_csv",
+  apiMode: "future_optional",
+  reason: "银行/信用卡 API 需要金融机构授权、OAuth、聚合商契约、持续维护和合规审查，MVP 不作为必要条件。",
+};
 
 const annualGoal = {
   targetProfit: 3000000,
@@ -332,6 +344,7 @@ const adForm = document.querySelector("#ad-form");
 const feedbackForm = document.querySelector("#feedback-form");
 const businessFormGenerator = document.querySelector("#business-form-generator");
 const customerSearch = document.querySelector("#customer-search");
+const manualTransactionForm = document.querySelector("#manual-transaction-form");
 
 function mockOcrProvider(file) {
   const lower = file.name.toLowerCase();
@@ -765,7 +778,7 @@ function renderAccounts() {
       (account) => `
         <article class="account-card">
           <div>
-            <span>${account.owner} / ${account.type}</span>
+            <span>${account.owner} / ${account.type} / ${connectionLabel(account.connection)}</span>
             <strong>${account.name}</strong>
             <div class="progress-bar"><i style="width:${account.progress}%"></i></div>
           </div>
@@ -777,6 +790,42 @@ function renderAccounts() {
       `,
     )
     .join("");
+  renderTransactions();
+}
+
+function connectionLabel(connection) {
+  const labels = {
+    manual: "手动输入",
+    manual_csv: "CSV/手动",
+    statement_upload: "明细上传",
+    api_future: "API后期",
+  };
+  return labels[connection] || connection;
+}
+
+function renderTransactions() {
+  document.querySelector("#transaction-list").innerHTML = `
+    <div class="section-heading compact">
+      <h3>银行・カード交易</h3>
+      <p>当前使用手动/CSV/明细上传。AI 可把交易与发票、收据、合同匹配。</p>
+    </div>
+    ${bankTransactions
+      .map(
+        (txn) => `
+          <article class="transaction-row">
+            <div>
+              <strong>${escapeHtml(txn.description)}</strong>
+              <span>${txn.date} / ${txn.account} / ${connectionLabel(txn.source)}</span>
+            </div>
+            <div class="number">
+              <strong>${yen.format(txn.amount)}</strong>
+              <span>照合: ${escapeHtml(txn.matched || "未照合")}</span>
+            </div>
+          </article>
+        `,
+      )
+      .join("")}
+  `;
 }
 
 function renderNotices() {
@@ -1363,6 +1412,28 @@ businessFormGenerator.addEventListener("submit", (event) => {
 });
 
 customerSearch.addEventListener("input", renderCustomers);
+
+manualTransactionForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const data = new FormData(manualTransactionForm);
+  const type = data.get("type");
+  const rawAmount = Math.abs(Number(data.get("amount") || 0));
+  if (!rawAmount) return;
+  bankTransactions.unshift({
+    id: `txn-${Date.now()}`,
+    account: data.get("account"),
+    date: data.get("date"),
+    description: String(data.get("description") || "手动交易"),
+    amount: type === "expense" ? -rawAmount : rawAmount,
+    type,
+    source: "manual",
+    matched: "待AI照合",
+  });
+  const account = accounts.find((item) => item.name === data.get("account"));
+  if (account) account.balance += type === "expense" ? -rawAmount : rawAmount;
+  manualTransactionForm.reset();
+  renderAccounts();
+});
 
 document.querySelector("#create-customer-button").addEventListener("click", () => {
   const result = findOrCreateCustomer(customerSearch.value, "company", "search_create");

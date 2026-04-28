@@ -1017,6 +1017,71 @@ tbody tr.selected {
   align-items: center;
 }
 
+.bank-strategy {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px 12px 0;
+}
+
+.bank-strategy article,
+.transaction-row {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.bank-strategy strong,
+.bank-strategy span,
+.transaction-row strong,
+.transaction-row span {
+  display: block;
+}
+
+.bank-strategy span,
+.transaction-row span {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.manual-transaction-form {
+  display: grid;
+  grid-template-columns: 1.1fr 140px minmax(0, 1.4fr) 120px 100px auto;
+  gap: 8px;
+  padding: 12px;
+}
+
+.manual-transaction-form input,
+.manual-transaction-form select {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px;
+  min-width: 0;
+}
+
+.manual-transaction-form button {
+  border: 1px solid var(--accent);
+  border-radius: 7px;
+  background: var(--accent);
+  color: #ffffff;
+  padding: 8px 10px;
+}
+
+.transaction-list {
+  display: grid;
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+
+.transaction-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
 .progress-bar {
   height: 8px;
   background: #dce5df;
@@ -1123,7 +1188,9 @@ tbody tr.selected {
   .directory-grid,
   .simple-action-board,
   .readiness-layout,
-  .policy-layout {
+  .policy-layout,
+  .bank-strategy,
+  .manual-transaction-form {
     grid-template-columns: 1fr;
   }
 

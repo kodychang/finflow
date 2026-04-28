@@ -172,9 +172,37 @@
           <section class="center-panel hidden" id="accounts-view">
             <div class="section-heading">
               <h3>会社・個人口座</h3>
-              <p>混用、分割、所属口座の確認を優先して整理します。</p>
+              <p>第一版は銀行API連携を必須にせず、手動入力・CSV/明細アップロード・AI照合を優先します。</p>
             </div>
+            <div class="bank-strategy">
+              <article>
+                <strong>推奨: MVP</strong>
+                <span>用户手动输入、CSV导入、PDF/照片明细上传。AI 自动识别交易并与发票/收据匹配。</span>
+              </article>
+              <article>
+                <strong>后期: API连接</strong>
+                <span>银行/信用卡 API、会计软件 API、聚合商连接作为高级功能，需要 OAuth、合规和维护。</span>
+              </article>
+            </div>
+            <form id="manual-transaction-form" class="manual-transaction-form">
+              <select name="account">
+                <option>会社銀行口座</option>
+                <option>会社クレジットカード</option>
+                <option>個人銀行口座</option>
+                <option>個人クレジットカード</option>
+                <option>現金</option>
+              </select>
+              <input name="date" type="date" value="2026-04-28" />
+              <input name="description" placeholder="摘要 / 店铺 / 入金来源" />
+              <input name="amount" type="number" step="1" placeholder="金额" />
+              <select name="type">
+                <option value="expense">支出</option>
+                <option value="income">收入</option>
+              </select>
+              <button type="submit">手动追加</button>
+            </form>
             <div class="account-list" id="account-list"></div>
+            <div class="transaction-list" id="transaction-list"></div>
           </section>
 
           <section class="center-panel hidden" id="membership-view">

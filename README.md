@@ -19,6 +19,7 @@ The current implementation is a dependency-free static web app because this work
 13. Generate business forms and auto-create customer records through search-to-create flows
 14. Show a simple tax-readiness dashboard: annual profit/loss, missing evidence, next actions, and official policy alerts
 15. Edit customer/vendor master data inline with Japanese tax fields such as registration number, corporate number, address, and contact person
+16. Track bank and card transactions through manual entry, CSV/statement upload, and later optional API connection
 
 ## Run Locally
 
