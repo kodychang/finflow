@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FinFlow</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Main navigation">
+        <div class="brand">
+          <div class="brand-mark">F</div>
+          <div>
+            <h1>FinFlow</h1>
+            <p>ファイル起点のAI財務管理</p>
+          </div>
+        </div>
+
+        <nav class="nav-list">
+          <button class="nav-item active" data-view="documents">書類センター</button>
+          <button class="nav-item" data-view="income">収入分析</button>
+          <button class="nav-item" data-view="tax">税額予測</button>
+          <button class="nav-item" data-view="membership">会員・権限</button>
+          <button class="nav-item" data-view="admin">后台管理</button>
+          <button class="nav-item" data-view="accounts">口座整理</button>
+          <button class="nav-item" data-view="feedback">客户反馈</button>
+          <button class="nav-item" data-view="training">学習データ</button>
+        </nav>
+
+        <div class="storage-card">
+          <span>Storage</span>
+          <strong>S3 / MinIO ready</strong>
+          <small>private files, signed URLs, hash, versions</small>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">2026年度 / 個人事業主 + 法人</p>
+            <h2>書類から財務データまで一気通貫</h2>
+          </div>
+          <div class="topbar-actions">
+            <select id="language-select" class="language-select" aria-label="Language">
+              <option value="ja">日本語</option>
+              <option value="zh-Hant">繁體中文</option>
+              <option value="zh-Hans">简体中文</option>
+              <option value="en">English</option>
+            </select>
+            <button class="icon-button" id="simulate-ai" title="Run AI recognition">AI</button>
+            <label class="primary-upload">
+              <input id="file-input" type="file" multiple accept="image/*,.pdf,.csv,.txt" />
+              アップロード
+            </label>
+          </div>
+        </header>
+
+        <section class="metrics-grid" aria-label="Financial summary">
+          <article>
+            <span>月間売上</span>
+            <strong id="monthly-income">¥0</strong>
+            <small>入金 / 請求書 / Stripe / PayPay</small>
+          </article>
+          <article>
+            <span>月間支出</span>
+            <strong id="monthly-expense">¥0</strong>
+            <small>領収書 / カード / 銀行明細</small>
+          </article>
+          <article>
+            <span>利益見込み</span>
+            <strong id="monthly-profit">¥0</strong>
+            <small>確認済みデータ基準</small>
+          </article>
+          <article>
+            <span>確認待ち</span>
+            <strong id="review-count">0件</strong>
+            <small>低信頼度・重複候補を含む</small>
+          </article>
+        </section>
+
+        <section class="notice-strip" id="notice-strip" aria-label="Announcements"></section>
+
+        <section class="content-grid">
+          <section class="center-panel" id="documents-view">
+            <div class="panel-toolbar">
+              <div class="segmented-control" aria-label="Document filters">
+                <button class="active" data-filter="all">すべて</button>
+                <button data-filter="unreviewed">未確認</button>
+                <button data-filter="company">会社</button>
+                <button data-filter="personal">個人</button>
+                <button data-filter="tax">税務</button>
+              </div>
+              <input id="search-input" class="search-input" placeholder="検索: 店舗名、分類、金額" />
+            </div>
+
+            <div class="drop-zone" id="drop-zone">
+              <div>
+                <strong>領収書・請求書・契約書・銀行明細をここへ</strong>
+                <span>画像、PDF、CSV、テキストを受け付けます。OCRエンジンは差し替え可能です。</span>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>状態</th>
+                    <th>保存名</th>
+                    <th>日付</th>
+                    <th>発行日</th>
+                    <th>期限</th>
+                    <th>取引先</th>
+                    <th>種別</th>
+                    <th>会社/個人</th>
+                    <th>分類</th>
+                    <th class="number">金額</th>
+                    <th>信頼度</th>
+                  </tr>
+                </thead>
+                <tbody id="document-table"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="center-panel hidden" id="income-view">
+            <div class="section-heading">
+              <h3>収入分析</h3>
+              <p>銀行入金、請求書、Stripe、Square、PayPay、現金、契約から集計します。</p>
+            </div>
+            <div class="analysis-grid" id="income-grid"></div>
+          </section>
+
+          <section class="center-panel hidden" id="accounts-view">
+            <div class="section-heading">
+              <h3>会社・個人口座</h3>
+              <p>混用、分割、所属口座の確認を優先して整理します。</p>
+            </div>
+            <div class="account-list" id="account-list"></div>
+          </section>
+
+          <section class="center-panel hidden" id="membership-view">
+            <div class="section-heading">
+              <h3>会员系统与权限管理</h3>
+              <p>订阅会员费按月计费。¥1,500/月可增加员工账号3名，¥2,500/月可增加员工账号6名。</p>
+            </div>
+            <div class="membership-layout">
+              <div class="plan-grid" id="plan-grid"></div>
+              <div class="section-heading compact">
+                <h3>员工账号与角色</h3>
+                <p>Owner 可管理账单与后台，Accountant 可确认财务资料，Staff 可上传文件，Viewer 只读。</p>
+              </div>
+              <div class="employee-toolbar">
+                <button class="confirm-button" id="add-employee-button">增加员工账号</button>
+                <span id="employee-quota"></span>
+              </div>
+              <div class="employee-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>姓名</th>
+                      <th>Email</th>
+                      <th>角色</th>
+                      <th>状态</th>
+                      <th>权限摘要</th>
+                    </tr>
+                  </thead>
+                  <tbody id="employee-table"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section class="center-panel hidden" id="admin-view">
+            <div class="section-heading">
+              <h3>后台关系系统</h3>
+              <p>运营团队可以管理会员、订阅权益、行政服务内容、广告与公告。</p>
+            </div>
+            <div class="admin-grid">
+              <section class="admin-card">
+                <div class="admin-card-header">
+                  <h4>付费会员</h4>
+                  <span>订阅状态 / 员工额度</span>
+                </div>
+                <div id="admin-member-list"></div>
+              </section>
+
+              <section class="admin-card">
+                <div class="admin-card-header">
+                  <h4>会员续费与行政服务内容</h4>
+                  <span>可编辑服务包说明</span>
+                </div>
+                <div id="service-editor"></div>
+              </section>
+
+              <section class="admin-card">
+                <div class="admin-card-header">
+                  <h4>公告系统</h4>
+                  <span>显示给所有用户</span>
+                </div>
+                <form id="announcement-form" class="inline-form">
+                  <input name="title" placeholder="公告标题" />
+                  <input name="body" placeholder="公告内容" />
+                  <button type="submit">发布</button>
+                </form>
+                <div id="announcement-list"></div>
+              </section>
+
+              <section class="admin-card">
+                <div class="admin-card-header">
+                  <h4>广告系统</h4>
+                  <span>站内推广与活动位</span>
+                </div>
+                <form id="ad-form" class="inline-form">
+                  <input name="title" placeholder="广告标题" />
+                  <input name="target" placeholder="投放位置 / 对象" />
+                  <button type="submit">新增</button>
+                </form>
+                <div id="ad-list"></div>
+              </section>
+            </div>
+          </section>
+
+          <section class="center-panel hidden" id="feedback-view">
+            <div class="section-heading">
+              <h3>客户反馈机制</h3>
+              <p>收集问题、功能请求、税务/识别错误反馈，并在后台形成处理状态。</p>
+            </div>
+            <div class="feedback-layout">
+              <form id="feedback-form" class="feedback-form">
+                <label>
+                  类型
+                  <select name="type">
+                    <option value="ocr">OCR识别问题</option>
+                    <option value="tax">报税预估问题</option>
+                    <option value="billing">会员/支付问题</option>
+                    <option value="feature">功能建议</option>
+                  </select>
+                </label>
+                <label>
+                  优先级
+                  <select name="priority">
+                    <option value="normal">普通</option>
+                    <option value="high">高</option>
+                    <option value="urgent">紧急</option>
+                  </select>
+                </label>
+                <label class="wide">
+                  内容
+                  <textarea name="message" rows="4" placeholder="请描述问题或建议"></textarea>
+                </label>
+                <button class="confirm-button" type="submit">提交反馈</button>
+              </form>
+              <div class="feedback-list" id="feedback-list"></div>
+            </div>
+          </section>
+
+          <section class="center-panel hidden" id="tax-view">
+            <div class="section-heading">
+              <h3>日本の報税預估</h3>
+              <p>個人事業主と法人の概算。国税庁の速算表を基礎にし、地方税・控除・業種差は調整可能にします。</p>
+            </div>
+            <div class="tax-layout">
+              <div class="tax-controls">
+                <label>
+                  個人所得控除見込
+                  <input id="personal-deductions" type="number" min="0" step="10000" value="1600000" />
+                </label>
+                <label>
+                  個人事業税率
+                  <input id="business-tax-rate" type="number" min="0" max="10" step="0.1" value="5" />
+                </label>
+                <label>
+                  法人地方税等の概算率
+                  <input id="corporate-local-rate" type="number" min="0" max="30" step="0.1" value="7" />
+                </label>
+                <label>
+                  消費税ステータス
+                  <select id="consumption-tax-mode">
+                    <option value="taxable">課税事業者</option>
+                    <option value="exempt">免税事業者</option>
+                  </select>
+                </label>
+              </div>
+              <div class="tax-results" id="tax-results"></div>
+            </div>
+          </section>
+
+          <section class="center-panel hidden" id="training-view">
+            <div class="section-heading">
+              <h3>学習データ</h3>
+              <p>AI初期結果、ユーザー修正、変更フィールドを保存し、PaddleOCR最適化へ接続します。</p>
+            </div>
+            <div class="training-log" id="training-log"></div>
+          </section>
+
+          <aside class="detail-panel" aria-label="Document detail">
+            <div class="detail-header">
+              <div>
+                <span id="detail-status" class="status-badge">未確認</span>
+                <h3 id="detail-title">ファイルを選択</h3>
+              </div>
+              <button id="confirm-button" class="confirm-button">確認済みにする</button>
+            </div>
+
+            <div class="preview-card" id="preview-card">
+              <div class="preview-icon">PDF</div>
+              <div>
+                <strong id="preview-name">No document</strong>
+                <span id="preview-meta">OCR待ち</span>
+              </div>
+            </div>
+
+            <form id="detail-form" class="detail-form">
+              <label class="wide">
+                保存ファイル名
+                <input name="renamed_name" />
+              </label>
+              <label>
+                ファイル作成時間
+                <input name="created_at" type="datetime-local" />
+              </label>
+              <label>
+                発行日
+                <input name="issued_at" type="date" />
+              </label>
+              <label>
+                支払 / 契約期限
+                <input name="due_at" type="date" />
+              </label>
+              <label>
+                OCR言語
+                <select name="language">
+                  <option value="ja">日本語</option>
+                  <option value="ja/en">日本語 / English</option>
+                  <option value="zh-Hant">繁體中文</option>
+                  <option value="zh-Hans">简体中文</option>
+                  <option value="en">English</option>
+                  <option value="ja/zh/en">日本語 / 中文 / English</option>
+                </select>
+              </label>
+              <label>
+                ファイル種別
+                <select name="document_type">
+                  <option value="receipt">receipt</option>
+                  <option value="invoice">invoice</option>
+                  <option value="contract">contract</option>
+                  <option value="bank_statement">bank_statement</option>
+                  <option value="tax_document">tax_document</option>
+                </select>
+              </label>
+              <label>
+                日付
+                <input name="date" type="date" />
+              </label>
+              <label>
+                金額
+                <input name="amount" type="number" min="0" step="1" />
+              </label>
+              <label>
+                税額
+                <input name="tax_amount" type="number" min="0" step="1" />
+              </label>
+              <label>
+                取引先 / 店舗名
+                <input name="vendor" />
+              </label>
+              <label>
+                登録番号
+                <input name="invoice_number" placeholder="T1234567890123" />
+              </label>
+              <label>
+                収入 / 支出
+                <select name="transaction_type">
+                  <option value="expense">支出</option>
+                  <option value="income">収入</option>
+                </select>
+              </label>
+              <label>
+                会社 / 個人
+                <select name="owner_type">
+                  <option value="company">会社</option>
+                  <option value="personal">個人</option>
+                </select>
+              </label>
+              <label>
+                会計分類
+                <select name="category">
+                  <option>売上</option>
+                  <option>広告宣伝費</option>
+                  <option>交通費</option>
+                  <option>通信費</option>
+                  <option>接待交際費</option>
+                  <option>消耗品費</option>
+                  <option>外注費</option>
+                  <option>家賃</option>
+                  <option>水道光熱費</option>
+                  <option>雑費</option>
+                  <option>税金</option>
+                  <option>契約書</option>
+                  <option>銀行明細</option>
+                </select>
+              </label>
+              <label>
+                所属口座
+                <select name="account">
+                  <option>会社銀行口座</option>
+                  <option>個人銀行口座</option>
+                  <option>会社クレジットカード</option>
+                  <option>個人クレジットカード</option>
+                  <option>現金</option>
+                  <option>PayPay</option>
+                </select>
+              </label>
+              <label class="wide">
+                摘要
+                <textarea name="summary" rows="3"></textarea>
+              </label>
+              <label class="wide">
+                OCR原文
+                <textarea name="ocr_text" rows="5"></textarea>
+              </label>
+            </form>
+          </aside>
+        </section>
+      </main>
+    </div>
+
+    <nav class="mobile-nav" aria-label="Mobile navigation">
+      <button class="active" data-view="documents">書類</button>
+      <button data-view="income">収入</button>
+      <button data-view="tax">税額</button>
+      <button data-view="membership">会员</button>
+      <button data-view="admin">后台</button>
+      <button data-view="accounts">口座</button>
+      <button data-view="feedback">反馈</button>
+      <button data-view="training">学習</button>
+    </nav>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
