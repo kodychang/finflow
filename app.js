@@ -1549,7 +1549,7 @@ function normalizeLanguage() {
 function applyStaticLabels() {
   const labels = {
     ja: {
-      nav: ["書類センター", "申告準備", "収入分析", "税額予測", "政策更新", "会員・権限", "口座整理", "帳票作成", "取引先管理", "お問い合わせ", "学習データ"],
+      nav: ["ホーム", "申告準備", "書類センター", "口座整理", "収支分析", "税額予測", "取引先管理", "帳票作成", "政策更新", "会員・権限", "お問い合わせ", "学習データ", "ホーム", "申告", "書類", "口座", "収支", "税額", "取引先", "帳票", "政策", "会員", "連絡", "学習"],
       eyebrow: "2026年度 / 個人事業主 + 法人",
       title: "日本の中小企業向け 税務漏れ防止ワーク台",
       metrics: ["年度売上", "年度支出", "今年の利益見込み", "漏れ・確認待ち", "AI使用量削減"],
@@ -1560,7 +1560,7 @@ function applyStaticLabels() {
       search: "検索: 店舗名、分類、金額",
     },
     "zh-Hant": {
-      nav: ["文件中心", "申報準備", "收入分析", "稅額預估", "政策更新", "會員與權限", "帳戶整理", "表單生成", "客戶管理", "客戶反饋", "學習資料"],
+      nav: ["首頁", "申報準備", "文件中心", "帳戶整理", "收支分析", "稅額預估", "客戶管理", "表單生成", "政策更新", "會員與權限", "客戶反饋", "學習資料", "首頁", "申報", "文件", "帳戶", "收支", "稅額", "客戶", "表單", "政策", "會員", "反饋", "學習"],
       eyebrow: "2026年度 / 個人事業主 + 法人",
       title: "日本中小企業稅務防漏工作台",
       metrics: ["年度收入", "年度支出", "今年預估損益", "缺漏與待確認", "AI使用量節省"],
@@ -1571,7 +1571,7 @@ function applyStaticLabels() {
       search: "搜尋：店名、分類、金額",
     },
     "zh-Hans": {
-      nav: ["文件中心", "申报准备", "收入分析", "税额预估", "政策更新", "会员与权限", "账户整理", "表单生成", "客户管理", "客户反馈", "学习数据"],
+      nav: ["首页", "申报准备", "文件中心", "账户整理", "收支分析", "税额预估", "客户管理", "表单生成", "政策更新", "会员与权限", "客户反馈", "学习数据", "首页", "申报", "文件", "账户", "收支", "税额", "客户", "表单", "政策", "会员", "反馈", "学习"],
       eyebrow: "2026年度 / 个人事业主 + 法人",
       title: "日本中小企业税务防漏工作台",
       metrics: ["年度收入", "年度支出", "今年预估盈亏", "缺漏与待确认", "AI使用量节省"],
@@ -1582,7 +1582,7 @@ function applyStaticLabels() {
       search: "搜索：店名、分类、金额",
     },
     en: {
-      nav: ["Documents", "Filing readiness", "Income analysis", "Tax estimate", "Policy updates", "Membership", "Accounts", "Forms", "Customers", "Feedback", "Training data"],
+      nav: ["Home", "Filing readiness", "Documents", "Accounts", "P&L analysis", "Tax estimate", "Customers", "Forms", "Policy updates", "Membership", "Feedback", "Training data", "Home", "Filing", "Docs", "Accounts", "P&L", "Tax", "Customers", "Forms", "Policy", "Member", "Feedback", "Training"],
       eyebrow: "FY2026 / Sole proprietors + companies",
       title: "Tax-readiness workspace for Japanese SMEs",
       metrics: ["Annual revenue", "Annual expenses", "Projected profit", "Missing / review", "AI usage saved"],
