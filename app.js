@@ -5,6 +5,344 @@ const yen = new Intl.NumberFormat("ja-JP", {
 });
 
 const today = "2026-04-28";
+let appLang = "ja";
+
+const uiText = {
+  ja: {
+    "Documents": "書類センター",
+    "Filing readiness": "申告準備",
+    "Income analysis": "収入分析",
+    "Tax estimate": "税額予測",
+    "Policy updates": "政策更新",
+    "Membership": "会員・権限",
+    "Accounts": "口座整理",
+    "Forms": "帳票作成",
+    "Customers": "取引先管理",
+    "Feedback": "お問い合わせ",
+    "Training data": "学習データ",
+    "Annual revenue": "年度売上",
+    "Annual expenses": "年度支出",
+    "Projected profit": "今年の利益見込み",
+    "Missing / review": "漏れ・確認待ち",
+    "AI usage saved": "AI使用量削減",
+    "All": "すべて",
+    "Needs review": "未確認",
+    "Company": "法人",
+    "Personal": "個人",
+    "Tax": "税務",
+    "Status": "状態",
+    "Folder": "整理先",
+    "Saved name": "保存名",
+    "Date": "日付",
+    "Issue date": "発行日",
+    "Due date": "期限",
+    "Counterparty": "取引先",
+    "Type": "種別",
+    "Company/personal": "法人/個人",
+    "Category": "分類",
+    "Amount": "金額",
+    "Confidence": "信頼度",
+    all: "すべて",
+    unreviewed: "未確認",
+    company: "法人",
+    personal: "個人",
+    tax: "税務",
+    staged: "未整理",
+    archived: "整理済み",
+    pendingReview: "AI確認待ち",
+    receipt: "領収書",
+    invoice: "請求書",
+    contract: "契約書",
+    bank_statement: "銀行・カード明細",
+    tax_document: "税務書類",
+    income: "収入",
+    expense: "支出",
+    upload: "アップロード",
+    confirmArchive: "確認して整理",
+    archivedUpdate: "整理済み / 更新",
+    noErrors: "エラーなし",
+  },
+  "zh-Hant": {
+    all: "全部",
+    unreviewed: "未確認",
+    company: "法人",
+    personal: "個人",
+    tax: "稅務",
+    staged: "待歸檔",
+    archived: "已歸檔",
+    pendingReview: "AI待確認",
+    receipt: "收據",
+    invoice: "發票/請求書",
+    contract: "合約",
+    bank_statement: "銀行/信用卡明細",
+    tax_document: "稅務文件",
+    income: "收入",
+    expense: "支出",
+    upload: "上傳",
+    confirmArchive: "確認並歸檔",
+    archivedUpdate: "已歸檔 / 更新",
+    noErrors: "沒有錯誤",
+  },
+  "zh-Hans": {
+    all: "全部",
+    unreviewed: "未确认",
+    company: "法人",
+    personal: "个人",
+    tax: "税务",
+    staged: "待归档",
+    archived: "已归档",
+    pendingReview: "AI待确认",
+    receipt: "收据",
+    invoice: "发票/请求书",
+    contract: "合同",
+    bank_statement: "银行/信用卡明细",
+    tax_document: "税务文件",
+    income: "收入",
+    expense: "支出",
+    upload: "上传",
+    confirmArchive: "确认并归档",
+    archivedUpdate: "已归档 / 更新",
+    noErrors: "没有错误",
+  },
+  en: {
+    "文件中心": "Documents",
+    "申报准备": "Filing readiness",
+    "申報準備": "Filing readiness",
+    "收入分析": "Income analysis",
+    "税额预估": "Tax estimate",
+    "稅額預估": "Tax estimate",
+    "政策更新": "Policy updates",
+    "会员与权限": "Membership",
+    "會員與權限": "Membership",
+    "账户整理": "Accounts",
+    "帳戶整理": "Accounts",
+    "表单生成": "Forms",
+    "表單生成": "Forms",
+    "客户管理": "Customers",
+    "客戶管理": "Customers",
+    "客户反馈": "Feedback",
+    "客戶反饋": "Feedback",
+    "学习数据": "Training data",
+    "學習資料": "Training data",
+    "上传": "Upload",
+    "上傳": "Upload",
+    "年度收入": "Annual revenue",
+    "年度支出": "Annual expenses",
+    "今年预估盈亏": "Projected profit",
+    "今年預估損益": "Projected profit",
+    "缺漏与待确认": "Missing / review",
+    "缺漏與待確認": "Missing / review",
+    "AI使用量节省": "AI usage saved",
+    "AI使用量節省": "AI usage saved",
+    "全部": "All",
+    "未确认": "Needs review",
+    "未確認": "Needs review",
+    "法人": "Company",
+    "个人": "Personal",
+    "個人": "Personal",
+    "税务": "Tax",
+    "稅務": "Tax",
+    "搜索：店名、分类、金额": "Search: vendor, category, amount",
+    "搜尋：店名、分類、金額": "Search: vendor, category, amount",
+    "状态": "Status",
+    "狀態": "Status",
+    "保存名称": "Saved name",
+    "保存名稱": "Saved name",
+    "日期": "Date",
+    "发行日": "Issue date",
+    "發行日": "Issue date",
+    "交易对象": "Counterparty",
+    "交易對象": "Counterparty",
+    "类型": "Type",
+    "類型": "Type",
+    "法人/个人": "Company/personal",
+    "法人/個人": "Company/personal",
+    "分类": "Category",
+    "分類": "Category",
+    "金额": "Amount",
+    "金額": "Amount",
+    "可信度": "Confidence",
+    "已确认": "Confirmed",
+    "已確認": "Confirmed",
+    "确认并归档": "Confirm and archive",
+    "確認並歸檔": "Confirm and archive",
+    all: "All",
+    unreviewed: "Needs review",
+    company: "Company",
+    personal: "Personal",
+    tax: "Tax",
+    staged: "Pending archive",
+    archived: "Archived",
+    pendingReview: "AI review",
+    receipt: "Receipt",
+    invoice: "Invoice",
+    contract: "Contract",
+    bank_statement: "Bank/card statement",
+    tax_document: "Tax document",
+    income: "Income",
+    expense: "Expense",
+    upload: "Upload",
+    confirmArchive: "Confirm and archive",
+    archivedUpdate: "Archived / update",
+    noErrors: "No errors",
+  },
+};
+
+function t(key) {
+  return uiText[appLang]?.[key] || uiText.ja[key] || key;
+}
+
+const phraseMap = {
+  ja: {
+    "表单生成": "帳票作成",
+    "客户管理": "取引先管理",
+    "客户反馈": "お問い合わせ",
+    "当前视角: 用户工作台": "現在の表示: ユーザー作業台",
+    "平台经营者后台": "運営者管理画面",
+    "归档目录": "整理先",
+    "归档待ち": "未整理",
+    "用户手动输入、CSV导入、PDF/照片明细上传。AI 自动识别交易并与发票/收据匹配。": "手入力、CSV取込、PDF/写真の明細アップロードに対応します。AIが取引と請求書・領収書を照合します。",
+    "后期: API连接": "将来: API連携",
+    "银行/信用卡 API、会计软件 API、聚合商连接作为高级功能，需要 OAuth、合规和维护。": "銀行・カードAPI、会計ソフトAPI、集約サービス連携は上位機能として扱い、OAuth、法令対応、保守が必要です。",
+    "手动追加": "手入力で追加",
+    "摘要 / 店铺 / 入金来源": "摘要 / 店舗 / 入金元",
+    "金额": "金額",
+    "收入": "収入",
+    "支出": "支出",
+    "确认并归档": "確認して整理",
+    "已归档 / 更新确认": "整理済み / 更新",
+    "AI归档理由与检查结果": "AIの整理理由と確認結果",
+    "确认后才归档": "確認後に整理",
+    "法人 / 发票・請求書": "法人 / 請求書",
+    "法人 / 领收书": "法人 / 領収書",
+    "法人 / 契约书": "法人 / 契約書",
+    "法人 / 税务": "法人 / 税務",
+    "法人 / 银行账户": "法人 / 銀行口座",
+    "个人 / 领收书": "個人 / 領収書",
+    "个人 / 税务": "個人 / 税務",
+    "个人 / 银行账户": "個人 / 銀行口座",
+    "已归档": "整理済み",
+    "待确认": "未確認",
+    "客户/厂商名": "取引先名",
+    "区分": "区分",
+    "联系人": "担当者",
+    "电话": "電話",
+    "付款条件": "支払条件",
+    "备注 / 报税确认事项": "メモ / 申告確認事項",
+    "搜索不到，建立新客户": "見つからない場合は新規作成",
+  },
+  "zh-Hant": {
+    "書類センター": "文件中心",
+    "申告準備": "申報準備",
+    "収入分析": "收入分析",
+    "税額予測": "稅額預估",
+    "政策更新": "政策更新",
+    "会員・権限": "會員與權限",
+    "口座整理": "帳戶整理",
+    "学習データ": "學習資料",
+    "アップロード": "上傳",
+    "年度売上": "年度收入",
+    "年度支出": "年度支出",
+    "今年の利益見込み": "今年預估損益",
+    "漏れ・確認待ち": "缺漏與待確認",
+    "AI使用量削減": "AI使用量節省",
+    "すべて": "全部",
+    "未確認": "未確認",
+    "会社": "法人",
+    "個人": "個人",
+    "税務": "稅務",
+    "検索: 店舗名、分類、金額": "搜尋：店名、分類、金額",
+    "状態": "狀態",
+    "保存名": "保存名稱",
+    "日付": "日期",
+    "発行日": "發行日",
+    "期限": "期限",
+    "取引先": "交易對象",
+    "種別": "類型",
+    "会社/個人": "法人/個人",
+    "分類": "分類",
+    "金額": "金額",
+    "信頼度": "可信度",
+    "確認済": "已確認",
+    "確認して整理": "確認並歸檔",
+  },
+  "zh-Hans": {
+    "書類センター": "文件中心",
+    "申告準備": "申报准备",
+    "収入分析": "收入分析",
+    "税額予測": "税额预估",
+    "政策更新": "政策更新",
+    "会員・権限": "会员与权限",
+    "口座整理": "账户整理",
+    "学習データ": "学习数据",
+    "アップロード": "上传",
+    "年度売上": "年度收入",
+    "年度支出": "年度支出",
+    "今年の利益見込み": "今年预估盈亏",
+    "漏れ・確認待ち": "缺漏与待确认",
+    "AI使用量削減": "AI使用量节省",
+    "すべて": "全部",
+    "未確認": "未确认",
+    "会社": "法人",
+    "個人": "个人",
+    "税務": "税务",
+    "検索: 店舗名、分類、金額": "搜索：店名、分类、金额",
+    "状態": "状态",
+    "保存名": "保存名称",
+    "日付": "日期",
+    "発行日": "发行日",
+    "期限": "期限",
+    "取引先": "交易对象",
+    "種別": "类型",
+    "会社/個人": "法人/个人",
+    "分類": "分类",
+    "金額": "金额",
+    "信頼度": "可信度",
+    "確認済": "已确认",
+    "確認して整理": "确认并归档",
+  },
+  en: {
+    "書類センター": "Documents",
+    "申告準備": "Filing readiness",
+    "収入分析": "Income analysis",
+    "税額予測": "Tax estimate",
+    "政策更新": "Policy updates",
+    "会員・権限": "Membership",
+    "口座整理": "Accounts",
+    "表单生成": "Forms",
+    "客户管理": "Customers",
+    "客户反馈": "Feedback",
+    "学習データ": "Training data",
+    "アップロード": "Upload",
+    "年度売上": "Annual revenue",
+    "年度支出": "Annual expenses",
+    "今年の利益見込み": "Projected profit",
+    "漏れ・確認待ち": "Missing / review",
+    "AI使用量削減": "AI usage saved",
+    "すべて": "All",
+    "未確認": "Needs review",
+    "会社": "Company",
+    "個人": "Personal",
+    "税務": "Tax",
+    "検索: 店舗名、分類、金額": "Search: vendor, category, amount",
+    "状態": "Status",
+    "归档目录": "Folder",
+    "保存名": "Saved name",
+    "日付": "Date",
+    "発行日": "Issue date",
+    "期限": "Due date",
+    "取引先": "Counterparty",
+    "種別": "Type",
+    "会社/個人": "Company/personal",
+    "分類": "Category",
+    "金額": "Amount",
+    "信頼度": "Confidence",
+    "確認済": "Confirmed",
+    "確認して整理": "Confirm and archive",
+    "当前视角: 用户工作台": "Current view: user workspace",
+    "平台经营者后台": "Operator admin",
+  },
+};
 
 const taxSources = [
   "国税庁: 所得税 5%-45% 速算表",
@@ -330,6 +668,8 @@ let documents = [
 let selectedId = documents[0].id;
 let currentFilter = "all";
 let currentView = "documents";
+let currentDirectoryFilter = "";
+let currentSmartFilter = "";
 let trainingSamples = [];
 
 const tableBody = document.querySelector("#document-table");
@@ -509,8 +849,14 @@ function filteredDocuments() {
       (currentFilter === "personal" && doc.owner_type === "personal") ||
       (currentFilter === "tax" && (doc.category === "税金" || doc.document_type === "tax_document")) ||
       (currentFilter === "staged" && doc.archive_status !== "archived");
-    const text = `${doc.name} ${doc.vendor} ${doc.category} ${doc.amount}`.toLowerCase();
-    return filterMatch && text.includes(query);
+    const smartMatch =
+      !currentSmartFilter ||
+      (currentSmartFilter === "income" && doc.transaction_type === "income") ||
+      (currentSmartFilter === "expense" && doc.transaction_type === "expense") ||
+      (currentSmartFilter === "review" && doc.archive_status !== "archived");
+    const directoryMatch = !currentDirectoryFilter || doc.target_directory === currentDirectoryFilter || suggestDirectory(doc) === currentDirectoryFilter;
+    const text = `${doc.name} ${doc.vendor} ${doc.category} ${doc.amount} ${doc.target_directory} ${directoryLabel(doc.target_directory)}`.toLowerCase();
+    return filterMatch && smartMatch && directoryMatch && text.includes(query);
   });
 }
 
@@ -519,15 +865,15 @@ function renderTable() {
     .map(
       (doc) => `
         <tr data-id="${doc.id}" class="${doc.id === selectedId ? "selected" : ""}">
-          <td><span class="status-badge ${doc.status === "done" ? "done" : "review"}">${doc.status === "done" ? "確認済" : "未確認"}</span></td>
+          <td><span class="status-badge ${doc.status === "done" ? "done" : "review"}">${doc.status === "done" ? t("archived") : t("unreviewed")}</span></td>
           <td>${directoryLabel(doc.target_directory)}</td>
           <td>${doc.renamed_name}</td>
           <td>${doc.date}</td>
           <td>${doc.issued_at || "-"}</td>
           <td>${doc.due_at || "-"}</td>
           <td>${doc.vendor}</td>
-          <td><span class="type-chip">${doc.document_type}</span></td>
-          <td>${doc.owner_type === "company" ? "会社" : "個人"}</td>
+          <td><span class="type-chip">${t(doc.document_type)}</span></td>
+          <td>${doc.owner_type === "company" ? t("company") : t("personal")}</td>
           <td>${doc.category}</td>
           <td class="number">${yen.format(doc.amount)}</td>
           <td>${Math.round(doc.confidence * 100)}%</td>
@@ -571,17 +917,17 @@ function renderDirectories() {
 
 function directoryLabel(directory) {
   const labels = {
-    pending_review: "AI待确认",
-    "company/receipts": "法人/领收书",
-    "company/invoices": "法人/发票",
-    "company/contracts": "法人/契约",
-    "company/tax": "法人/税务",
-    "company/bank": "法人/银行",
-    "personal/receipts": "个人/领收书",
-    "personal/tax": "个人/税务",
-    "personal/bank": "个人/银行",
+    pending_review: t("pendingReview"),
+    "company/receipts": `${t("company")} / ${t("receipt")}`,
+    "company/invoices": `${t("company")} / ${t("invoice")}`,
+    "company/contracts": `${t("company")} / ${t("contract")}`,
+    "company/tax": `${t("company")} / ${t("tax_document")}`,
+    "company/bank": `${t("company")} / ${t("bank_statement")}`,
+    "personal/receipts": `${t("personal")} / ${t("receipt")}`,
+    "personal/tax": `${t("personal")} / ${t("tax_document")}`,
+    "personal/bank": `${t("personal")} / ${t("bank_statement")}`,
   };
-  return labels[directory] || directory || "AI待确认";
+  return labels[directory] || directory || t("pendingReview");
 }
 
 function selectedDocument() {
@@ -599,7 +945,7 @@ function renderDetail() {
   document.querySelector("#preview-name").textContent = doc.renamed_name || doc.name;
   document.querySelector("#preview-meta").textContent = `original: ${doc.original_name || doc.name} / ${doc.fileType} / ${doc.language} / ${doc.hash}`;
   document.querySelector(".preview-icon").textContent = doc.fileType.slice(0, 4);
-  document.querySelector("#confirm-button").textContent = doc.archive_status === "archived" ? "已归档 / 更新确认" : "确认并归档";
+  document.querySelector("#confirm-button").textContent = doc.archive_status === "archived" ? t("archivedUpdate") : t("confirmArchive");
 
   [...form.elements].forEach((field) => {
     if (field.name && doc[field.name] !== undefined) {
@@ -1170,6 +1516,110 @@ function renderTraining() {
     .join("");
 }
 
+function normalizeLanguage() {
+  const replacements = phraseMap[appLang] || {};
+  document.documentElement.lang = appLang;
+  applyStaticLabels();
+  document.querySelector(".primary-upload").lastChild.textContent = ` ${t("upload")}`;
+  document.querySelectorAll("[data-filter]").forEach((button) => {
+    const key = button.dataset.filter;
+    if (uiText[appLang]?.[key]) button.textContent = t(key);
+  });
+  ["placeholder", "title", "aria-label"].forEach((attr) => {
+    document.querySelectorAll(`[${attr}]`).forEach((node) => {
+      let value = node.getAttribute(attr);
+      Object.entries(replacements).forEach(([from, to]) => {
+        value = value.split(from).join(to);
+      });
+      node.setAttribute(attr, value);
+    });
+  });
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach((node) => {
+    let value = node.nodeValue;
+    Object.entries(replacements).forEach(([from, to]) => {
+      value = value.split(from).join(to);
+    });
+    node.nodeValue = value;
+  });
+}
+
+function applyStaticLabels() {
+  const labels = {
+    ja: {
+      nav: ["書類センター", "申告準備", "収入分析", "税額予測", "政策更新", "会員・権限", "口座整理", "帳票作成", "取引先管理", "お問い合わせ", "学習データ"],
+      eyebrow: "2026年度 / 個人事業主 + 法人",
+      title: "日本の中小企業向け 税務漏れ防止ワーク台",
+      metrics: ["年度売上", "年度支出", "今年の利益見込み", "漏れ・確認待ち", "AI使用量削減"],
+      metricNotes: ["確認済み入金 / 請求書", "証憑あり経費 / 未確認あり", "黒字/赤字を自動判定", "領収書・期限・登録番号", "局所OCR・低信頼度のみAI再判定"],
+      operator: "現在の表示: ユーザー作業台",
+      operatorButton: "運営者管理画面",
+      headers: ["状態", "整理先", "保存名", "日付", "発行日", "期限", "取引先", "種別", "法人/個人", "分類", "金額", "信頼度"],
+      search: "検索: 店舗名、分類、金額",
+    },
+    "zh-Hant": {
+      nav: ["文件中心", "申報準備", "收入分析", "稅額預估", "政策更新", "會員與權限", "帳戶整理", "表單生成", "客戶管理", "客戶反饋", "學習資料"],
+      eyebrow: "2026年度 / 個人事業主 + 法人",
+      title: "日本中小企業稅務防漏工作台",
+      metrics: ["年度收入", "年度支出", "今年預估損益", "缺漏與待確認", "AI使用量節省"],
+      metricNotes: ["已確認入金 / 請求書", "有憑證支出 / 含未確認", "自動判斷盈利/虧損", "收據・期限・登錄號碼", "只對局部OCR與低可信度內容再判定"],
+      operator: "目前視角：使用者工作台",
+      operatorButton: "平台經營者後台",
+      headers: ["狀態", "歸檔目錄", "保存名稱", "日期", "發行日", "期限", "交易對象", "類型", "法人/個人", "分類", "金額", "可信度"],
+      search: "搜尋：店名、分類、金額",
+    },
+    "zh-Hans": {
+      nav: ["文件中心", "申报准备", "收入分析", "税额预估", "政策更新", "会员与权限", "账户整理", "表单生成", "客户管理", "客户反馈", "学习数据"],
+      eyebrow: "2026年度 / 个人事业主 + 法人",
+      title: "日本中小企业税务防漏工作台",
+      metrics: ["年度收入", "年度支出", "今年预估盈亏", "缺漏与待确认", "AI使用量节省"],
+      metricNotes: ["已确认入金 / 请求书", "有凭证支出 / 含未确认", "自动判断盈利/亏损", "收据・期限・登记号码", "只对局部OCR与低可信度内容再判定"],
+      operator: "当前视角：用户工作台",
+      operatorButton: "平台经营者后台",
+      headers: ["状态", "归档目录", "保存名称", "日期", "发行日", "期限", "交易对象", "类型", "法人/个人", "分类", "金额", "可信度"],
+      search: "搜索：店名、分类、金额",
+    },
+    en: {
+      nav: ["Documents", "Filing readiness", "Income analysis", "Tax estimate", "Policy updates", "Membership", "Accounts", "Forms", "Customers", "Feedback", "Training data"],
+      eyebrow: "FY2026 / Sole proprietors + companies",
+      title: "Tax-readiness workspace for Japanese SMEs",
+      metrics: ["Annual revenue", "Annual expenses", "Projected profit", "Missing / review", "AI usage saved"],
+      metricNotes: ["Confirmed deposits / invoices", "Evidence-backed expenses / pending items", "Automatic profit/loss signal", "Receipts, due dates, registration numbers", "Recheck only local OCR and low-confidence fields"],
+      operator: "Current view: user workspace",
+      operatorButton: "Operator admin",
+      headers: ["Status", "Folder", "Saved name", "Date", "Issue date", "Due date", "Counterparty", "Type", "Company/personal", "Category", "Amount", "Confidence"],
+      search: "Search: vendor, category, amount",
+    },
+  }[appLang];
+  if (!labels) return;
+  document.querySelectorAll(".nav-list [data-view]").forEach((button, index) => {
+    button.textContent = labels.nav[index] || button.textContent;
+  });
+  document.querySelector(".eyebrow").textContent = labels.eyebrow;
+  document.querySelector(".topbar h2").textContent = labels.title;
+  document.querySelectorAll(".metrics-grid article").forEach((card, index) => {
+    card.querySelector("span").textContent = labels.metrics[index] || "";
+    card.querySelector("small").textContent = labels.metricNotes[index] || "";
+  });
+  document.querySelector(".operator-switch span").textContent = labels.operator;
+  document.querySelector(".operator-switch button").textContent = labels.operatorButton;
+  document.querySelectorAll("#documents-view th").forEach((th, index) => {
+    th.textContent = labels.headers[index] || th.textContent;
+  });
+  searchInput.placeholder = labels.search;
+}
+
+function setSmartFilter(filter) {
+  currentSmartFilter = filter === "profit" ? "" : filter;
+  currentDirectoryFilter = "";
+  currentFilter = filter === "review" ? "staged" : "all";
+  searchInput.value = "";
+  currentView = "documents";
+  render();
+}
+
 function renderViews() {
   ["documents", "readiness", "income", "tax", "policy", "membership", "admin", "accounts", "forms", "customers", "feedback", "training"].forEach((view) => {
     document.querySelector(`#${view}-view`).classList.toggle("hidden", view !== currentView);
@@ -1199,6 +1649,7 @@ function render() {
   renderCustomers();
   renderFeedback();
   renderTraining();
+  normalizeLanguage();
 }
 
 function commitFormChanges() {
@@ -1248,6 +1699,10 @@ document.querySelector("#confirm-button").addEventListener("click", () => {
     fields: result.changed.length ? result.changed.join(", ") : "no_user_change",
     time: new Date().toLocaleString("ja-JP"),
   });
+  currentFilter = "all";
+  currentSmartFilter = "";
+  currentDirectoryFilter = "";
+  searchInput.value = "";
   render();
 });
 
@@ -1263,9 +1718,11 @@ document.querySelector("#simulate-ai").addEventListener("click", () => {
 document.querySelectorAll(".segmented-control button").forEach((button) => {
   button.addEventListener("click", () => {
     currentFilter = button.dataset.filter;
+    currentSmartFilter = "";
+    currentDirectoryFilter = "";
     document.querySelectorAll(".segmented-control button").forEach((item) => item.classList.remove("active"));
     button.classList.add("active");
-    renderTable();
+    render();
   });
 });
 
@@ -1278,12 +1735,21 @@ document.querySelectorAll("[data-view]").forEach((button) => {
 
 searchInput.addEventListener("input", renderTable);
 
+document.querySelector(".metrics-grid").addEventListener("click", (event) => {
+  const card = event.target.closest("[data-smart-filter]");
+  if (!card) return;
+  setSmartFilter(card.dataset.smartFilter);
+});
+
 document.querySelector("#directory-grid").addEventListener("click", (event) => {
   const button = event.target.closest("[data-directory-filter]");
   if (!button) return;
+  currentSmartFilter = "";
+  currentDirectoryFilter = button.dataset.directoryFilter;
   currentFilter = "all";
-  searchInput.value = button.dataset.directoryFilter;
-  renderTable();
+  searchInput.value = "";
+  currentView = "documents";
+  render();
 });
 
 document.querySelector("#plan-grid").addEventListener("click", (event) => {
@@ -1469,11 +1935,12 @@ taxInputIds.forEach((id) => {
 });
 
 languageSelect.addEventListener("change", () => {
-  document.documentElement.lang = languageSelect.value;
+  appLang = languageSelect.value;
+  document.documentElement.lang = appLang;
   const selected = selectedDocument();
   if (selected) {
-    selected.language = languageSelect.value;
-    renderDetail();
+    selected.language = appLang;
+    render();
   }
 });
 

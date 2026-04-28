@@ -197,6 +197,18 @@ button {
   box-shadow: 0 8px 24px rgba(21, 32, 26, 0.04);
 }
 
+.metrics-grid article,
+.action-card,
+.directory-card {
+  cursor: pointer;
+}
+
+.metrics-grid article:hover,
+.action-card:hover,
+.directory-card:hover {
+  border-color: var(--accent);
+}
+
 .metrics-grid span,
 .metrics-grid small,
 .analysis-card span,
