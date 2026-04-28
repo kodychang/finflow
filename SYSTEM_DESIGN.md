@@ -364,6 +364,36 @@ Admin relationship system:
 
 Platform admin is a separate operator surface. Normal customer organizations must not see platform admin navigation or APIs. Customer-side `owner` and `admin` roles can manage their own organization, billing, employees, files, and rules only.
 
+Prototype URL split:
+
+- Customer workspace: `/`
+- Platform operator admin: `/admin.html`
+
+Production must enforce this split on the backend. The admin surface should have separate MFA requirements, operator-only roles, restricted network/device policy, and full audit logs for all user, billing, announcement, ad, feedback, and security actions.
+
+## Security, Encryption, And Warning Mechanism
+
+Recommended default: adopt the Production option in `SECURITY_OPTIONS.md`.
+
+Core requirements:
+
+- Encrypt transport with HTTPS only.
+- Encrypt database, backups, object storage, OCR text, AI results, user corrections, and training samples.
+- Keep original files private and serve them through short-lived signed URLs only.
+- Do not store public file URLs in the database.
+- Enforce backend RBAC and organization scoping on every API route.
+- Protect the app with WAF, DDoS controls, bot controls, and per-user/per-organization rate limits.
+- Add file malware scanning, duplicate hash detection, and strict file-type validation.
+- Keep operator admin separate from customer UI and APIs.
+- Log security-sensitive events: login, upload, download, delete, export, role change, subscription change, signed URL generation, OCR/AI usage spike, and admin action.
+- Alert operators by Slack/Email/LINE for abnormal login, traffic, file download, OCR cost, database errors, WAF blocks, and backup failures.
+
+Security option levels:
+
+- MVP baseline: secure private beta with HTTPS, MFA for admins, private storage, signed URLs, encryption at rest, audit logs, upload limits, and backups.
+- Recommended production: WAF/CDN, KMS envelope encryption, private database network, least-privilege DB users, CI security scanning, SIEM-style alerts, and admin device/IP restrictions.
+- High-security enterprise: VPC isolation, customer-managed keys, immutable audit logs, database activity monitoring, field-level encryption, penetration testing, retention policy, and incident response runbook.
+
 ## Customer Workspace Requirements
 
 Customer-side document structure must support personal and corporate separation for future tax filing.

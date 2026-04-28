@@ -1103,7 +1103,7 @@ function renderReadiness() {
 }
 
 function renderPolicyUpdates() {
-  document.querySelector("#policy-list").innerHTML = governmentFeeds
+  const html = governmentFeeds
     .map(
       (feed) => `
         <article class="policy-card">
@@ -1116,6 +1116,10 @@ function renderPolicyUpdates() {
       `,
     )
     .join("");
+
+  document.querySelectorAll("#home-policy-list, #policy-list").forEach((list) => {
+    list.innerHTML = html;
+  });
 }
 
 function renderAccounts() {
@@ -1242,7 +1246,13 @@ function renderMembership() {
 }
 
 function renderAdmin() {
-  document.querySelector("#admin-member-list").innerHTML = adminMembers
+  const memberList = document.querySelector("#admin-member-list");
+  const serviceEditor = document.querySelector("#service-editor");
+  const announcementList = document.querySelector("#announcement-list");
+  const adList = document.querySelector("#ad-list");
+  if (!memberList || !serviceEditor || !announcementList || !adList) return;
+
+  memberList.innerHTML = adminMembers
     .map((member) => {
       const plan = subscriptionPlans.find((item) => item.id === member.planId) || subscriptionPlans[0];
       return `
@@ -1254,7 +1264,7 @@ function renderAdmin() {
     })
     .join("");
 
-  document.querySelector("#service-editor").innerHTML = serviceItems
+  serviceEditor.innerHTML = serviceItems
     .map(
       (service) => `
         <div class="service-row">
@@ -1266,7 +1276,7 @@ function renderAdmin() {
     )
     .join("");
 
-  document.querySelector("#announcement-list").innerHTML = announcements
+  announcementList.innerHTML = announcements
     .map(
       (item) => `
         <div class="ad-row">
@@ -1278,7 +1288,7 @@ function renderAdmin() {
     )
     .join("");
 
-  document.querySelector("#ad-list").innerHTML = ads
+  adList.innerHTML = ads
     .map(
       (item) => `
         <div class="ad-row">
@@ -1549,46 +1559,38 @@ function normalizeLanguage() {
 function applyStaticLabels() {
   const labels = {
     ja: {
-      nav: ["ホーム", "申告準備", "書類センター", "口座整理", "収支分析", "税額予測", "取引先管理", "帳票作成", "政策更新", "会員・権限", "お問い合わせ", "学習データ", "ホーム", "申告", "書類", "口座", "収支", "税額", "取引先", "帳票", "政策", "会員", "連絡", "学習"],
+      nav: ["ホーム", "申告準備", "書類センター", "口座整理", "収支分析", "税額予測", "取引先管理", "帳票作成", "会員・権限", "お問い合わせ", "学習データ"],
       eyebrow: "2026年度 / 個人事業主 + 法人",
       title: "日本の中小企業向け 税務漏れ防止ワーク台",
       metrics: ["年度売上", "年度支出", "今年の利益見込み", "漏れ・確認待ち", "AI使用量削減"],
       metricNotes: ["確認済み入金 / 請求書", "証憑あり経費 / 未確認あり", "黒字/赤字を自動判定", "領収書・期限・登録番号", "局所OCR・低信頼度のみAI再判定"],
-      operator: "現在の表示: ユーザー作業台",
-      operatorButton: "運営者管理画面",
       headers: ["状態", "整理先", "保存名", "日付", "発行日", "期限", "取引先", "種別", "法人/個人", "分類", "金額", "信頼度"],
       search: "検索: 店舗名、分類、金額",
     },
     "zh-Hant": {
-      nav: ["首頁", "申報準備", "文件中心", "帳戶整理", "收支分析", "稅額預估", "客戶管理", "表單生成", "政策更新", "會員與權限", "客戶反饋", "學習資料", "首頁", "申報", "文件", "帳戶", "收支", "稅額", "客戶", "表單", "政策", "會員", "反饋", "學習"],
+      nav: ["首頁", "申報準備", "文件中心", "帳戶整理", "收支分析", "稅額預估", "客戶管理", "表單生成", "會員與權限", "客戶反饋", "學習資料"],
       eyebrow: "2026年度 / 個人事業主 + 法人",
       title: "日本中小企業稅務防漏工作台",
       metrics: ["年度收入", "年度支出", "今年預估損益", "缺漏與待確認", "AI使用量節省"],
       metricNotes: ["已確認入金 / 請求書", "有憑證支出 / 含未確認", "自動判斷盈利/虧損", "收據・期限・登錄號碼", "只對局部OCR與低可信度內容再判定"],
-      operator: "目前視角：使用者工作台",
-      operatorButton: "平台經營者後台",
       headers: ["狀態", "歸檔目錄", "保存名稱", "日期", "發行日", "期限", "交易對象", "類型", "法人/個人", "分類", "金額", "可信度"],
       search: "搜尋：店名、分類、金額",
     },
     "zh-Hans": {
-      nav: ["首页", "申报准备", "文件中心", "账户整理", "收支分析", "税额预估", "客户管理", "表单生成", "政策更新", "会员与权限", "客户反馈", "学习数据", "首页", "申报", "文件", "账户", "收支", "税额", "客户", "表单", "政策", "会员", "反馈", "学习"],
+      nav: ["首页", "申报准备", "文件中心", "账户整理", "收支分析", "税额预估", "客户管理", "表单生成", "会员与权限", "客户反馈", "学习数据"],
       eyebrow: "2026年度 / 个人事业主 + 法人",
       title: "日本中小企业税务防漏工作台",
       metrics: ["年度收入", "年度支出", "今年预估盈亏", "缺漏与待确认", "AI使用量节省"],
       metricNotes: ["已确认入金 / 请求书", "有凭证支出 / 含未确认", "自动判断盈利/亏损", "收据・期限・登记号码", "只对局部OCR与低可信度内容再判定"],
-      operator: "当前视角：用户工作台",
-      operatorButton: "平台经营者后台",
       headers: ["状态", "归档目录", "保存名称", "日期", "发行日", "期限", "交易对象", "类型", "法人/个人", "分类", "金额", "可信度"],
       search: "搜索：店名、分类、金额",
     },
     en: {
-      nav: ["Home", "Filing readiness", "Documents", "Accounts", "P&L analysis", "Tax estimate", "Customers", "Forms", "Policy updates", "Membership", "Feedback", "Training data", "Home", "Filing", "Docs", "Accounts", "P&L", "Tax", "Customers", "Forms", "Policy", "Member", "Feedback", "Training"],
+      nav: ["Home", "Filing readiness", "Documents", "Accounts", "P&L analysis", "Tax estimate", "Customers", "Forms", "Membership", "Feedback", "Training data"],
       eyebrow: "FY2026 / Sole proprietors + companies",
       title: "Tax-readiness workspace for Japanese SMEs",
       metrics: ["Annual revenue", "Annual expenses", "Projected profit", "Missing / review", "AI usage saved"],
       metricNotes: ["Confirmed deposits / invoices", "Evidence-backed expenses / pending items", "Automatic profit/loss signal", "Receipts, due dates, registration numbers", "Recheck only local OCR and low-confidence fields"],
-      operator: "Current view: user workspace",
-      operatorButton: "Operator admin",
       headers: ["Status", "Folder", "Saved name", "Date", "Issue date", "Due date", "Counterparty", "Type", "Company/personal", "Category", "Amount", "Confidence"],
       search: "Search: vendor, category, amount",
     },
@@ -1603,8 +1605,6 @@ function applyStaticLabels() {
     card.querySelector("span").textContent = labels.metrics[index] || "";
     card.querySelector("small").textContent = labels.metricNotes[index] || "";
   });
-  document.querySelector(".operator-switch span").textContent = labels.operator;
-  document.querySelector(".operator-switch button").textContent = labels.operatorButton;
   document.querySelectorAll("#documents-view th").forEach((th, index) => {
     th.textContent = labels.headers[index] || th.textContent;
   });
@@ -1621,8 +1621,8 @@ function setSmartFilter(filter) {
 }
 
 function renderViews() {
-  ["documents", "readiness", "income", "tax", "policy", "membership", "admin", "accounts", "forms", "customers", "feedback", "training"].forEach((view) => {
-    document.querySelector(`#${view}-view`).classList.toggle("hidden", view !== currentView);
+  ["documents", "readiness", "income", "tax", "membership", "accounts", "forms", "customers", "feedback", "training"].forEach((view) => {
+    document.querySelector(`#${view}-view`)?.classList.toggle("hidden", view !== currentView);
   });
 
   document.querySelectorAll(".home-only").forEach((section) => {
@@ -1799,14 +1799,14 @@ document.querySelector("#employee-table").addEventListener("change", (event) => 
   renderMembership();
 });
 
-document.querySelector("#service-editor").addEventListener("input", (event) => {
+document.querySelector("#service-editor")?.addEventListener("input", (event) => {
   const id = event.target.dataset.serviceId;
   if (!id) return;
   const service = serviceItems.find((item) => item.id === id);
   if (service) service.body = event.target.value;
 });
 
-document.querySelector("#announcement-list").addEventListener("click", (event) => {
+document.querySelector("#announcement-list")?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-toggle-announcement]");
   if (!button) return;
   const item = announcements.find((announcement) => announcement.id === button.dataset.toggleAnnouncement);
@@ -1814,7 +1814,7 @@ document.querySelector("#announcement-list").addEventListener("click", (event) =
   render();
 });
 
-document.querySelector("#ad-list").addEventListener("click", (event) => {
+document.querySelector("#ad-list")?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-toggle-ad]");
   if (!button) return;
   const item = ads.find((ad) => ad.id === button.dataset.toggleAd);
@@ -1822,7 +1822,7 @@ document.querySelector("#ad-list").addEventListener("click", (event) => {
   render();
 });
 
-announcementForm.addEventListener("submit", (event) => {
+announcementForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   const data = new FormData(announcementForm);
   const title = String(data.get("title") || "").trim();
@@ -1833,7 +1833,7 @@ announcementForm.addEventListener("submit", (event) => {
   render();
 });
 
-adForm.addEventListener("submit", (event) => {
+adForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   const data = new FormData(adForm);
   const title = String(data.get("title") || "").trim();

@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FinFlow Operator Admin</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="admin-shell">
+      <aside class="sidebar admin-sidebar" aria-label="Operator admin navigation">
+        <div class="brand">
+          <div class="brand-mark">F</div>
+          <div>
+            <h1>FinFlow Admin</h1>
+            <p>平台经营者后台</p>
+          </div>
+        </div>
+        <nav class="nav-list">
+          <a class="nav-item active" href="#members">付费会员</a>
+          <a class="nav-item" href="#services">行政服务</a>
+          <a class="nav-item" href="#announcements">公告・广告</a>
+          <a class="nav-item" href="#feedback">客户反馈</a>
+          <a class="nav-item" href="#security">安全预警</a>
+        </nav>
+        <div class="storage-card">
+          <span>Admin URL</span>
+          <strong>/admin.html</strong>
+          <small>生产环境必须使用独立登录、MFA、RBAC、IP/设备限制</small>
+        </div>
+      </aside>
+
+      <main class="admin-workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Operator only / 用户不可见</p>
+            <h2>平台经营者后台</h2>
+          </div>
+          <a class="secondary-button" href="./index.html">返回用户工作台</a>
+        </header>
+
+        <section class="admin-page-grid">
+          <article class="admin-card" id="members">
+            <div class="admin-card-header">
+              <h4>付费会员管理</h4>
+              <span>订阅状态 / 员工额度 / 续费日</span>
+            </div>
+            <div class="admin-row">
+              <strong>株式会社サンプル</strong>
+              <span class="admin-row-meta">Team 3 / ¥1,500月 / active / 员工 2/3 / 续费 2026-05-28</span>
+            </div>
+            <div class="admin-row">
+              <strong>合同会社Flow</strong>
+              <span class="admin-row-meta">Team 6 / ¥2,500月 / active / 员工 5/6 / 续费 2026-06-03</span>
+            </div>
+          </article>
+
+          <article class="admin-card" id="services">
+            <div class="admin-card-header">
+              <h4>会员续费与行政服务内容</h4>
+              <span>可编辑每个付费方案提供的运营服务</span>
+            </div>
+            <div class="service-row">
+              <strong>Team 3</strong>
+              <textarea rows="4">月次文件整理支持、基础报税预估提醒、员工权限检查。</textarea>
+            </div>
+            <div class="service-row">
+              <strong>Team 6</strong>
+              <textarea rows="4">多账户整理、反馈优先处理、公告/广告活动管理、月度服务更新。</textarea>
+            </div>
+          </article>
+
+          <article class="admin-card" id="announcements">
+            <div class="admin-card-header">
+              <h4>公告与广告系统</h4>
+              <span>面向用户首页推送，不进入每个功能页</span>
+            </div>
+            <form class="inline-form">
+              <input placeholder="标题" />
+              <input placeholder="内容或投放位置" />
+              <button type="button">保存草稿</button>
+            </form>
+            <div class="admin-row">
+              <strong>今月の確認</strong>
+              <span class="admin-row-meta">公告 / 首页 / active</span>
+            </div>
+            <div class="admin-row">
+              <strong>税理士レビュー予約</strong>
+              <span class="admin-row-meta">广告 / 首页 / active</span>
+            </div>
+          </article>
+
+          <article class="admin-card" id="feedback">
+            <div class="admin-card-header">
+              <h4>客户反馈机制</h4>
+              <span>OCR、报税预估、会员支付、功能建议</span>
+            </div>
+            <div class="admin-row">
+              <strong>NTT收据税额识别需要人工确认</strong>
+              <span class="admin-row-meta">OCR / high / open / 2026-04-28 11:20</span>
+            </div>
+          </article>
+
+          <article class="admin-card security-card" id="security">
+            <div class="admin-card-header">
+              <h4>安全预警中心</h4>
+              <span>异常登录 / 流量滥用 / 数据库与文件访问</span>
+            </div>
+            <div class="security-list">
+              <span class="status-badge">WAF: 24h blocked 128</span>
+              <span class="status-badge">API rate: normal</span>
+              <span class="status-badge">OCR cost: watch</span>
+              <span class="status-badge">DB access: normal</span>
+            </div>
+            <p>生产环境应接 Slack/Email/LINE 通知，并把高危事件写入不可篡改审计日志。</p>
+          </article>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

@@ -29,12 +29,21 @@ python3 -m http.server 4173
 
 Open `http://localhost:4173`.
 
+The platform operator prototype is separated from the customer workspace:
+
+- Customer app: `http://localhost:4173/`
+- Operator admin: `http://localhost:4173/admin.html`
+
+In production, the operator admin must use a separate authentication policy with MFA, RBAC, audit logs, and network/device restrictions. Normal customer users should never receive operator admin navigation or APIs.
+
 ## Files
 
 - `index.html`: application shell and product views
+- `admin.html`: separate platform operator admin prototype
 - `styles.css`: responsive desktop three-column and mobile tab UI
 - `app.js`: mock OCR provider, document state, editable detail panel, training sample log
 - `SYSTEM_DESIGN.md`: target architecture for Next.js, NestJS, PostgreSQL, Prisma, object storage, OCR engines, and training data
+- `SECURITY_OPTIONS.md`: security, encryption, anti-abuse, and alerting options
 
 ## Tax Estimate Scope
 
@@ -82,3 +91,5 @@ Production should prioritize official sources over generic news:
 - National Tax Agency news: https://www.nta.go.jp/information/news/news.htm
 - SME Agency tax measures: https://www.chusho.meti.go.jp/zaimu/zeisei/index.html
 - e-Gov law API: https://laws.e-gov.go.jp/docs/law-data-basic/8529371-law-api-v1/
+
+In the current UI, policy/news alerts are intentionally shown only on the home dashboard so they do not distract users inside each workflow.

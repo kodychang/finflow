@@ -26,7 +26,6 @@
           <button class="nav-item" data-view="tax">税額予測</button>
           <button class="nav-item" data-view="customers">取引先管理</button>
           <button class="nav-item" data-view="forms">表单生成</button>
-          <button class="nav-item" data-view="policy">政策更新</button>
           <button class="nav-item" data-view="membership">会員・権限</button>
           <button class="nav-item" data-view="feedback">客户反馈</button>
           <button class="nav-item" data-view="training">学習データ</button>
@@ -92,9 +91,12 @@
 
         <section class="simple-action-board home-only" id="simple-action-board"></section>
 
-        <section class="operator-switch">
-          <span>当前视角: 用户工作台</span>
-          <button class="secondary-button" data-view="admin">平台经营者后台</button>
+        <section class="home-policy home-only" aria-label="Official policy updates">
+          <div class="section-heading compact">
+            <h3>政府政策・税務ニュース</h3>
+            <p>国税庁、中小企業庁、e-Govなど公式情報を優先し、申告期限・制度変更の見落としを防ぎます。</p>
+          </div>
+          <div class="policy-layout" id="home-policy-list"></div>
         </section>
 
         <section class="content-grid">
@@ -162,14 +164,6 @@
             </div>
           </section>
 
-          <section class="center-panel hidden" id="policy-view">
-            <div class="section-heading">
-              <h3>政府政策・税務ニュース</h3>
-              <p>国税庁、中小企業庁、e-Govなど公式情報を優先し、税務・補助金・申告期限の見落としを防ぎます。</p>
-            </div>
-            <div class="policy-layout" id="policy-list"></div>
-          </section>
-
           <section class="center-panel hidden" id="accounts-view">
             <div class="section-heading">
               <h3>会社・個人口座</h3>
@@ -235,56 +229,6 @@
                   <tbody id="employee-table"></tbody>
                 </table>
               </div>
-            </div>
-          </section>
-
-          <section class="center-panel hidden" id="admin-view">
-            <div class="section-heading">
-              <h3>平台经营者后台</h3>
-              <p>仅平台运营者可见。用户工作台不显示此入口，用于管理用户、订阅、服务内容、公告、广告与反馈。</p>
-            </div>
-            <div class="admin-grid">
-              <section class="admin-card">
-                <div class="admin-card-header">
-                  <h4>付费会员</h4>
-                  <span>订阅状态 / 员工额度</span>
-                </div>
-                <div id="admin-member-list"></div>
-              </section>
-
-              <section class="admin-card">
-                <div class="admin-card-header">
-                  <h4>会员续费与行政服务内容</h4>
-                  <span>可编辑服务包说明</span>
-                </div>
-                <div id="service-editor"></div>
-              </section>
-
-              <section class="admin-card">
-                <div class="admin-card-header">
-                  <h4>公告系统</h4>
-                  <span>显示给所有用户</span>
-                </div>
-                <form id="announcement-form" class="inline-form">
-                  <input name="title" placeholder="公告标题" />
-                  <input name="body" placeholder="公告内容" />
-                  <button type="submit">发布</button>
-                </form>
-                <div id="announcement-list"></div>
-              </section>
-
-              <section class="admin-card">
-                <div class="admin-card-header">
-                  <h4>广告系统</h4>
-                  <span>站内推广与活动位</span>
-                </div>
-                <form id="ad-form" class="inline-form">
-                  <input name="title" placeholder="广告标题" />
-                  <input name="target" placeholder="投放位置 / 对象" />
-                  <button type="submit">新增</button>
-                </form>
-                <div id="ad-list"></div>
-              </section>
             </div>
           </section>
 
@@ -599,7 +543,6 @@
       <button data-view="tax">税額</button>
       <button data-view="customers">取引先</button>
       <button data-view="forms">表单</button>
-      <button data-view="policy">政策</button>
       <button data-view="membership">会员</button>
       <button data-view="feedback">反馈</button>
       <button data-view="training">学習</button>
