@@ -249,6 +249,99 @@ button {
   color: var(--muted);
 }
 
+.simple-action-board {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.action-card,
+.readiness-card,
+.checklist-item,
+.policy-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  box-shadow: 0 8px 24px rgba(21, 32, 26, 0.04);
+}
+
+.primary-action {
+  border-color: var(--accent);
+}
+
+.action-card span,
+.action-card small,
+.readiness-card span,
+.readiness-card small,
+.checklist-item span,
+.policy-card span,
+.policy-card small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.action-card strong,
+.readiness-card strong,
+.policy-card strong {
+  display: block;
+  font-size: 18px;
+  margin: 5px 0;
+}
+
+.readiness-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
+}
+
+.readiness-score,
+.checklist-list,
+.policy-layout {
+  display: grid;
+  gap: 10px;
+}
+
+.checklist-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.checklist-item.done {
+  border-color: #c8e6d4;
+}
+
+.checklist-item.needs-work {
+  border-color: #efd18a;
+  background: #fffdf5;
+}
+
+.policy-layout {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 12px;
+}
+
+.policy-card {
+  display: grid;
+  gap: 8px;
+}
+
+.policy-card p {
+  margin: 0;
+  color: var(--ink);
+  line-height: 1.55;
+}
+
+.policy-card a {
+  color: var(--accent-dark);
+  font-weight: 700;
+  text-decoration: none;
+}
+
 .content-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 368px;
@@ -1002,7 +1095,10 @@ tbody tr.selected {
   .feedback-layout,
   .form-builder-layout,
   .customer-layout,
-  .directory-grid {
+  .directory-grid,
+  .simple-action-board,
+  .readiness-layout,
+  .policy-layout {
     grid-template-columns: 1fr;
   }
 

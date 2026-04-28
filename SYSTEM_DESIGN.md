@@ -10,6 +10,8 @@ file upload -> object storage -> preprocessing -> OCR provider -> AI parser -> u
 
 The first production milestone should avoid building a full accounting product. The main asset is the long-term dataset made from original files, OCR text, AI output, user corrections, and final financial records.
 
+The product should be optimized for Japanese small and midsize businesses that need simple tax-readiness support: collecting invoices, receipts, government payment proofs, tax notices, bank records, and submission documents so users do not miss forms, deadlines, wording, or evidence before filing season.
+
 Uploaded files must first enter a staging area. AI may suggest a target directory and extracted fields, but the file is not finalized into personal, corporate, tax, contract, bank, receipt, or invoice folders until the user confirms or edits the result.
 
 ## Target Architecture
@@ -404,6 +406,37 @@ search existing -> if no result -> show create action -> create new record inlin
 ```
 
 This reduces bookkeeping friction while still keeping structured records for tax filing and later correction.
+
+## Simple Tax Readiness Dashboard
+
+The main workspace should answer four questions in plain language:
+
+- Did we make money this year?
+- What documents or proofs are still missing?
+- What should the user do next today?
+- Which government policy or deadline updates may affect filing?
+
+Dashboard signals:
+
+- annual confirmed revenue
+- annual confirmed expenses
+- projected profit/loss
+- target profit gap
+- missing receipts, invoices, registration numbers, tax rates, payment proofs, due dates
+- personal/corporate mixed spending
+- low-confidence OCR results
+- official policy alerts
+
+## Official Government Update Sources
+
+Policy and tax update feeds should prefer official sources:
+
+- National Tax Agency new information and mail magazine: `https://www.nta.go.jp/merumaga/`
+- National Tax Agency news: `https://www.nta.go.jp/information/news/news.htm`
+- SME Agency tax measures: `https://www.chusho.meti.go.jp/zaimu/zeisei/index.html`
+- e-Gov law API: `https://laws.e-gov.go.jp/docs/law-data-basic/8529371-law-api-v1/`
+
+Production should store source URL, fetched date, effective date, jurisdiction, tags, user impact, and whether the item has been acknowledged by the organization.
 
 ## Japan Tax Estimate Requirements
 

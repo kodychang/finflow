@@ -1,6 +1,6 @@
 # FinFlow MVP
 
-FinFlow is a file-first AI finance management prototype for Japanese sole proprietors, small businesses, founders, and users who manage both company and personal finances.
+FinFlow is a file-first AI tax-readiness and finance management prototype for Japanese small and midsize businesses. Its primary purpose is to prevent missing receipts, invoices, government payment proofs, deadlines, and tax documents before filing season.
 
 The current implementation is a dependency-free static web app because this workspace has Node but no npm/pnpm/yarn/bun package manager. It implements the product loop from the PRD:
 
@@ -17,6 +17,7 @@ The current implementation is a dependency-free static web app because this work
 11. Stage OCR results for user review before archiving into personal, corporate, tax, bank, invoice, receipt, or contract directories
 12. Separate platform operator admin from the customer workspace
 13. Generate business forms and auto-create customer records through search-to-create flows
+14. Show a simple tax-readiness dashboard: annual profit/loss, missing evidence, next actions, and official policy alerts
 
 ## Run Locally
 
@@ -70,3 +71,12 @@ The prototype simulates plan switching locally. Production should integrate a pa
 Uploads first enter `AI待确认 / 未归档`. AI suggests Japanese business/tax fields and a target directory, but the user must confirm or edit the result before the document is archived.
 
 The intended production flow reduces AI token usage by using local preprocessing, OCR text extraction, file hashing, field schemas, cropped low-confidence regions, and cached AI outputs before calling GPT/Gemini vision models.
+
+## Official Policy Sources
+
+Production should prioritize official sources over generic news:
+
+- National Tax Agency new information and mail magazine: https://www.nta.go.jp/merumaga/
+- National Tax Agency news: https://www.nta.go.jp/information/news/news.htm
+- SME Agency tax measures: https://www.chusho.meti.go.jp/zaimu/zeisei/index.html
+- e-Gov law API: https://laws.e-gov.go.jp/docs/law-data-basic/8529371-law-api-v1/

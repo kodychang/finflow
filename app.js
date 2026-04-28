@@ -37,6 +37,51 @@ const accounts = [
   { name: "PayPay", type: "payment", owner: "mixed", balance: 128000, mixed: true, progress: 38 },
 ];
 
+const annualGoal = {
+  targetProfit: 3000000,
+  minimumCashReserve: 900000,
+};
+
+const governmentFeeds = [
+  {
+    source: "国税庁",
+    title: "国税庁ホームページ新着情報・メールマガジン",
+    summary: "税に関する新着情報を週次または月次で受け取る公式配信。申告期限、様式、制度変更の確認元にする。",
+    url: "https://www.nta.go.jp/merumaga/",
+    impact: "申告期限・様式変更・インボイス関連",
+  },
+  {
+    source: "国税庁",
+    title: "国税庁 新着情報",
+    summary: "国税庁サイトに掲載された税制・手続・通達などの公式更新を監視する。",
+    url: "https://www.nta.go.jp/information/news/news.htm",
+    impact: "法人税・所得税・消費税・電子申告",
+  },
+  {
+    source: "中小企業庁",
+    title: "中小企業向け税制・支援策",
+    summary: "中小企業者向け税制、支援策、賃上げ・最低賃金対応支援などを確認する。",
+    url: "https://www.chusho.meti.go.jp/zaimu/zeisei/index.html",
+    impact: "優遇税制・補助金・中小企業支援",
+  },
+  {
+    source: "e-Gov",
+    title: "法令API / 法令検索",
+    summary: "法令更新をAPIで取得し、税務・社会保険・会社手続に関連する変更を通知する設計。",
+    url: "https://laws.e-gov.go.jp/docs/law-data-basic/8529371-law-api-v1/",
+    impact: "法令改正・施行日・条文確認",
+  },
+];
+
+const taxChecklistRules = [
+  { id: "receipts", label: "経費の領収書・請求書を集める", severity: "high" },
+  { id: "invoice_number", label: "インボイス登録番号と税率を確認する", severity: "high" },
+  { id: "bank_match", label: "銀行/カード明細と証憑を照合する", severity: "high" },
+  { id: "due_dates", label: "納付期限・支払期限・契約更新日を確認する", severity: "medium" },
+  { id: "personal_company_split", label: "個人/法人の混在支出を分ける", severity: "high" },
+  { id: "government_updates", label: "国税庁・中小企業庁の最新情報を確認する", severity: "medium" },
+];
+
 const subscriptionPlans = [
   {
     id: "free",
@@ -93,7 +138,7 @@ let serviceItems = [
 ];
 
 let announcements = [
-  { id: "ann-001", title: "インボイス確認強化", body: "登録番号と税率がない文件会自动进入确认队列。", active: true },
+  { id: "ann-001", title: "今月の確認", body: "登録番号、税率、納付期限、支払証明がない文件会自动进入确认队列。", active: true },
 ];
 
 let ads = [
@@ -509,14 +554,13 @@ function renderWorkflowSteps(doc) {
 }
 
 function updateMetrics() {
-  const confirmed = documents.filter((doc) => doc.status === "done");
-  const income = confirmed.filter((doc) => doc.transaction_type === "income").reduce((sum, doc) => sum + Number(doc.amount), 0);
-  const expense = confirmed.filter((doc) => doc.transaction_type === "expense").reduce((sum, doc) => sum + Number(doc.amount), 0);
+  const { income, expense, profit } = financeSummary();
   const review = documents.filter((doc) => doc.status === "review" || doc.need_review).length;
 
   document.querySelector("#monthly-income").textContent = yen.format(income);
   document.querySelector("#monthly-expense").textContent = yen.format(expense);
-  document.querySelector("#monthly-profit").textContent = yen.format(income - expense);
+  document.querySelector("#monthly-profit").textContent = yen.format(profit);
+  document.querySelector("#profit-guidance").textContent = profit >= 0 ? "現時点では黒字。納税資金を確保" : "赤字見込み。未請求・未回収を確認";
   document.querySelector("#review-count").textContent = `${review}件`;
   const archived = documents.filter((doc) => doc.archive_status === "archived").length;
   const saving = Math.round(55 + (archived / Math.max(documents.length, 1)) * 25);
@@ -558,6 +602,105 @@ function groupSum(items, key) {
     acc[item[key]] = (acc[item[key]] || 0) + Number(item.amount);
     return acc;
   }, {});
+}
+
+function financeSummary() {
+  const confirmed = documents.filter((doc) => doc.status === "done");
+  const income = confirmed.filter((doc) => doc.transaction_type === "income").reduce((sum, doc) => sum + Number(doc.amount), 0);
+  const expense = confirmed.filter((doc) => doc.transaction_type === "expense").reduce((sum, doc) => sum + Number(doc.amount), 0);
+  return { income, expense, profit: income - expense };
+}
+
+function missingIssues() {
+  const issues = [];
+  documents.forEach((doc) => {
+    if (doc.archive_status !== "archived") issues.push({ doc, label: "未归档确认" });
+    if (!doc.invoice_number && ["invoice", "receipt"].includes(doc.document_type)) issues.push({ doc, label: "登録番号未确认" });
+    if (!doc.due_at && ["invoice", "contract", "tax_document"].includes(doc.document_type)) issues.push({ doc, label: "期限缺失" });
+    if (doc.owner_type === "personal" && doc.tax_deductible) issues.push({ doc, label: "个人/事业比例需确认" });
+    if (doc.confidence < 0.8) issues.push({ doc, label: "AI信赖度低" });
+  });
+  return issues;
+}
+
+function renderActionBoard() {
+  const summary = financeSummary();
+  const issues = missingIssues();
+  const gap = annualGoal.targetProfit - summary.profit;
+  const profitState = summary.profit >= 0 ? "目前是黒字" : "目前是赤字";
+  document.querySelector("#simple-action-board").innerHTML = `
+    <article class="action-card primary-action">
+      <span>今年の状態</span>
+      <strong>${profitState} / ${yen.format(summary.profit)}</strong>
+      <small>目标利益 ${yen.format(annualGoal.targetProfit)}，还差 ${yen.format(Math.max(0, gap))}</small>
+    </article>
+    <article class="action-card">
+      <span>今天先做</span>
+      <strong>${issues.length ? issues[0].label : "没有紧急漏项"}</strong>
+      <small>${issues.length ? issues[0].doc.vendor + " / " + issues[0].doc.renamed_name : "继续上传本月收据和银行明细"}</small>
+    </article>
+    <article class="action-card">
+      <span>防止税务误解</span>
+      <strong>${issues.length} 个风险点</strong>
+      <small>缺证明、缺期限、个人/法人混用、税率不明会优先提醒</small>
+    </article>
+  `;
+}
+
+function renderReadiness() {
+  const issues = missingIssues();
+  const resolvedRatio = Math.max(0, Math.round(100 - (issues.length / Math.max(documents.length * 3, 1)) * 100));
+  document.querySelector("#readiness-score").innerHTML = `
+    <article class="readiness-card">
+      <span>申告準備度</span>
+      <strong>${resolvedRatio}%</strong>
+      <small>目标是让报税前不用回头找单据、付款证明、期限和文字说明。</small>
+      <div class="progress-bar"><i style="width:${resolvedRatio}%"></i></div>
+    </article>
+    <article class="readiness-card">
+      <span>年度目标</span>
+      <strong>${yen.format(annualGoal.targetProfit)}</strong>
+      <small>当前利润 ${yen.format(financeSummary().profit)}，系统会提示还差多少。</small>
+    </article>
+  `;
+
+  document.querySelector("#tax-checklist").innerHTML = taxChecklistRules
+    .map((rule) => {
+      const related = issues.filter((issue) => {
+        if (rule.id === "receipts") return issue.label.includes("未归档");
+        if (rule.id === "invoice_number") return issue.label.includes("登録番号");
+        if (rule.id === "due_dates") return issue.label.includes("期限");
+        if (rule.id === "personal_company_split") return issue.label.includes("个人");
+        if (rule.id === "bank_match") return issue.doc.document_type === "bank_statement";
+        return false;
+      });
+      return `
+        <article class="checklist-item ${related.length ? "needs-work" : "done"}">
+          <div>
+            <strong>${rule.label}</strong>
+            <span>${related.length ? related.length + " 件需要确认" : "当前没有明显漏项"}</span>
+          </div>
+          <span>${rule.severity}</span>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderPolicyUpdates() {
+  document.querySelector("#policy-list").innerHTML = governmentFeeds
+    .map(
+      (feed) => `
+        <article class="policy-card">
+          <span>${feed.source}</span>
+          <strong>${feed.title}</strong>
+          <p>${feed.summary}</p>
+          <small>影响: ${feed.impact}</small>
+          <a href="${feed.url}" target="_blank" rel="noreferrer">公式ページを確認</a>
+        </article>
+      `,
+    )
+    .join("");
 }
 
 function renderAccounts() {
@@ -888,7 +1031,7 @@ function renderTraining() {
 }
 
 function renderViews() {
-  ["documents", "income", "tax", "membership", "admin", "accounts", "forms", "customers", "feedback", "training"].forEach((view) => {
+  ["documents", "readiness", "income", "tax", "policy", "membership", "admin", "accounts", "forms", "customers", "feedback", "training"].forEach((view) => {
     document.querySelector(`#${view}-view`).classList.toggle("hidden", view !== currentView);
   });
 
@@ -900,6 +1043,9 @@ function renderViews() {
 function render() {
   renderViews();
   renderNotices();
+  renderActionBoard();
+  renderReadiness();
+  renderPolicyUpdates();
   renderDirectories();
   renderTable();
   renderDetail();

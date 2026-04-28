@@ -19,8 +19,10 @@
 
         <nav class="nav-list">
           <button class="nav-item active" data-view="documents">書類センター</button>
+          <button class="nav-item" data-view="readiness">申告準備</button>
           <button class="nav-item" data-view="income">収入分析</button>
           <button class="nav-item" data-view="tax">税額予測</button>
+          <button class="nav-item" data-view="policy">政策更新</button>
           <button class="nav-item" data-view="membership">会員・権限</button>
           <button class="nav-item" data-view="accounts">口座整理</button>
           <button class="nav-item" data-view="forms">表单生成</button>
@@ -40,7 +42,7 @@
         <header class="topbar">
           <div>
             <p class="eyebrow">2026年度 / 個人事業主 + 法人</p>
-            <h2>書類から財務データまで一気通貫</h2>
+            <h2>日本の中小企業向け 税務漏れ防止ワーク台</h2>
           </div>
           <div class="topbar-actions">
             <select id="language-select" class="language-select" aria-label="Language">
@@ -59,24 +61,24 @@
 
         <section class="metrics-grid" aria-label="Financial summary">
           <article>
-            <span>月間売上</span>
+            <span>年度売上</span>
             <strong id="monthly-income">¥0</strong>
-            <small>入金 / 請求書 / Stripe / PayPay</small>
+            <small>確認済み入金 / 請求書</small>
           </article>
           <article>
-            <span>月間支出</span>
+            <span>年度支出</span>
             <strong id="monthly-expense">¥0</strong>
-            <small>領収書 / カード / 銀行明細</small>
+            <small>証憑あり経費 / 未確認あり</small>
           </article>
           <article>
-            <span>利益見込み</span>
+            <span>今年の利益見込み</span>
             <strong id="monthly-profit">¥0</strong>
-            <small>確認済みデータ基準</small>
+            <small id="profit-guidance">黒字/赤字を自動判定</small>
           </article>
           <article>
-            <span>確認待ち</span>
+            <span>漏れ・確認待ち</span>
             <strong id="review-count">0件</strong>
-            <small>低信頼度・重複候補を含む</small>
+            <small>領収書・期限・登録番号</small>
           </article>
           <article>
             <span>AI使用量削減</span>
@@ -86,6 +88,8 @@
         </section>
 
         <section class="notice-strip" id="notice-strip" aria-label="Announcements"></section>
+
+        <section class="simple-action-board" id="simple-action-board"></section>
 
         <section class="operator-switch">
           <span>当前视角: 用户工作台</span>
@@ -144,6 +148,25 @@
               <p>銀行入金、請求書、Stripe、Square、PayPay、現金、契約から集計します。</p>
             </div>
             <div class="analysis-grid" id="income-grid"></div>
+          </section>
+
+          <section class="center-panel hidden" id="readiness-view">
+            <div class="section-heading">
+              <h3>申告準備チェック</h3>
+              <p>税務署・自治体・政府へ提出/保存が必要になりやすい資料の漏れを先に見つけます。</p>
+            </div>
+            <div class="readiness-layout">
+              <div class="readiness-score" id="readiness-score"></div>
+              <div class="checklist-list" id="tax-checklist"></div>
+            </div>
+          </section>
+
+          <section class="center-panel hidden" id="policy-view">
+            <div class="section-heading">
+              <h3>政府政策・税務ニュース</h3>
+              <p>国税庁、中小企業庁、e-Govなど公式情報を優先し、税務・補助金・申告期限の見落としを防ぎます。</p>
+            </div>
+            <div class="policy-layout" id="policy-list"></div>
           </section>
 
           <section class="center-panel hidden" id="accounts-view">
@@ -540,8 +563,10 @@
 
     <nav class="mobile-nav" aria-label="Mobile navigation">
       <button class="active" data-view="documents">書類</button>
+      <button data-view="readiness">申告</button>
       <button data-view="income">収入</button>
       <button data-view="tax">税額</button>
+      <button data-view="policy">政策</button>
       <button data-view="membership">会员</button>
       <button data-view="accounts">口座</button>
       <button data-view="forms">表单</button>
