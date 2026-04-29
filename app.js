@@ -397,6 +397,20 @@ const personalProfile = {
   identityStatus: "本人確認済み",
 };
 
+let driveConnection = {
+  connected: false,
+  email: "",
+  scope: "drive.file",
+  lastSyncedAt: "",
+};
+let driveSyncState = {
+  running: false,
+  lastRun: "",
+  message: "未同期",
+  folders: 0,
+};
+let accountModalState = { editingId: "" };
+
 let phoneVerification = {
   phone: "090-1234-5678",
   sent: false,
@@ -414,6 +428,21 @@ const driveFolders = [
   "FinFlow Backup/2026/個人/税務書類",
   "FinFlow Backup/2026/個人/口座明細",
   "FinFlow Backup/2026/確認待ち",
+];
+
+const corporateDocumentTypes = [
+  { key: "company/invoices", title: "請求書", note: "売上・請求・入金待ち" },
+  { key: "company/receipts", title: "領収書", note: "経費・精算・証憑" },
+  { key: "company/contracts", title: "契約書", note: "取引・業務委託・更新" },
+  { key: "company/tax", title: "税務", note: "申告・納付・届出" },
+  { key: "company/bank", title: "口座明細", note: "銀行・カード・決済" },
+  { key: "company/patents", title: "特許", note: "特許・商標・知財" },
+  { key: "company/real_estate", title: "不動産", note: "賃貸・登記・固定資産" },
+  { key: "company/inspection", title: "検査報告", note: "検収・品質・保守点検" },
+  { key: "company/licenses", title: "許認可", note: "免許・届出・更新証明" },
+  { key: "company/insurance", title: "保険", note: "火災・賠償・労災" },
+  { key: "personal/receipts", title: "個人領収書", note: "家計・按分確認" },
+  { key: "personal/tax", title: "個人税務", note: "住民税・国保・年金" },
 ];
 
 const ocrRoadmap = [
@@ -555,6 +584,14 @@ let feedbackTickets = [
   { id: "fb-001", type: "ocr", priority: "high", status: "open", message: "NTT收据税额识别需要人工确认。", createdAt: "2026-04-28 11:20" },
 ];
 
+let appTheme = "light";
+let supportCapture = {
+  selecting: false,
+  hasImage: false,
+  image: "",
+  rect: null,
+};
+
 let customers = [
   {
     id: "cus-001",
@@ -630,6 +667,7 @@ let generatedForms = [
     documentNumber: "INV-2026-0401",
   },
 ];
+let editingGeneratedFormId = "";
 
 let formDraft = {
   direction: "income",
@@ -646,6 +684,7 @@ let formDraft = {
   quantity: 1,
   unit_price: 280000,
   tax_rate: 10,
+  payment_account: "会社銀行口座",
   payment_method: "銀行振込",
   bank_account_note: "三井住友銀行 渋谷支店 普通 1234567",
   requester_department: "",
@@ -768,6 +807,7 @@ let currentFilter = "all";
 let currentView = "home";
 let currentDirectoryFilter = "";
 let currentSmartFilter = "";
+let currentDocumentSort = "date_desc";
 let trainingSamples = [];
 
 const tableBody = document.querySelector("#document-table");
@@ -777,7 +817,8 @@ const dropZone = document.querySelector("#drop-zone");
 const fileInput = document.querySelector("#file-input");
 const homeFileInput = document.querySelector("#home-file-input");
 const languageSelect = document.querySelector("#language-select");
-const taxInputIds = ["personal-deductions", "business-tax-rate", "corporate-local-rate", "consumption-tax-mode"];
+const themeSelect = document.querySelector("#theme-select");
+const taxInputIds = ["fiscal-year-end", "filing-entity-mode", "blue-return-mode", "personal-deductions", "business-tax-rate", "corporate-local-rate", "consumption-tax-mode", "prepaid-tax", "reserve-rate"];
 const announcementForm = document.querySelector("#announcement-form");
 const adForm = document.querySelector("#ad-form");
 const feedbackForm = document.querySelector("#feedback-form");
@@ -785,12 +826,25 @@ const businessFormGenerator = document.querySelector("#business-form-generator")
 const customerSearch = document.querySelector("#customer-search");
 const manualTransactionForm = document.querySelector("#manual-transaction-form");
 const accountCreateForm = document.querySelector("#account-create-form");
+const customerForm = document.querySelector("#customer-form");
+const employeeForm = document.querySelector("#employee-form");
 const companyProfileForm = document.querySelector("#company-profile-form");
 const personalProfileForm = document.querySelector("#personal-profile-form");
 const phoneVerificationForm = document.querySelector("#phone-verification-form");
 const previewFormButton = document.querySelector("#preview-form-button");
 const uploadCompleteModal = document.querySelector("#upload-complete-modal");
 const uploadCompleteMessage = document.querySelector("#upload-complete-message");
+const detailModal = document.querySelector("#detail-modal");
+const accountModal = document.querySelector("#account-modal");
+const customerModal = document.querySelector("#customer-modal");
+const employeeModal = document.querySelector("#employee-modal");
+const generatedPdfModal = document.querySelector("#generated-pdf-modal");
+const generatedPdfFrame = document.querySelector("#generated-pdf-frame");
+const generatedPdfSubtitle = document.querySelector("#generated-pdf-subtitle");
+const supportModal = document.querySelector("#support-modal");
+const supportCaptureStage = document.querySelector("#support-capture-stage");
+const supportCaptureBox = document.querySelector("#support-capture-box");
+const supportCaptureStatus = document.querySelector("#support-capture-status");
 let ocrRuntime = {
   busy: false,
   message: "OCR未実行",
@@ -798,8 +852,14 @@ let ocrRuntime = {
   completed: 0,
   percent: 0,
   currentFile: "",
+  stage: "",
 };
 let lastOcrResultByHash = {};
+let generatedPdfPreview = {
+  formId: "",
+  url: "",
+};
+let editingEmployeeId = "";
 
 function mockOcrProvider(file) {
   const lower = file.name.toLowerCase();
@@ -899,6 +959,12 @@ function addDays(dateString, days) {
   return date.toISOString().slice(0, 10);
 }
 
+function addMonths(dateString, months) {
+  const date = new Date(`${dateString}T00:00:00`);
+  date.setMonth(date.getMonth() + months);
+  return date.toISOString().slice(0, 10);
+}
+
 function toDatetimeLocal(date) {
   const pad = (number) => String(number).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
@@ -995,7 +1061,7 @@ function filteredDocuments() {
     const directoryMatch = !currentDirectoryFilter || doc.target_directory === currentDirectoryFilter || suggestDirectory(doc) === currentDirectoryFilter;
     const text = `${doc.name} ${doc.vendor} ${doc.category} ${doc.amount} ${doc.target_directory} ${directoryLabel(doc.target_directory)}`.toLowerCase();
     return filterMatch && smartMatch && directoryMatch && text.includes(query);
-  });
+  }).sort(compareDocuments);
 }
 
 function renderTable() {
@@ -1005,7 +1071,15 @@ function renderTable() {
         <tr data-id="${doc.id}" class="${doc.id === selectedId ? "selected" : ""}">
           <td><span class="status-badge ${doc.status === "done" ? "done" : "review"}">${doc.status === "done" ? t("archived") : t("unreviewed")}</span></td>
           <td>${directoryLabel(doc.target_directory)}</td>
-          <td>${doc.renamed_name}</td>
+          <td>
+            <div class="file-cell">
+              <span class="file-icon">${documentIcon(doc.document_type)}</span>
+              <div class="file-cell-text">
+                <strong>${doc.renamed_name}</strong>
+                <span>${doc.vendor} / ${doc.fileType.toUpperCase()}</span>
+              </div>
+            </div>
+          </td>
           <td>${doc.date}</td>
           <td>${doc.issued_at || "-"}</td>
           <td>${doc.due_at || "-"}</td>
@@ -1023,34 +1097,84 @@ function renderTable() {
   tableBody.querySelectorAll("tr").forEach((row) => {
     row.addEventListener("click", () => {
       selectedId = row.dataset.id;
+      openDetailModal();
       render();
     });
   });
 }
 
+function documentSortDate(doc) {
+  return String(doc.issued_at || doc.date || "0000-00-00").replaceAll("-", "");
+}
+
+function compareDocuments(a, b) {
+  if (currentDocumentSort === "date_asc") return documentSortDate(a).localeCompare(documentSortDate(b));
+  if (currentDocumentSort === "name_asc") return String(a.renamed_name || a.name).localeCompare(String(b.renamed_name || b.name), "ja");
+  if (currentDocumentSort === "amount_desc") return Number(b.amount || 0) - Number(a.amount || 0);
+  return documentSortDate(b).localeCompare(documentSortDate(a));
+}
+
+function documentIcon(type) {
+  return (
+    {
+      invoice: "請",
+      receipt: "収",
+      contract: "契",
+      tax_document: "税",
+      bank_statement: "口",
+    }[type] || "書"
+  );
+}
+
 function renderDirectories() {
-  const directories = [
-    { key: "company/invoices", label: "法人 / 发票・請求書" },
-    { key: "company/receipts", label: "法人 / 领收书" },
-    { key: "company/contracts", label: "法人 / 契约书" },
-    { key: "company/tax", label: "法人 / 税务" },
-    { key: "company/bank", label: "法人 / 银行账户" },
-    { key: "personal/receipts", label: "个人 / 领收书" },
-    { key: "personal/tax", label: "个人 / 税务" },
-    { key: "personal/bank", label: "个人 / 银行账户" },
-  ];
-  document.querySelector("#directory-grid").innerHTML = directories
-    .map((directory) => {
-      const count = documents.filter((doc) => doc.target_directory === directory.key && doc.archive_status === "archived").length;
-      const pending = documents.filter((doc) => suggestDirectory(doc) === directory.key && doc.archive_status !== "archived").length;
-      return `
-        <button class="directory-card" data-directory-filter="${directory.key}">
-          <strong>${directory.label}</strong>
-          <span>已归档 ${count} / 待确认 ${pending}</span>
-        </button>
-      `;
-    })
-    .join("");
+  const typeGrid = document.querySelector("#document-type-grid");
+  const directoryGrid = document.querySelector("#directory-grid");
+  const options = corporateDocumentTypes.map((item) => {
+    const total = documents.filter((doc) => doc.target_directory === item.key || suggestDirectory(doc) === item.key).length;
+    const saved = documents.filter((doc) => doc.target_directory === item.key && doc.archive_status === "archived").length;
+    const pending = documents.filter((doc) => suggestDirectory(doc) === item.key && doc.archive_status !== "archived").length;
+    return { ...item, total, saved, pending };
+  });
+
+  if (typeGrid) {
+    typeGrid.innerHTML = `
+      <label class="filter-select-block">
+        <span>書類種類</span>
+        <select id="document-type-select">
+          <option value="">すべての種類</option>
+          ${options
+            .map(
+              (item) => `
+                <option value="${item.key}" ${currentDirectoryFilter === item.key ? "selected" : ""}>
+                  ${item.title} / ${item.note} / ${item.total}件
+                </option>
+              `,
+            )
+            .join("")}
+        </select>
+      </label>
+    `;
+  }
+
+  if (directoryGrid) {
+    directoryGrid.innerHTML = `
+      <label class="filter-select-block">
+        <span>保存先</span>
+        <select id="directory-select">
+          <option value="">すべての保存先</option>
+          ${options
+            .map(
+              (item) => `
+                <option value="${item.key}" ${currentDirectoryFilter === item.key ? "selected" : ""}>
+                  ${item.title} / 保存 ${item.saved} / 確認待ち ${item.pending}
+                </option>
+              `,
+            )
+            .join("")}
+        </select>
+      </label>
+    `;
+  }
 }
 
 function directoryLabel(directory) {
@@ -1061,6 +1185,11 @@ function directoryLabel(directory) {
     "company/contracts": `${t("company")} / ${t("contract")}`,
     "company/tax": `${t("company")} / ${t("tax_document")}`,
     "company/bank": `${t("company")} / ${t("bank_statement")}`,
+    "company/patents": `${t("company")} / 特許`,
+    "company/real_estate": `${t("company")} / 不動産`,
+    "company/inspection": `${t("company")} / 検査報告`,
+    "company/licenses": `${t("company")} / 許認可`,
+    "company/insurance": `${t("company")} / 保険`,
     "personal/receipts": `${t("personal")} / ${t("receipt")}`,
     "personal/tax": `${t("personal")} / ${t("tax_document")}`,
     "personal/bank": `${t("personal")} / ${t("bank_statement")}`,
@@ -1121,6 +1250,8 @@ function updateMetrics() {
 }
 
 function renderIncome() {
+  const incomeGrid = document.querySelector("#income-grid");
+  if (!incomeGrid) return;
   const confirmedIncome = documents.filter((doc) => doc.transaction_type === "income");
   const total = confirmedIncome.reduce((sum, doc) => sum + Number(doc.amount), 0);
   const byClient = groupSum(confirmedIncome, "vendor");
@@ -1130,12 +1261,24 @@ function renderIncome() {
     PayPay: total * 0.1,
     現金: total * 0.05,
   };
+  const monthlyRows = monthSeries();
+  const trendMax = Math.max(...monthlyRows.map((row) => Math.max(row.income, row.expense, Math.abs(row.cashflow))), 1);
 
-  document.querySelector("#income-grid").innerHTML = [
+  incomeGrid.innerHTML = [
     analysisCard("月度収入", yen.format(total), "請求書・入金・手入力を統合", 88),
     analysisCard("未収候補", yen.format(Math.max(0, total - 120000)), "入金照合待ち", 42),
     ...Object.entries(byClient).map(([name, value]) => analysisCard(name, yen.format(value), "顧客別売上", 64)),
     ...Object.entries(byChannel).map(([name, value]) => analysisCard(name, yen.format(value), "チャネル別推定", 50)),
+    `<article class="analysis-card wide-card">
+      <span>月別収支</span>
+      <strong>入金と支出を比較</strong>
+      <div class="mini-chart">${monthlyRows.map((row) => incomeBar(row.label, row.income, row.expense, trendMax)).join("")}</div>
+    </article>`,
+    `<article class="analysis-card wide-card">
+      <span>キャッシュフロー推移</span>
+      <strong>月ごとの残り</strong>
+      <div class="cashflow-list">${monthlyRows.map((row) => cashflowRow(row.label, row.cashflow, trendMax)).join("")}</div>
+    </article>`,
   ].join("");
 }
 
@@ -1147,6 +1290,46 @@ function analysisCard(label, value, note, progress) {
       <small>${note}</small>
       <div class="progress-bar"><i style="width:${Math.min(progress, 100)}%"></i></div>
     </article>
+  `;
+}
+
+function monthSeries() {
+  const buckets = new Map();
+  documents
+    .filter((doc) => doc.status === "done")
+    .forEach((doc) => {
+      const month = String(doc.date || today).slice(0, 7);
+      if (!buckets.has(month)) buckets.set(month, { label: month, income: 0, expense: 0 });
+      const bucket = buckets.get(month);
+      if (doc.transaction_type === "income") bucket.income += Number(doc.amount || 0);
+      if (doc.transaction_type === "expense") bucket.expense += Number(doc.amount || 0);
+    });
+  const rows = [...buckets.values()].sort((a, b) => a.label.localeCompare(b.label));
+  return (rows.length ? rows : [{ label: "2026-04", income: 0, expense: 0 }]).map((row) => ({ ...row, cashflow: row.income - row.expense }));
+}
+
+function incomeBar(label, income, expense, max) {
+  const incomeWidth = Math.max(4, Math.round((income / max) * 100));
+  const expenseWidth = Math.max(4, Math.round((expense / max) * 100));
+  return `
+    <div class="mini-chart-row">
+      <span>${label}</span>
+      <div class="mini-chart-track">
+        <i class="income-bar" style="width:${incomeWidth}%"></i>
+        <i class="expense-bar" style="width:${expenseWidth}%"></i>
+      </div>
+    </div>
+  `;
+}
+
+function cashflowRow(label, cashflow, max) {
+  const width = Math.max(4, Math.round((Math.abs(cashflow) / max) * 100));
+  return `
+    <div class="cashflow-row">
+      <span>${label}</span>
+      <div class="cashflow-track"><i class="${cashflow >= 0 ? "positive-flow" : "negative-flow"}" style="width:${width}%"></i></div>
+      <strong>${yen.format(cashflow)}</strong>
+    </div>
   `;
 }
 
@@ -1181,27 +1364,32 @@ function renderActionBoard() {
   const issues = missingIssues();
   const gap = annualGoal.targetProfit - summary.profit;
   const profitState = summary.profit >= 0 ? "目前是黒字" : "目前是赤字";
+  const receivable = Math.max(0, summary.income - 120000);
+  const urgentText = issues.length ? `${issues[0].label} / ${issues[0].doc.vendor}` : "急ぎの確認はありません";
   document.querySelector("#simple-action-board").innerHTML = `
     <article class="action-card primary-action">
-      <span>今年の着地見込み</span>
+      <span>利益見込み</span>
       <strong>${profitState} / ${yen.format(summary.profit)}</strong>
-      <small>目標利益 ${yen.format(annualGoal.targetProfit)}、不足 ${yen.format(Math.max(0, gap))}</small>
+      <small>目標 ${yen.format(annualGoal.targetProfit)} / 不足 ${yen.format(Math.max(0, gap))}</small>
     </article>
     <article class="action-card">
-      <span>今日の優先確認</span>
-      <strong>${issues.length ? issues[0].label : "急ぎの確認はありません"}</strong>
-      <small>${issues.length ? issues[0].doc.vendor + " / " + issues[0].doc.renamed_name : "今月分の領収書と口座明細を続けて追加"}</small>
-    </article>
-    <article class="action-card">
-      <span>申告ミス防止</span>
-      <strong>${issues.length} 件の見直し候補</strong>
-      <small>都民税、期限、証憑不足、個人/法人混在、税率不明を優先表示</small>
+      <span>未収見込み</span>
+      <strong>${yen.format(receivable)}</strong>
+      <small>${urgentText}</small>
     </article>
   `;
 }
 
 function renderReadiness() {
   const issues = missingIssues();
+  const linkMap = {
+    receipts: "documents",
+    invoice_number: "documents",
+    bank_match: "accounts",
+    due_dates: "documents",
+    personal_company_split: "documents",
+    government_updates: "home",
+  };
   const resolvedRatio = Math.max(0, Math.round(100 - (issues.length / Math.max(documents.length * 3, 1)) * 100));
   document.querySelector("#readiness-score").innerHTML = `
     <article class="readiness-card">
@@ -1233,7 +1421,7 @@ function renderReadiness() {
             <strong>${rule.label}</strong>
             <span>${related.length ? related.length + " 件需要确认" : "当前没有明显漏项"}</span>
           </div>
-          <span>${rule.severity}</span>
+          <a href="#" class="warning-link" data-jump-view="${linkMap[rule.id] || "documents"}">${rule.severity}</a>
         </article>
       `;
     })
@@ -1247,9 +1435,7 @@ function renderPolicyUpdates() {
         <article class="policy-card">
           <span>${feed.source}</span>
           <strong>${feed.title}</strong>
-          <p>${feed.summary}</p>
-          <small>影响: ${feed.impact}</small>
-          <a href="${feed.url}" target="_blank" rel="noreferrer">公式ページを確認</a>
+          <a href="${feed.url}" target="_blank" rel="noreferrer">${feed.url}</a>
         </article>
       `,
     )
@@ -1263,37 +1449,30 @@ function renderPolicyUpdates() {
 function renderOcrRoadmap() {
   const node = document.querySelector("#ocr-mode-board");
   if (!node) return;
-  const progressHtml = ocrRuntime.busy
-    ? `<div class="ocr-progress">
+  if (ocrRuntime.busy) {
+    node.innerHTML = `<article class="ocr-mode-card">
+      <strong>アップロード処理中</strong>
+      <div class="ocr-progress">
         <div class="ocr-progress-bar"><span style="width:${ocrRuntime.percent}%"></span></div>
-        <small>${ocrRuntime.completed}/${ocrRuntime.total} ${escapeHtml(ocrRuntime.currentFile || "")} ${ocrRuntime.percent}%</small>
-      </div>`
-    : "";
-  node.innerHTML =
-    `<article class="ocr-mode-card">
-      <strong>現在の状態</strong>
-      <span>${escapeHtml(ocrRuntime.message)}</span>
-      ${progressHtml}
-    </article>` +
-    ocrRoadmap
-    .map(
-      (item) => `
-        <article class="ocr-mode-card">
-          <strong>${item.title}</strong>
-          <span>${item.body}</span>
-        </article>
-      `,
-    )
-    .join("");
+        <small>${ocrRuntime.completed}/${ocrRuntime.total} ${escapeHtml(ocrRuntime.currentFile || "")} ${escapeHtml(ocrRuntime.stage || "")} ${ocrRuntime.percent}%</small>
+      </div>
+    </article>`;
+    node.classList.remove("hidden");
+  } else {
+    node.innerHTML = "";
+    node.classList.add("hidden");
+  }
 }
 
 function renderAccounts() {
-  bindProfileForm(companyProfileForm, companyProfile);
-  bindProfileForm(personalProfileForm, personalProfile);
-  renderPhoneVerification();
   const accountSelect = manualTransactionForm?.querySelector('select[name="account"]');
   if (accountSelect) {
     accountSelect.innerHTML = accounts.map((account) => `<option>${escapeHtml(account.name)}</option>`).join("");
+  }
+  const paymentAccountSelect = businessFormGenerator?.querySelector('select[name="payment_account"]');
+  if (paymentAccountSelect) {
+    paymentAccountSelect.innerHTML = accounts.map((account) => `<option value="${escapeHtml(account.name)}">${escapeHtml(account.name)}</option>`).join("");
+    paymentAccountSelect.value = formDraft.payment_account || accounts[0]?.name || "";
   }
   document.querySelector("#account-list").innerHTML = accounts
     .map(
@@ -1301,46 +1480,21 @@ function renderAccounts() {
         <article class="account-card" data-account-id="${account.id}">
           <div class="account-card-top">
             <div>
-            <span>${accountOwnerLabel(account.owner)} / ${accountTypeLabel(account.type)} / ${connectionLabel(account.connection)}</span>
-            <strong>${account.name}</strong>
-            <div class="progress-bar"><i style="width:${account.progress}%"></i></div>
+              <span>${accountOwnerLabel(account.owner)} / ${accountTypeLabel(account.type)} / ${connectionLabel(account.connection)}</span>
+              <strong>${account.name}</strong>
+              <div class="progress-bar"><i style="width:${account.progress}%"></i></div>
             </div>
             <div class="number">
               <strong>${yen.format(account.balance)}</strong>
               <span>${account.mixed ? "混用確認あり" : "整理済み"}</span>
             </div>
           </div>
-          <div class="account-edit-grid">
-            <label>
-              口座名
-              <input data-account-field="name" value="${escapeHtml(account.name)}" />
-            </label>
-            <label>
-              種別
-              <select data-account-field="type">
-                ${["bank", "credit_card", "payment"].map((type) => `<option value="${type}" ${account.type === type ? "selected" : ""}>${accountTypeLabel(type)}</option>`).join("")}
-              </select>
-            </label>
-            <label>
-              所有区分
-              <select data-account-field="owner">
-                ${["company", "personal", "mixed"].map((owner) => `<option value="${owner}" ${account.owner === owner ? "selected" : ""}>${accountOwnerLabel(owner)}</option>`).join("")}
-              </select>
-            </label>
-            <label>
-              接続方法
-              <select data-account-field="connection">
-                ${["manual", "manual_csv", "statement_upload", "api_future"].map((connection) => `<option value="${connection}" ${account.connection === connection ? "selected" : ""}>${connectionLabel(connection)}</option>`).join("")}
-              </select>
-            </label>
-            <label>
-              残高
-              <input data-account-field="balance" type="number" step="1" value="${account.balance}" />
-            </label>
-            <label class="account-check">
-              <input data-account-field="mixed" type="checkbox" ${account.mixed ? "checked" : ""} />
-              混在利用あり
-            </label>
+          <div class="account-list-meta">
+            <span>残高 ${yen.format(account.balance)}</span>
+            <span>${account.mixed ? "混在利用あり" : "専用利用"}</span>
+          </div>
+          <div class="detail-actions">
+            <button class="secondary-button" type="button" data-edit-account="${account.id}">編集</button>
           </div>
         </article>
       `,
@@ -1348,6 +1502,14 @@ function renderAccounts() {
     .join("");
   renderTransactions();
   renderDriveStructure();
+}
+
+function renderSettings() {
+  bindProfileForm(companyProfileForm, companyProfile);
+  bindProfileForm(personalProfileForm, personalProfile);
+  if (languageSelect) languageSelect.value = appLang;
+  if (themeSelect) themeSelect.value = appTheme;
+  renderPhoneVerification();
 }
 
 function bindProfileForm(formNode, source) {
@@ -1420,13 +1582,37 @@ function renderPhoneVerification() {
 }
 
 function renderDriveStructure() {
+  const authStatus = document.querySelector("#drive-auth-status");
+  const disconnectButton = document.querySelector("#disconnect-drive-button");
+  if (authStatus) {
+    authStatus.textContent = driveConnection.connected
+      ? `${driveConnection.email} / scope ${driveConnection.scope} / 最終同期 ${driveConnection.lastSyncedAt || "未実行"}`
+      : "未連携 / Google OAuth が必要です";
+  }
+  if (disconnectButton) {
+    disconnectButton.classList.toggle("hidden", !driveConnection.connected);
+  }
+  const syncLog = document.querySelector("#drive-sync-log");
+  if (syncLog) {
+    syncLog.innerHTML = `
+      <article class="feedback-ticket">
+        <strong>${driveSyncState.message}</strong>
+        <div class="ticket-meta">
+          <span>${driveSyncState.running ? "同期中" : "待機"}</span>
+          <span>フォルダ ${driveSyncState.folders}</span>
+          <span>${driveSyncState.lastRun || "まだ実行していません"}</span>
+        </div>
+      </article>
+    `;
+  }
   const node = document.querySelector("#drive-structure");
-  if (!node) return;
-  node.innerHTML = `
-    <div class="drive-folder-list">
-      ${driveFolders.map((folder) => `<article class="drive-folder-row"><strong>${folder}</strong><span>年度・区分・書類種別で整理</span></article>`).join("")}
-    </div>
-  `;
+  if (node) {
+    node.innerHTML = `
+      <div class="drive-folder-list">
+        ${driveFolders.map((folder) => `<article class="drive-folder-row"><strong>${folder}</strong><span>年度・区分・書類種別で整理</span></article>`).join("")}
+      </div>
+    `;
+  }
 }
 
 function renderNotices() {
@@ -1475,21 +1661,15 @@ function renderMembership() {
         <tr>
           <td>${escapeHtml(employee.name)}</td>
           <td>${escapeHtml(employee.email)}</td>
-          <td>
-            <select class="role-select" data-employee-id="${employee.id}" ${employee.role === "owner" ? "disabled" : ""}>
-              ${Object.keys(rolePermissions)
-                .map((role) => `<option value="${role}" ${employee.role === role ? "selected" : ""}>${role}</option>`)
-                .join("")}
-            </select>
-          </td>
-          <td>
-            <select class="status-select" data-employee-status-id="${employee.id}" ${employee.role === "owner" ? "disabled" : ""}>
-              ${["active", "invited", "suspended"]
-                .map((status) => `<option value="${status}" ${employee.status === status ? "selected" : ""}>${status}</option>`)
-                .join("")}
-            </select>
-          </td>
+          <td>${escapeHtml(employee.role)}</td>
+          <td>${escapeHtml(employee.status)}</td>
           <td>${rolePermissions[employee.role]}</td>
+          <td>
+            <div class="employee-actions">
+              <button class="secondary-button" type="button" data-edit-employee="${employee.id}" ${employee.role === "owner" ? "disabled" : ""}>編集</button>
+              <button class="secondary-button" type="button" data-delete-employee="${employee.id}" ${employee.role === "owner" ? "disabled" : ""}>削除</button>
+            </div>
+          </td>
         </tr>
       `,
     )
@@ -1553,12 +1733,29 @@ function renderAdmin() {
 }
 
 function renderGeneratedForms() {
+  const itemHistory = document.querySelector("#item-history");
+  const paymentHistory = document.querySelector("#payment-method-history");
+  if (itemHistory) {
+    itemHistory.innerHTML = [...new Set(generatedForms.map((item) => item.itemLabel).filter(Boolean))].map((item) => `<option value="${escapeHtml(item)}"></option>`).join("");
+  }
+  if (paymentHistory) {
+    paymentHistory.innerHTML = [...new Set(generatedForms.map((item) => item.paymentMethod).filter(Boolean))].map((item) => `<option value="${escapeHtml(item)}"></option>`).join("");
+  }
+  syncFormDatesFromIssue();
   renderFormPreview();
   document.querySelector("#generated-forms").innerHTML = generatedForms
     .map(
       (formItem) => `
-        <article class="feedback-ticket">
-          <strong>${formTemplateLabel(formItem.template)} - ${escapeHtml(formItem.customer)}</strong>
+        <article class="feedback-ticket generated-form-card ${editingGeneratedFormId === formItem.id ? "is-editing" : ""}" data-generated-form-id="${formItem.id}">
+          <div class="generated-form-header">
+            <strong>${formTemplateLabel(formItem.template)} - ${escapeHtml(formItem.customer)}</strong>
+            <div class="generated-form-actions">
+              <button class="secondary-button" type="button" data-generated-action="edit" data-generated-id="${formItem.id}">編集</button>
+              <button class="secondary-button" type="button" data-generated-action="duplicate" data-generated-id="${formItem.id}">複製</button>
+              <button class="secondary-button" type="button" data-generated-action="pdf" data-generated-id="${formItem.id}">PDF</button>
+              <button class="secondary-button" type="button" data-generated-action="delete" data-generated-id="${formItem.id}">削除</button>
+            </div>
+          </div>
           <div class="ticket-meta">
             <span>${formItem.ownerType === "company" ? "法人" : "個人"}</span>
             <span>${yen.format(formItem.amount)}</span>
@@ -1600,6 +1797,7 @@ function currentFormDraft() {
     quantity: Number(data.get("quantity") || formDraft.quantity || 1),
     unit_price: Number(data.get("unit_price") || formDraft.unit_price || 0),
     tax_rate: Number(data.get("tax_rate") || formDraft.tax_rate || 10),
+    payment_account: String(data.get("payment_account") || formDraft.payment_account || accounts[0]?.name || ""),
     payment_method: String(data.get("payment_method") || formDraft.payment_method),
     bank_account_note: String(data.get("bank_account_note") || formDraft.bank_account_note),
     requester_department: String(data.get("requester_department") || formDraft.requester_department),
@@ -1608,6 +1806,18 @@ function currentFormDraft() {
     preset_note: String(data.get("preset_note") || formDraft.preset_note),
     memo: String(data.get("memo") || formDraft.memo),
   };
+}
+
+function autofillFormFromCustomer(query) {
+  if (!businessFormGenerator) return;
+  const result = findOrCreateCustomer(query, formDraft.owner_type || "company", "preview", false);
+  const customer = result.customer;
+  if (!businessFormGenerator.elements.namedItem("document_title").value && customer.name) {
+    businessFormGenerator.elements.namedItem("document_title").value = `${customer.name} ${formTemplateLabel(formDraft.template || "invoice")}`;
+  }
+  if (!businessFormGenerator.elements.namedItem("payment_method").value && customer.paymentTerms) {
+    businessFormGenerator.elements.namedItem("payment_method").value = customer.paymentTerms;
+  }
 }
 
 function presetNoteText(key) {
@@ -1646,6 +1856,21 @@ function syncFormMode() {
   formDraft.template = templateSelect.value;
   businessFormGenerator.querySelectorAll(".income-only").forEach((node) => node.classList.toggle("hidden", direction !== "income"));
   businessFormGenerator.querySelectorAll(".expense-only").forEach((node) => node.classList.toggle("hidden", direction !== "expense"));
+}
+
+function syncFormDatesFromIssue() {
+  if (!businessFormGenerator) return;
+  const issueDate = businessFormGenerator.elements.namedItem("issue_date")?.value || today;
+  const due = businessFormGenerator.elements.namedItem("due_date");
+  const validUntil = businessFormGenerator.elements.namedItem("valid_until");
+  if (due && (!due.value || due.dataset.auto !== "manual")) {
+    due.value = addMonths(issueDate, 1);
+    due.dataset.auto = "auto";
+  }
+  if (validUntil && (!validUntil.value || validUntil.dataset.auto !== "manual")) {
+    validUntil.value = addMonths(issueDate, 1);
+    validUntil.dataset.auto = "auto";
+  }
 }
 
 function renderFormPreview(forceOpenMobile = false) {
@@ -1717,7 +1942,7 @@ function renderFormPreview(forceOpenMobile = false) {
       </div>
       <div class="jp-form-note">
         <span>支払方法</span>
-        <p>${escapeHtml(formDraft.payment_method || "未入力")}</p>
+        <p>${escapeHtml(formDraft.payment_method || "未入力")} / ${escapeHtml(formDraft.payment_account || "口座未選択")}</p>
         ${isExpense ? `<span>申請情報</span><p>${escapeHtml(formDraft.requester_department || "部門未入力")} / ${escapeHtml(formDraft.approval_owner || "承認者未入力")} / ${escapeHtml(formDraft.attachment_status || "添付未入力")}</p>` : `<span>振込先</span><p>${escapeHtml(formDraft.bank_account_note || "未入力")}</p>`}
         <span>備考</span>
         <p>${escapeHtml(formDraft.memo || presetNoteText(formDraft.preset_note))}</p>
@@ -1731,6 +1956,222 @@ function formNumber(template) {
   return `${prefix}-2026-04`;
 }
 
+function loadGeneratedFormIntoEditor(formId) {
+  const item = generatedForms.find((form) => form.id === formId);
+  if (!item || !businessFormGenerator) return;
+  editingGeneratedFormId = formId;
+  const fallbackIssueDate = item.issueDate || today;
+  const preservedDraft = item.draft || {};
+  formDraft = {
+    ...formDraft,
+    direction: preservedDraft.direction || item.direction || "income",
+    template: preservedDraft.template || item.template || "invoice",
+    owner_type: preservedDraft.owner_type || item.ownerType || "company",
+    customer_query: preservedDraft.customer_query || item.customer || "",
+    document_title: preservedDraft.document_title || item.title || "",
+    issue_date: preservedDraft.issue_date || fallbackIssueDate,
+    due_date: preservedDraft.due_date || item.dueDate || addMonths(fallbackIssueDate, 1),
+    valid_until: preservedDraft.valid_until || item.validUntil || item.dueDate || addMonths(fallbackIssueDate, 1),
+    expense_date: preservedDraft.expense_date || item.expenseDate || item.dueDate || addMonths(fallbackIssueDate, 1),
+    amount: Number(preservedDraft.amount ?? item.amount ?? 0),
+    item_label: preservedDraft.item_label || item.itemLabel || "",
+    quantity: Number(preservedDraft.quantity ?? item.quantity ?? 1),
+    unit_price: Number(preservedDraft.unit_price ?? item.unitPrice ?? 0),
+    tax_rate: Number(preservedDraft.tax_rate ?? item.taxRate ?? 10),
+    payment_account: preservedDraft.payment_account || item.paymentAccount || accounts[0]?.name || "",
+    payment_method: preservedDraft.payment_method || item.paymentMethod || "",
+    bank_account_note: preservedDraft.bank_account_note || item.bankAccountNote || "",
+    requester_department: preservedDraft.requester_department || item.requesterDepartment || "",
+    approval_owner: preservedDraft.approval_owner || item.approvalOwner || "",
+    attachment_status: preservedDraft.attachment_status || item.attachmentStatus || "receipt_attached",
+    preset_note: preservedDraft.preset_note || item.presetNote || "standard",
+    memo: preservedDraft.memo || item.memo || "",
+  };
+  businessFormGenerator.elements.namedItem("direction").value = formDraft.direction;
+  Object.entries(formDraft).forEach(([key, value]) => {
+    const field = businessFormGenerator.elements.namedItem(key);
+    if (field && "value" in field) field.value = value;
+  });
+  syncFormMode();
+  renderFormPreview();
+  renderGeneratedForms();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  businessFormGenerator.elements.namedItem("customer_query")?.focus();
+}
+
+function buildPrintableA4Html(formItem) {
+  const draft = formItem.draft || {};
+  const sender = (draft.owner_type || formItem.ownerType) === "company" ? companyProfile : personalProfile;
+  const customer = customers.find((item) => item.name === formItem.customer) || { name: formItem.customer, address: "", contactName: "", phone: "" };
+  const amount = Number(draft.amount ?? formItem.amount ?? 0);
+  const taxRate = Number(draft.tax_rate ?? formItem.taxRate ?? 0);
+  const itemLabel = draft.item_label || formItem.itemLabel || "";
+  const quantity = Number(draft.quantity ?? formItem.quantity ?? 1);
+  const unitPrice = Number(draft.unit_price ?? formItem.unitPrice ?? 0);
+  const issueDate = draft.issue_date || formItem.issueDate || "-";
+  const dueDate = draft.direction === "expense"
+    ? draft.expense_date || formItem.expenseDate || formItem.dueDate || "-"
+    : draft.template === "quotation"
+      ? draft.valid_until || formItem.validUntil || formItem.dueDate || "-"
+      : draft.due_date || formItem.dueDate || "-";
+  const taxAmount = taxRate ? Math.round(amount * (taxRate / (100 + taxRate))) : 0;
+  const noteText = draft.memo || formItem.memo || "";
+  return `<!doctype html>
+  <html lang="ja">
+    <head>
+      <meta charset="utf-8" />
+      <title>${formTemplateLabel(draft.template || formItem.template)} ${formItem.documentNumber || ""}</title>
+      <style>
+        @page { size: A4; margin: 14mm; }
+        body { font-family: "Noto Sans JP", sans-serif; color: #111; margin: 0; }
+        .sheet { width: 100%; }
+        .head, .meta, .parties, .total { display: grid; gap: 12px; }
+        .head { grid-template-columns: 1fr auto; align-items: start; margin-bottom: 18px; }
+        .meta { grid-template-columns: repeat(3, 1fr); margin-bottom: 16px; }
+        .parties { grid-template-columns: 1fr 1fr; margin-bottom: 16px; }
+        .box { border: 1px solid #cfd6d2; border-radius: 6px; padding: 10px; min-height: 72px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+        th, td { border-bottom: 1px solid #d7ddda; padding: 10px 8px; text-align: left; }
+        .total { grid-template-columns: 1fr 220px; }
+        .note { border: 1px solid #cfd6d2; border-radius: 6px; padding: 12px; margin-top: 16px; }
+        h1, h2, p { margin: 0; }
+        .muted { color: #55615b; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="sheet">
+        <div class="head">
+          <div><p class="muted">${formTemplateLabel(draft.template || formItem.template)}</p><h1>${escapeHtml(draft.document_title || formItem.title || "")}</h1></div>
+          <div><p class="muted">No.</p><h2>${escapeHtml(formItem.documentNumber || formNumber(formItem.template))}</h2></div>
+        </div>
+        <div class="meta">
+          <div class="box"><p class="muted">発行日</p><strong>${escapeHtml(issueDate)}</strong></div>
+          <div class="box"><p class="muted">期限</p><strong>${escapeHtml(dueDate)}</strong></div>
+          <div class="box"><p class="muted">税率</p><strong>${escapeHtml(String(taxRate || 0))}%</strong></div>
+        </div>
+        <div class="parties">
+          <div class="box"><p class="muted">宛先</p><strong>${escapeHtml(customer.name || "")}</strong><p>${escapeHtml(customer.address || "")}</p><p>${escapeHtml(customer.contactName || "")} / ${escapeHtml(customer.phone || "")}</p></div>
+          <div class="box"><p class="muted">発行元</p><strong>${escapeHtml(sender.companyName || sender.fullName || "")}</strong><p>${escapeHtml(sender.address || "")}</p><p>${escapeHtml(sender.phone || "")} / ${escapeHtml(sender.email || "")}</p></div>
+        </div>
+        <table>
+          <thead><tr><th>内容</th><th>数量</th><th>単価</th><th>金額</th></tr></thead>
+          <tbody><tr><td>${escapeHtml(itemLabel)}</td><td>${quantity}</td><td>${yen.format(unitPrice)}</td><td>${yen.format(amount)}</td></tr></tbody>
+        </table>
+        <div class="total">
+          <div class="box"><p class="muted">備考</p><p>${escapeHtml(noteText)}</p></div>
+          <div class="box"><p>小計 ${yen.format(amount)}</p><p>消費税 ${yen.format(taxAmount)}</p><p><strong>合計 ${yen.format(amount)}</strong></p></div>
+        </div>
+        <div class="note"><p class="muted">支払方法</p><p>${escapeHtml(draft.payment_method || formItem.paymentMethod || "")} / ${escapeHtml(draft.payment_account || formItem.paymentAccount || "")}</p><p>${escapeHtml(draft.bank_account_note || formItem.bankAccountNote || "")}</p></div>
+      </div>
+    </body>
+  </html>`;
+}
+
+function closeGeneratedPdfModal() {
+  generatedPdfModal?.classList.add("hidden");
+  generatedPdfModal?.setAttribute("aria-hidden", "true");
+  if (generatedPdfPreview.url) {
+    URL.revokeObjectURL(generatedPdfPreview.url);
+  }
+  generatedPdfPreview = { formId: "", url: "" };
+  if (generatedPdfFrame) generatedPdfFrame.src = "about:blank";
+}
+
+function ensureGeneratedPdfPreview(formId) {
+  const item = generatedForms.find((form) => form.id === formId);
+  if (!item) return { item: null, url: "" };
+  if (generatedPdfPreview.formId === formId && generatedPdfPreview.url) {
+    return { item, url: generatedPdfPreview.url };
+  }
+  if (generatedPdfPreview.url) URL.revokeObjectURL(generatedPdfPreview.url);
+  const html = buildPrintableA4Html(item);
+  const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+  generatedPdfPreview = { formId, url };
+  return { item, url };
+}
+
+function openGeneratedPdfPreview(formId) {
+  const { item, url } = ensureGeneratedPdfPreview(formId);
+  if (!item || !url || !generatedPdfModal || !generatedPdfFrame) return;
+  generatedPdfFrame.src = url;
+  if (generatedPdfSubtitle) {
+    generatedPdfSubtitle.textContent = `${formTemplateLabel(item.template)} ${item.documentNumber || ""} をA4で確認できます。`;
+  }
+  generatedPdfModal.classList.remove("hidden");
+  generatedPdfModal.setAttribute("aria-hidden", "false");
+}
+
+async function downloadGeneratedFormPdf(formId) {
+  const item = generatedForms.find((form) => form.id === formId);
+  if (!item || !window.html2pdf) return;
+  const html = buildPrintableA4Html(item);
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  const container = document.createElement("div");
+  container.style.position = "fixed";
+  container.style.left = "-99999px";
+  container.style.top = "0";
+  container.appendChild(parsed.body.firstElementChild.cloneNode(true));
+  const styleEl = document.createElement("style");
+  styleEl.textContent = parsed.querySelector("style")?.textContent || "";
+  document.head.appendChild(styleEl);
+  document.body.appendChild(container);
+  const content = container.firstElementChild;
+  try {
+    await window.html2pdf()
+      .set({
+        margin: [10, 10, 10, 10],
+        filename: `${item.documentNumber || formNumber(item.template)}.pdf`,
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff" },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+      })
+      .from(content)
+      .save();
+  } finally {
+    styleEl.remove();
+    container.remove();
+  }
+}
+
+function printGeneratedFormPdf(formId) {
+  const { url } = ensureGeneratedPdfPreview(formId);
+  if (!url) return;
+  const popup = window.open(url, "_blank", "width=980,height=1280");
+  if (!popup) return;
+  popup.focus();
+  setTimeout(() => popup.print(), 350);
+}
+
+function openEmployeeModal(employeeId = "") {
+  if (!employeeModal || !employeeForm) return;
+  editingEmployeeId = employeeId;
+  const title = document.querySelector("#employee-modal-title");
+  if (employeeId) {
+    const employee = employees.find((item) => item.id === employeeId);
+    if (!employee || employee.role === "owner") return;
+    employeeForm.elements.namedItem("employeeId").value = employee.id;
+    employeeForm.elements.namedItem("name").value = employee.name;
+    employeeForm.elements.namedItem("email").value = employee.email;
+    employeeForm.elements.namedItem("role").value = employee.role;
+    employeeForm.elements.namedItem("status").value = employee.status;
+    if (title) title.textContent = "子アカウントを編集";
+  } else {
+    employeeForm.reset();
+    employeeForm.elements.namedItem("employeeId").value = "";
+    employeeForm.elements.namedItem("role").value = "staff";
+    employeeForm.elements.namedItem("status").value = "invited";
+    if (title) title.textContent = "子アカウントを追加";
+  }
+  employeeModal.classList.remove("hidden");
+  employeeModal.setAttribute("aria-hidden", "false");
+}
+
+function closeEmployeeModal() {
+  employeeModal?.classList.add("hidden");
+  employeeModal?.setAttribute("aria-hidden", "true");
+  editingEmployeeId = "";
+  employeeForm?.reset();
+}
+
 function renderCustomers() {
   const query = customerSearch.value.trim().toLowerCase();
   const visible = customers.filter((customer) =>
@@ -1738,13 +2179,9 @@ function renderCustomers() {
       .toLowerCase()
       .includes(query),
   );
-  const createHint =
-    query && visible.length === 0
-      ? `<article class="feedback-ticket"><strong>「${escapeHtml(customerSearch.value)}」はまだ登録されていません</strong><span>このまま新規登録すると、あとで請求書や申告資料にも使えます。</span></article>`
-      : "";
   document.querySelector("#customer-list").innerHTML =
-    createHint +
-    visible
+    (visible.length
+      ? visible
       .map(
         (customer) => `
           <article class="customer-card" data-customer-id="${customer.id}">
@@ -1753,83 +2190,19 @@ function renderCustomers() {
                 <strong>${escapeHtml(customer.name)}</strong>
                 <span>${customer.ownerType === "company" ? "法人取引先" : "個人取引先"} / 登録元: ${customer.source} / 売上 ${yen.format(customer.revenue)}</span>
               </div>
-              <button class="secondary-button" data-save-customer="${customer.id}">保存</button>
+              <button class="secondary-button" data-edit-customer="${customer.id}">編集</button>
             </div>
-            <div class="customer-edit-grid">
-              ${customerInput(customer, "name", "客户/厂商名")}
-              <label>
-                区分
-                <select data-customer-field="ownerType">
-                  <option value="company" ${customer.ownerType === "company" ? "selected" : ""}>法人</option>
-                  <option value="personal" ${customer.ownerType === "personal" ? "selected" : ""}>個人</option>
-                </select>
-              </label>
-              ${customerInput(customer, "invoiceNumber", "登録番号")}
-              ${customerInput(customer, "corporateNumber", "法人番号")}
-              ${customerInput(customer, "postalCode", "郵便番号")}
-              ${customerInput(customer, "address", "住所")}
-              ${customerInput(customer, "contactName", "担当者")}
-              ${customerInput(customer, "department", "部署")}
-              ${customerInput(customer, "email", "Email")}
-              ${customerInput(customer, "phone", "電話")}
-              ${customerInput(customer, "paymentTerms", "支払条件")}
-              <label class="wide">
-                メモ / 申告確認事項
-                <textarea data-customer-field="memo" rows="2">${escapeHtml(customer.memo || "")}</textarea>
-              </label>
+            <div class="customer-summary-grid">
+              <span>登録番号 ${escapeHtml(customer.invoiceNumber || "-")}</span>
+              <span>電話 ${escapeHtml(customer.phone || "-")}</span>
+              <span>Email ${escapeHtml(customer.email || "-")}</span>
+              <span>支払条件 ${escapeHtml(customer.paymentTerms || "-")}</span>
             </div>
           </article>
         `,
       )
-      .join("");
-}
-
-function customerInput(customer, field, label) {
-  return `
-    <label>
-      ${label}
-      <input data-customer-field="${field}" value="${escapeHtml(customer[field] || "")}" />
-    </label>
-  `;
-}
-
-function renderFeedback() {
-  const typeLabel = {
-    ocr: "OCR識別の相談",
-    tax: "申告・税額見込み",
-    billing: "契約・請求",
-    feature: "操作方法・改善要望",
-  };
-  const priorityLabel = {
-    normal: "通常",
-    high: "高め",
-    urgent: "至急",
-  };
-  const statusLabel = {
-    open: "受付中",
-    in_review: "確認中",
-    resolved: "回答済み",
-    closed: "完了",
-  };
-  document.querySelector("#feedback-list").innerHTML = feedbackTickets
-    .map(
-      (ticket) => `
-        <article class="feedback-ticket">
-          <strong>${escapeHtml(ticket.message)}</strong>
-          <div class="ticket-meta">
-            <span>${typeLabel[ticket.type] || ticket.type}</span>
-            <span>${priorityLabel[ticket.priority] || ticket.priority}</span>
-            <span>${ticket.createdAt}</span>
-          </div>
-          <select class="status-select" data-feedback-id="${ticket.id}">
-            ${["open", "in_review", "resolved", "closed"]
-              .map((status) => `<option value="${status}" ${ticket.status === status ? "selected" : ""}>${statusLabel[status] || status}</option>`)
-              .join("")}
-          </select>
-        </article>
-      `,
-    )
-    .join("");
+      .join("")
+      : `<article class="feedback-ticket"><strong>該当なし</strong><span>見つからない場合は右上の新規登録で追加します。</span></article>`);
 }
 
 function taxableProfit(ownerType) {
@@ -1854,10 +2227,15 @@ function calcCorporateTax(taxableIncome) {
 function renderTax() {
   const personal = taxableProfit("personal");
   const corporate = taxableProfit("company");
-  const personalDeductions = Number(document.querySelector("#personal-deductions").value || 0);
+  const fiscalYearEnd = document.querySelector("#fiscal-year-end").value || "2026-12-31";
+  const filingEntityMode = document.querySelector("#filing-entity-mode").value || "both";
+  const blueReturnDeduction = Number(document.querySelector("#blue-return-mode").value || 0);
+  const personalDeductions = Number(document.querySelector("#personal-deductions").value || 0) + blueReturnDeduction;
   const businessTaxRate = Number(document.querySelector("#business-tax-rate").value || 0) / 100;
   const corporateLocalRate = Number(document.querySelector("#corporate-local-rate").value || 0) / 100;
   const consumptionMode = document.querySelector("#consumption-tax-mode").value;
+  const prepaidTax = Number(document.querySelector("#prepaid-tax").value || 0);
+  const reserveRate = Number(document.querySelector("#reserve-rate").value || 0) / 100;
 
   const personalTaxable = Math.max(0, personal.profit - personalDeductions);
   const nationalIncomeTax = calcIncomeTax(personalTaxable);
@@ -1878,8 +2256,30 @@ function renderTax() {
     .reduce((sum, doc) => sum + Number(doc.tax_amount || 0), 0);
   const outputTax = Math.round(taxableSales / 11);
   const consumptionTax = consumptionMode === "taxable" ? Math.max(0, outputTax - inputTax) : 0;
+  const personalTotal = nationalIncomeTax + reconstructionTax + residentTaxEstimate + personalBusinessTax;
+  const corporateTotal = nationalCorporateTax + localCorporateTax + localCorporateEstimate;
+  const grandTotal = (filingEntityMode !== "company" ? personalTotal : 0) + (filingEntityMode !== "personal" ? corporateTotal : 0) + consumptionTax;
+  const taxAfterPrepaid = Math.max(0, grandTotal - prepaidTax);
+  const reserveTarget = Math.round(((personal.income + corporate.income) || 0) * reserveRate);
+  const fiscalLabel = `${fiscalYearEnd} 決算`;
+  const chartMax = Math.max(grandTotal, reserveTarget, personal.income, corporate.income, 1);
 
   document.querySelector("#tax-results").innerHTML = `
+    <article class="tax-card tax-summary-card">
+      <h4>今年の要点</h4>
+      <div class="tax-kpi-grid">
+        <div><span>決算日</span><strong>${fiscalLabel}</strong></div>
+        <div><span>申告主体</span><strong>${filingEntityMode === "both" ? "個人 + 法人" : filingEntityMode === "personal" ? "個人のみ" : "法人のみ"}</strong></div>
+        <div><span>納税見込</span><strong>${yen.format(taxAfterPrepaid)}</strong></div>
+        <div><span>準備目標</span><strong>${yen.format(reserveTarget)}</strong></div>
+      </div>
+      <div class="tax-chart">
+        ${taxBar("個人税負担", personalTotal, chartMax)}
+        ${taxBar("法人税負担", corporateTotal, chartMax)}
+        ${taxBar("消費税", consumptionTax, chartMax)}
+        ${taxBar("納税準備目標", reserveTarget, chartMax)}
+      </div>
+    </article>
     ${taxCard("個人事業主", [
       ["売上", yen.format(personal.income)],
       ["経費", yen.format(personal.expense)],
@@ -1889,7 +2289,7 @@ function renderTax() {
       ["復興特別所得税", yen.format(reconstructionTax)],
       ["住民税概算", yen.format(residentTaxEstimate)],
       ["個人事業税概算", yen.format(personalBusinessTax)],
-      ["合計概算", yen.format(nationalIncomeTax + reconstructionTax + residentTaxEstimate + personalBusinessTax)],
+      ["合計概算", yen.format(personalTotal)],
     ])}
     ${taxCard("法人", [
       ["売上", yen.format(corporate.income)],
@@ -1898,13 +2298,14 @@ function renderTax() {
       ["法人税", yen.format(nationalCorporateTax)],
       ["地方法人税 10.3%", yen.format(localCorporateTax)],
       ["法人住民税・事業税概算", yen.format(localCorporateEstimate)],
-      ["合計概算", yen.format(nationalCorporateTax + localCorporateTax + localCorporateEstimate)],
+      ["合計概算", yen.format(corporateTotal)],
     ])}
     ${taxCard("消費税 / インボイス", [
       ["課税売上推定", yen.format(taxableSales)],
       ["売上消費税推定", yen.format(outputTax)],
       ["仕入税額控除候補", yen.format(inputTax)],
       ["納付見込", yen.format(consumptionTax)],
+      ["予定納税差引後", yen.format(taxAfterPrepaid)],
     ])}
     <p class="tax-note">これは申告前の概算です。控除、青色申告、給与、社会保険、繰越欠損金、簡易課税、2割特例、地方税率、業種、法人規模で結果が変わります。${taxSources.join(" / ")} を基礎に、申告時は国税庁・自治体・税理士確認が必要です。</p>
   `;
@@ -1916,6 +2317,16 @@ function taxCard(title, rows) {
       <h4>${title}</h4>
       ${rows.map(([label, value]) => `<div class="tax-line"><span>${label}</span><strong>${value}</strong></div>`).join("")}
     </article>
+  `;
+}
+
+function taxBar(label, value, max) {
+  const width = Math.max(4, Math.round((Math.max(0, value) / max) * 100));
+  return `
+    <div class="tax-bar-row">
+      <div class="tax-bar-label"><span>${label}</span><strong>${yen.format(value)}</strong></div>
+      <div class="tax-bar-track"><i style="width:${width}%"></i></div>
+    </div>
   `;
 }
 
@@ -1979,7 +2390,7 @@ function normalizeLanguage() {
 function applyStaticLabels() {
   const labels = {
     ja: {
-      nav: ["ホーム", "申告チェック", "書類一覧", "口座・プロフィール", "損益一覧", "税額見込み", "取引先管理", "帳票作成", "会員・権限", "ご意見", "学習履歴"],
+      nav: { home: "ホーム", documents: "書類一覧", forms: "帳票作成", customers: "取引先", accounts: "口座", tax: "税額・申告", settings: "設定" },
       eyebrow: "2026年度 / 個人事業 + 法人",
       title: "日本の中小企業向け 申告もれ防止ワークスペース",
       metrics: ["年度売上", "年度支出", "今年の利益見込み", "漏れ・確認待ち", "AI使用量削減"],
@@ -1988,7 +2399,7 @@ function applyStaticLabels() {
       search: "検索: 店舗名、分類、金額",
     },
     "zh-Hant": {
-      nav: ["首頁", "申報檢查", "文件列表", "帳戶與資料", "損益列表", "稅額預估", "客戶管理", "表單生成", "會員與權限", "意見回饋", "學習紀錄"],
+      nav: { home: "首頁", documents: "文件列表", forms: "表單生成", customers: "客戶", accounts: "口座", tax: "稅額・申告", settings: "設定" },
       eyebrow: "2026年度 / 個人事業主 + 法人",
       title: "日本中小企業稅務防漏工作台",
       metrics: ["年度收入", "年度支出", "今年預估損益", "缺漏與待確認", "AI使用量節省"],
@@ -1997,7 +2408,7 @@ function applyStaticLabels() {
       search: "搜尋：店名、分類、金額",
     },
     "zh-Hans": {
-      nav: ["首页", "申报检查", "文件列表", "账户与资料", "损益列表", "税额预估", "客户管理", "表单生成", "会员与权限", "意见反馈", "学习记录"],
+      nav: { home: "首页", documents: "文件列表", forms: "表单生成", customers: "客户", accounts: "账户", tax: "税额・申告", settings: "设置" },
       eyebrow: "2026年度 / 个人事业主 + 法人",
       title: "日本中小企业税务防漏工作台",
       metrics: ["年度收入", "年度支出", "今年预估盈亏", "缺漏与待确认", "AI使用量节省"],
@@ -2006,7 +2417,7 @@ function applyStaticLabels() {
       search: "搜索：店名、分类、金额",
     },
     en: {
-      nav: ["Home", "Filing check", "Documents", "Accounts", "P&L", "Tax estimate", "Customers", "Forms", "Membership", "Feedback", "Training log"],
+      nav: { home: "Home", documents: "Documents", forms: "Forms", customers: "Customers", accounts: "Accounts", tax: "Tax & Filing", settings: "Settings" },
       eyebrow: "FY2026 / Sole proprietors + companies",
       title: "Tax-readiness workspace for Japanese SMEs",
       metrics: ["Annual revenue", "Annual expenses", "Projected profit", "Missing / review", "AI usage saved"],
@@ -2016,8 +2427,13 @@ function applyStaticLabels() {
     },
   }[appLang];
   if (!labels) return;
-  document.querySelectorAll(".nav-list [data-view]").forEach((button, index) => {
-    button.textContent = labels.nav[index] || button.textContent;
+  document.querySelectorAll("[data-view]").forEach((button) => {
+    const text = labels.nav[button.dataset.view];
+    if (text) {
+      const textNode = button.querySelector("span:last-child");
+      if (textNode) textNode.textContent = text;
+      else button.textContent = text;
+    }
   });
   document.querySelector(".eyebrow").textContent = labels.eyebrow;
   document.querySelector(".topbar h2").textContent = labels.title;
@@ -2041,7 +2457,7 @@ function setSmartFilter(filter) {
 }
 
 function renderViews() {
-  ["home", "documents", "readiness", "income", "tax", "membership", "accounts", "forms", "customers", "feedback", "training"].forEach((view) => {
+  ["home", "documents", "readiness", "income", "tax", "accounts", "settings", "forms", "customers"].forEach((view) => {
     document.querySelector(`#${view}-view`)?.classList.toggle("hidden", view !== currentView);
   });
 
@@ -2054,6 +2470,15 @@ function renderViews() {
   document.querySelectorAll("[data-view]").forEach((button) => {
     button.classList.toggle("active", button.dataset.view === currentView);
   });
+}
+
+function updateTopbarVisibility() {
+  const upload = document.querySelector(".topbar-upload");
+  if (upload) upload.classList.add("hidden");
+}
+
+function applyTheme() {
+  document.body.dataset.theme = appTheme;
 }
 
 function render() {
@@ -2071,12 +2496,169 @@ function render() {
   renderTax();
   renderMembership();
   renderAdmin();
+  renderSettings();
   renderAccounts();
   renderGeneratedForms();
   renderCustomers();
-  renderFeedback();
-  renderTraining();
   normalizeLanguage();
+  updateTopbarVisibility();
+  applyTheme();
+  updateSupportCaptureStatus();
+}
+
+function openDetailModal() {
+  if (!detailModal) return;
+  detailModal.classList.remove("hidden");
+  detailModal.setAttribute("aria-hidden", "false");
+}
+
+function closeDetailModal() {
+  if (!detailModal) return;
+  detailModal.classList.add("hidden");
+  detailModal.setAttribute("aria-hidden", "true");
+}
+
+function openAccountModal(accountId = "") {
+  if (!accountModal || !accountCreateForm) return;
+  accountModalState.editingId = accountId;
+  const account = accounts.find((item) => item.id === accountId);
+  accountCreateForm.reset();
+  accountCreateForm.elements.accountId.value = account?.id || "";
+  accountCreateForm.elements.name.value = account?.name || "";
+  accountCreateForm.elements.type.value = account?.type || "bank";
+  accountCreateForm.elements.owner.value = account?.owner || "company";
+  accountCreateForm.elements.balance.value = account?.balance ?? "";
+  accountCreateForm.elements.connection.value = account?.connection || "manual";
+  accountCreateForm.elements.mixed.checked = Boolean(account?.mixed);
+  document.querySelector("#account-modal-title").textContent = account ? "口座を編集" : "口座を追加";
+  accountModal.classList.remove("hidden");
+  accountModal.setAttribute("aria-hidden", "false");
+}
+
+function closeAccountModal() {
+  if (!accountModal) return;
+  accountModal.classList.add("hidden");
+  accountModal.setAttribute("aria-hidden", "true");
+}
+
+function openCustomerModal(customerId = "", seedName = "") {
+  if (!customerModal || !customerForm) return;
+  const customer = customers.find((item) => item.id === customerId);
+  customerForm.reset();
+  customerForm.elements.customerId.value = customer?.id || "";
+  customerForm.elements.name.value = customer?.name || seedName || "";
+  customerForm.elements.ownerType.value = customer?.ownerType || "company";
+  customerForm.elements.invoiceNumber.value = customer?.invoiceNumber || "";
+  customerForm.elements.corporateNumber.value = customer?.corporateNumber || "";
+  customerForm.elements.postalCode.value = customer?.postalCode || "";
+  customerForm.elements.address.value = customer?.address || "";
+  customerForm.elements.contactName.value = customer?.contactName || "";
+  customerForm.elements.department.value = customer?.department || "";
+  customerForm.elements.email.value = customer?.email || "";
+  customerForm.elements.phone.value = customer?.phone || "";
+  customerForm.elements.paymentTerms.value = customer?.paymentTerms || "";
+  customerForm.elements.memo.value = customer?.memo || "";
+  document.querySelector("#customer-modal-title").textContent = customer ? "取引先を編集" : "取引先を追加";
+  customerModal.classList.remove("hidden");
+  customerModal.setAttribute("aria-hidden", "false");
+}
+
+function closeCustomerModal() {
+  if (!customerModal) return;
+  customerModal.classList.add("hidden");
+  customerModal.setAttribute("aria-hidden", "true");
+}
+
+function openSupportModal() {
+  supportModal?.classList.remove("hidden");
+  supportModal?.setAttribute("aria-hidden", "false");
+}
+
+function closeSupportModal() {
+  supportModal?.classList.add("hidden");
+  supportModal?.setAttribute("aria-hidden", "true");
+}
+
+function updateSupportCaptureStatus() {
+  if (!supportCaptureStatus || !supportCaptureBox) return;
+  supportCaptureStatus.textContent = supportCapture.hasImage ? "画像あり" : "画像なし";
+  supportCaptureBox.classList.toggle("hidden", !supportCapture.rect);
+  if (supportCapture.rect) {
+    supportCaptureBox.style.left = `${supportCapture.rect.x}px`;
+    supportCaptureBox.style.top = `${supportCapture.rect.y}px`;
+    supportCaptureBox.style.width = `${supportCapture.rect.width}px`;
+    supportCaptureBox.style.height = `${supportCapture.rect.height}px`;
+  }
+}
+
+async function buildSupportCaptureImage() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 960;
+  canvas.height = 540;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#f4f6f4";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#17211d";
+  ctx.font = "bold 28px sans-serif";
+  ctx.fillText("FinFlow Support Capture", 32, 48);
+  ctx.font = "16px sans-serif";
+  ctx.fillStyle = "#4b5a52";
+  ctx.fillText(`view: ${currentView}`, 32, 82);
+  ctx.fillText(`time: ${new Date().toLocaleString("ja-JP")}`, 32, 108);
+  if (supportCapture.rect) {
+    ctx.strokeStyle = "#0f766e";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(64, 140, 520, 260);
+    ctx.fillStyle = "rgba(15, 118, 110, 0.12)";
+    ctx.fillRect(64, 140, 520, 260);
+    ctx.fillStyle = "#17211d";
+    ctx.fillText(`selected: ${Math.round(supportCapture.rect.width)} x ${Math.round(supportCapture.rect.height)}`, 72, 430);
+  }
+  return canvas.toDataURL("image/png");
+}
+
+async function loadDriveStatus() {
+  try {
+    const response = await fetch("/api/drive-auth-status");
+    const payload = await response.json();
+    if (response.ok && payload.ok && payload.drive) {
+      driveConnection = {
+        connected: Boolean(payload.drive.connected),
+        email: payload.drive.email || "",
+        scope: payload.drive.scope || "drive.file",
+        lastSyncedAt: payload.drive.lastSyncedAt || "",
+      };
+      renderDriveStructure();
+    }
+  } catch (error) {
+    console.warn("drive status load failed", error);
+  }
+}
+
+async function startDriveSync() {
+  driveSyncState.running = true;
+  driveSyncState.message = "同期を開始しています";
+  renderDriveStructure();
+  try {
+    const response = await fetch("/api/drive-sync", { method: "POST" });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || "Drive sync failed");
+    }
+    driveSyncState.running = false;
+    driveSyncState.lastRun = payload.result?.syncedAt || new Date().toLocaleString("ja-JP");
+    driveSyncState.folders = payload.result?.folderCount || 0;
+    driveSyncState.message = payload.result?.message || "同期完了";
+    if (payload.result?.lastSyncedAt) {
+      driveConnection.lastSyncedAt = payload.result.lastSyncedAt;
+    }
+    renderDriveStructure();
+  } catch (error) {
+    driveSyncState.running = false;
+    driveSyncState.message = error.message || "同期失敗";
+    renderDriveStructure();
+    window.alert(`Google Drive 同期に失敗しました: ${error.message || "error"}`);
+  }
 }
 
 function commitFormChanges() {
@@ -2152,6 +2734,7 @@ document.querySelector("#confirm-button").addEventListener("click", () => {
   currentSmartFilter = "";
   currentDirectoryFilter = "";
   searchInput.value = "";
+  closeDetailModal();
   render();
 });
 
@@ -2164,11 +2747,8 @@ document.querySelector("#delete-button").addEventListener("click", () => {
   currentSmartFilter = "";
   currentDirectoryFilter = "";
   searchInput.value = "";
+  closeDetailModal();
   render();
-});
-
-document.querySelector("#simulate-ai").addEventListener("click", () => {
-  window.alert(`OCR状態: ${ocrRuntime.message}\n画像とPDFはローカルOCR API経由で解析します。CSVは現時点では手動確認フローです。`);
 });
 
 document.querySelectorAll(".segmented-control button").forEach((button) => {
@@ -2189,7 +2769,23 @@ document.querySelectorAll("[data-view]").forEach((button) => {
   });
 });
 
+document.querySelector("#manage-toggle")?.addEventListener("click", () => {
+  document.querySelector("#manage-sublist")?.classList.toggle("hidden");
+});
+
+document.body.addEventListener("click", (event) => {
+  const link = event.target.closest("[data-jump-view]");
+  if (!link) return;
+  event.preventDefault();
+  currentView = link.dataset.jumpView;
+  render();
+});
+
 searchInput.addEventListener("input", renderTable);
+document.querySelector("#document-sort")?.addEventListener("change", (event) => {
+  currentDocumentSort = event.target.value || "date_desc";
+  renderTable();
+});
 
 document.querySelector(".metrics-grid").addEventListener("click", (event) => {
   const card = event.target.closest("[data-smart-filter]");
@@ -2197,11 +2793,10 @@ document.querySelector(".metrics-grid").addEventListener("click", (event) => {
   setSmartFilter(card.dataset.smartFilter);
 });
 
-document.querySelector("#directory-grid").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-directory-filter]");
-  if (!button) return;
+document.body.addEventListener("change", (event) => {
+  if (!["directory-select", "document-type-select"].includes(event.target.id)) return;
   currentSmartFilter = "";
-  currentDirectoryFilter = button.dataset.directoryFilter;
+  currentDirectoryFilter = event.target.value || "";
   currentFilter = "all";
   searchInput.value = "";
   currentView = "documents";
@@ -2225,72 +2820,67 @@ document.querySelector("#add-employee-button").addEventListener("click", () => {
     window.alert(`当前方案最多可增加 ${currentPlan.includedEmployees} 名员工账号。`);
     return;
   }
-  const index = used + 1;
-  employees.push({
-    id: `emp-${Date.now()}`,
-    name: `Staff ${index}`,
-    email: `staff${index}@client.jp`,
-    role: "staff",
-    status: "invited",
-  });
-  adminMembers[0].employeesUsed = employeeUsage();
-  render();
+  openEmployeeModal();
 });
 
-accountCreateForm?.addEventListener("submit", (event) => {
+document.querySelector("#employee-modal-cancel")?.addEventListener("click", closeEmployeeModal);
+document.querySelector("#employee-modal-save")?.addEventListener("click", () => employeeForm?.requestSubmit());
+employeeModal?.addEventListener("click", (event) => {
+  if (event.target === employeeModal) closeEmployeeModal();
+});
+
+employeeForm?.addEventListener("submit", (event) => {
   event.preventDefault();
-  const data = new FormData(accountCreateForm);
+  const data = new FormData(employeeForm);
+  const employeeId = String(data.get("employeeId") || "");
   const name = String(data.get("name") || "").trim();
-  if (!name) return;
-  const owner = String(data.get("owner") || "company");
-  accounts.unshift({
-    id: `acc-${Date.now()}`,
-    name,
-    type: String(data.get("type") || "bank"),
-    owner,
-    balance: Number(data.get("balance") || 0),
-    mixed: owner === "mixed",
-    progress: 12,
-    connection: String(data.get("connection") || "manual"),
-  });
-  accountCreateForm.reset();
-  renderAccounts();
-});
-
-document.querySelector("#account-list")?.addEventListener("input", (event) => {
-  const card = event.target.closest("[data-account-id]");
-  const field = event.target.dataset.accountField;
-  if (!card || !field) return;
-  const account = accounts.find((item) => item.id === card.dataset.accountId);
-  if (!account) return;
-  if (field === "balance") {
-    account[field] = Number(event.target.value || 0);
-  } else if (field === "mixed") {
-    account[field] = event.target.checked;
+  const email = String(data.get("email") || "").trim();
+  const role = String(data.get("role") || "staff");
+  const status = String(data.get("status") || "invited");
+  if (!name || !email) return;
+  if (employeeId) {
+    const employee = employees.find((item) => item.id === employeeId);
+    if (employee && employee.role !== "owner") {
+      employee.name = name;
+      employee.email = email;
+      employee.role = role;
+      employee.status = status;
+    }
   } else {
-    account[field] = event.target.value;
+    const currentPlan = activePlan();
+    const used = employeeUsage();
+    if (used >= currentPlan.includedEmployees) {
+      window.alert(`当前方案最多可增加 ${currentPlan.includedEmployees} 名员工账号。`);
+      return;
+    }
+    employees.push({
+      id: `emp-${Date.now()}`,
+      name,
+      email,
+      role,
+      status,
+    });
   }
-  if (field === "owner" && event.target.value === "mixed") {
-    account.mixed = true;
-  }
-  if (field === "owner" && event.target.value !== "mixed" && event.target.type !== "checkbox") {
-    account.mixed = false;
-  }
-  renderAccounts();
+  adminMembers[0].employeesUsed = employeeUsage();
+  closeEmployeeModal();
+  renderMembership();
+  renderAdmin();
 });
 
-document.querySelector("#employee-table").addEventListener("change", (event) => {
-  const roleId = event.target.dataset.employeeId;
-  const statusId = event.target.dataset.employeeStatusId;
-  if (roleId) {
-    const employee = employees.find((item) => item.id === roleId);
-    if (employee) employee.role = event.target.value;
+document.querySelector("#employee-table").addEventListener("click", (event) => {
+  const editButton = event.target.closest("[data-edit-employee]");
+  if (editButton) {
+    openEmployeeModal(editButton.dataset.editEmployee);
+    return;
   }
-  if (statusId) {
-    const employee = employees.find((item) => item.id === statusId);
-    if (employee) employee.status = event.target.value;
-  }
+  const deleteButton = event.target.closest("[data-delete-employee]");
+  if (!deleteButton) return;
+  const employee = employees.find((item) => item.id === deleteButton.dataset.deleteEmployee);
+  if (!employee || employee.role === "owner") return;
+  employees = employees.filter((item) => item.id !== employee.id);
+  adminMembers[0].employeesUsed = employeeUsage();
   renderMembership();
+  renderAdmin();
 });
 
 document.querySelector("#service-editor")?.addEventListener("input", (event) => {
@@ -2338,7 +2928,7 @@ adForm?.addEventListener("submit", (event) => {
   render();
 });
 
-feedbackForm.addEventListener("submit", (event) => {
+feedbackForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   const data = new FormData(feedbackForm);
   const message = String(data.get("message") || "").trim();
@@ -2348,11 +2938,14 @@ feedbackForm.addEventListener("submit", (event) => {
     type: data.get("type"),
     priority: data.get("priority"),
     status: "open",
-    message,
+    message: supportCapture.hasImage ? `${message} [画像添付]` : message,
     createdAt: new Date().toLocaleString("ja-JP"),
   });
   feedbackForm.reset();
-  render();
+  supportCapture = { selecting: false, hasImage: false, image: "", rect: null };
+  updateSupportCaptureStatus();
+  closeSupportModal();
+  window.alert("サポート依頼を送信しました。");
 });
 
 businessFormGenerator.addEventListener("submit", (event) => {
@@ -2362,7 +2955,8 @@ businessFormGenerator.addEventListener("submit", (event) => {
   const amount = Number(data.get("amount") || 0);
   const result = findOrCreateCustomer(data.get("customer_query"), ownerType, "form");
   if (amount > 0) result.customer.revenue += amount;
-  generatedForms.unshift({
+  const draft = currentFormDraft();
+  const record = {
     id: `form-${Date.now()}`,
     direction: String(data.get("direction") || "income"),
     template: data.get("template"),
@@ -2378,6 +2972,7 @@ businessFormGenerator.addEventListener("submit", (event) => {
     quantity: Number(data.get("quantity") || 1),
     unitPrice: Number(data.get("unit_price") || amount),
     taxRate: Number(data.get("tax_rate") || 10),
+    paymentAccount: String(data.get("payment_account") || ""),
     paymentMethod: String(data.get("payment_method") || ""),
     validUntil: String(data.get("valid_until") || ""),
     expenseDate: String(data.get("expense_date") || ""),
@@ -2385,18 +2980,43 @@ businessFormGenerator.addEventListener("submit", (event) => {
     requesterDepartment: String(data.get("requester_department") || ""),
     approvalOwner: String(data.get("approval_owner") || ""),
     attachmentStatus: String(data.get("attachment_status") || ""),
+    presetNote: String(data.get("preset_note") || "standard"),
     memo: String(data.get("memo") || presetNoteText(data.get("preset_note"))),
     documentNumber: formNumber(String(data.get("template") || "invoice")),
-  });
+    draft,
+  };
+  if (editingGeneratedFormId) {
+    const index = generatedForms.findIndex((item) => item.id === editingGeneratedFormId);
+    if (index !== -1) {
+      record.id = editingGeneratedFormId;
+      generatedForms[index] = record;
+    } else {
+      generatedForms.unshift(record);
+    }
+  } else {
+    generatedForms.unshift(record);
+  }
+  editingGeneratedFormId = "";
   formDraft = currentFormDraft();
   render();
 });
 
 businessFormGenerator.addEventListener("input", () => {
+  const issue = businessFormGenerator.elements.namedItem("issue_date");
+  const due = businessFormGenerator.elements.namedItem("due_date");
+  const valid = businessFormGenerator.elements.namedItem("valid_until");
+  if (document.activeElement === issue) syncFormDatesFromIssue();
+  if (document.activeElement === due) due.dataset.auto = "manual";
+  if (document.activeElement === valid) valid.dataset.auto = "manual";
+  if (document.activeElement?.name === "customer_query") autofillFormFromCustomer(document.activeElement.value);
+  if (document.activeElement?.name === "payment_account" && !businessFormGenerator.elements.namedItem("payment_method").value) {
+    businessFormGenerator.elements.namedItem("payment_method").value = "銀行振込";
+  }
   renderFormPreview();
 });
 
 businessFormGenerator.addEventListener("change", () => {
+  syncFormDatesFromIssue();
   renderFormPreview();
 });
 
@@ -2465,39 +3085,171 @@ manualTransactionForm.addEventListener("submit", (event) => {
 });
 
 document.querySelector("#create-customer-button").addEventListener("click", () => {
-  const result = findOrCreateCustomer(customerSearch.value, "company", "search_create");
-  customerSearch.value = result.customer.name;
-  renderCustomers();
-});
-
-document.querySelector("#customer-list").addEventListener("input", (event) => {
-  const card = event.target.closest("[data-customer-id]");
-  const field = event.target.dataset.customerField;
-  if (!card || !field) return;
-  const customer = customers.find((item) => item.id === card.dataset.customerId);
-  if (!customer) return;
-  customer[field] = event.target.value;
+  openCustomerModal("", customerSearch.value.trim());
 });
 
 document.querySelector("#customer-list").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-save-customer]");
+  const button = event.target.closest("[data-edit-customer]");
   if (!button) return;
+  openCustomerModal(button.dataset.editCustomer);
+});
+
+document.querySelector("#generated-forms")?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-generated-action]");
+  if (!button) return;
+  const formId = button.dataset.generatedId;
+  const action = button.dataset.generatedAction;
+  if (action === "edit") {
+    loadGeneratedFormIntoEditor(formId);
+    return;
+  }
+  if (action === "duplicate") {
+    const source = generatedForms.find((item) => item.id === formId);
+    if (!source) return;
+    generatedForms.unshift({
+      ...source,
+      id: `form-${Date.now()}`,
+      createdAt: new Date().toLocaleString("ja-JP"),
+      documentNumber: formNumber(source.template),
+    });
+    renderGeneratedForms();
+    return;
+  }
+  if (action === "delete") {
+    generatedForms = generatedForms.filter((item) => item.id !== formId);
+    if (editingGeneratedFormId === formId) editingGeneratedFormId = "";
+    renderGeneratedForms();
+    return;
+  }
+  if (action === "pdf") {
+    openGeneratedPdfPreview(formId);
+  }
+});
+
+document.querySelector("#generated-pdf-close")?.addEventListener("click", closeGeneratedPdfModal);
+generatedPdfModal?.addEventListener("click", (event) => {
+  if (event.target === generatedPdfModal) closeGeneratedPdfModal();
+});
+document.querySelector("#generated-pdf-open")?.addEventListener("click", () => {
+  if (!generatedPdfPreview.formId) return;
+  const { url } = ensureGeneratedPdfPreview(generatedPdfPreview.formId);
+  if (!url) return;
+  window.open(url, "_blank", "noopener,noreferrer");
+});
+document.querySelector("#generated-pdf-print")?.addEventListener("click", () => {
+  if (!generatedPdfPreview.formId) return;
+  printGeneratedFormPdf(generatedPdfPreview.formId);
+});
+document.querySelector("#generated-pdf-download")?.addEventListener("click", () => {
+  if (!generatedPdfPreview.formId) return;
+  void downloadGeneratedFormPdf(generatedPdfPreview.formId);
+});
+
+document.querySelector("#settings-shortcut")?.addEventListener("click", () => {
+  currentView = "settings";
+  render();
+});
+
+document.querySelector("#connect-drive-button")?.addEventListener("click", () => {
+  window.location.href = "/auth/google-drive/start";
+});
+document.querySelector("#documents-sync-drive-button")?.addEventListener("click", () => {
+  void startDriveSync();
+});
+
+document.querySelector("#disconnect-drive-button")?.addEventListener("click", async () => {
+  await fetch("/api/drive-disconnect", { method: "POST" }).catch(() => null);
+  driveConnection.connected = false;
+  driveConnection.email = "";
+  driveConnection.lastSyncedAt = "";
+  renderDriveStructure();
+});
+
+document.querySelector("#open-account-create-button")?.addEventListener("click", () => openAccountModal());
+document.querySelector("#quick-add-account-button")?.addEventListener("click", () => openAccountModal());
+document.querySelector("#account-modal-cancel")?.addEventListener("click", closeAccountModal);
+document.querySelector("#account-modal-save")?.addEventListener("click", () => accountCreateForm?.requestSubmit());
+document.querySelector("#account-list")?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-edit-account]");
+  if (!button) return;
+  openAccountModal(button.dataset.editAccount);
+});
+accountModal?.addEventListener("click", (event) => {
+  if (event.target === accountModal) {
+    closeAccountModal();
+  }
+});
+accountCreateForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const data = new FormData(accountCreateForm);
+  const id = String(data.get("accountId") || "").trim();
+  const payload = {
+    id: id || `acc-${Date.now()}`,
+    name: String(data.get("name") || "").trim(),
+    type: String(data.get("type") || "bank"),
+    owner: String(data.get("owner") || "company"),
+    balance: Number(data.get("balance") || 0),
+    mixed: data.get("mixed") === "on",
+    progress: 12,
+    connection: String(data.get("connection") || "manual"),
+  };
+  if (!payload.name) return;
+  const existing = accounts.find((item) => item.id === payload.id);
+  if (existing) {
+    Object.assign(existing, payload);
+  } else {
+    accounts.unshift(payload);
+  }
+  closeAccountModal();
+  renderAccounts();
+});
+
+document.querySelector("#customer-modal-close")?.addEventListener("click", closeCustomerModal);
+document.querySelector("#customer-modal-save")?.addEventListener("click", () => customerForm?.requestSubmit());
+customerModal?.addEventListener("click", (event) => {
+  if (event.target === customerModal) closeCustomerModal();
+});
+customerForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const data = new FormData(customerForm);
+  const id = String(data.get("customerId") || "").trim();
+  const payload = {
+    id: id || `cus-${Date.now()}`,
+    name: String(data.get("name") || "").trim(),
+    ownerType: String(data.get("ownerType") || "company"),
+    invoiceNumber: String(data.get("invoiceNumber") || ""),
+    corporateNumber: String(data.get("corporateNumber") || ""),
+    postalCode: String(data.get("postalCode") || ""),
+    address: String(data.get("address") || ""),
+    contactName: String(data.get("contactName") || ""),
+    department: String(data.get("department") || ""),
+    email: String(data.get("email") || ""),
+    phone: String(data.get("phone") || ""),
+    paymentTerms: String(data.get("paymentTerms") || ""),
+    source: id ? (customers.find((item) => item.id === id)?.source || "manual") : "manual",
+    revenue: customers.find((item) => item.id === id)?.revenue || 0,
+    memo: String(data.get("memo") || ""),
+  };
+  if (!payload.name) return;
+  const existing = customers.find((item) => item.id === payload.id);
+  if (existing) Object.assign(existing, payload);
+  else customers.unshift(payload);
+  closeCustomerModal();
   renderCustomers();
 });
 
-document.querySelector("#feedback-list").addEventListener("change", (event) => {
-  const id = event.target.dataset.feedbackId;
-  if (!id) return;
-  const ticket = feedbackTickets.find((item) => item.id === id);
-  if (ticket) ticket.status = event.target.value;
-  renderFeedback();
+document.querySelector("#detail-close-button")?.addEventListener("click", closeDetailModal);
+detailModal?.addEventListener("click", (event) => {
+  if (event.target === detailModal) {
+    closeDetailModal();
+  }
 });
 
 taxInputIds.forEach((id) => {
   document.querySelector(`#${id}`).addEventListener("input", renderTax);
 });
 
-languageSelect.addEventListener("change", () => {
+languageSelect?.addEventListener("change", () => {
   appLang = languageSelect.value;
   document.documentElement.lang = appLang;
   const selected = selectedDocument();
@@ -2505,6 +3257,56 @@ languageSelect.addEventListener("change", () => {
     selected.language = appLang;
     render();
   }
+});
+
+themeSelect?.addEventListener("change", () => {
+  appTheme = themeSelect.value;
+  applyTheme();
+});
+
+document.querySelector("#support-fab")?.addEventListener("click", openSupportModal);
+document.querySelector("#support-close")?.addEventListener("click", closeSupportModal);
+document.querySelector("#support-submit")?.addEventListener("click", () => feedbackForm?.requestSubmit());
+document.querySelector("#support-clear-capture")?.addEventListener("click", () => {
+  supportCapture = { selecting: false, hasImage: false, image: "", rect: null };
+  updateSupportCaptureStatus();
+});
+document.querySelector("#support-select-capture")?.addEventListener("click", () => {
+  supportCapture.selecting = true;
+  document.querySelector("#support-capture-hint").textContent = "ドラッグして範囲を選択";
+});
+supportModal?.addEventListener("click", (event) => {
+  if (event.target === supportModal) closeSupportModal();
+});
+let captureDrag = null;
+supportCaptureStage?.addEventListener("pointerdown", (event) => {
+  if (!supportCapture.selecting) return;
+  const rect = supportCaptureStage.getBoundingClientRect();
+  captureDrag = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  supportCapture.rect = { x: captureDrag.x, y: captureDrag.y, width: 1, height: 1 };
+  updateSupportCaptureStatus();
+});
+supportCaptureStage?.addEventListener("pointermove", (event) => {
+  if (!captureDrag || !supportCapture.selecting) return;
+  const rect = supportCaptureStage.getBoundingClientRect();
+  const x = event.clientX - rect.left;
+  const y = event.clientY - rect.top;
+  supportCapture.rect = {
+    x: Math.min(captureDrag.x, x),
+    y: Math.min(captureDrag.y, y),
+    width: Math.abs(x - captureDrag.x),
+    height: Math.abs(y - captureDrag.y),
+  };
+  updateSupportCaptureStatus();
+});
+supportCaptureStage?.addEventListener("pointerup", async () => {
+  if (!captureDrag || !supportCapture.selecting) return;
+  captureDrag = null;
+  supportCapture.selecting = false;
+  supportCapture.hasImage = true;
+  supportCapture.image = await buildSupportCaptureImage();
+  document.querySelector("#support-capture-hint").textContent = "選択範囲を添付します";
+  updateSupportCaptureStatus();
 });
 
 function importFiles(fileList) {
@@ -2560,6 +3362,7 @@ uploadCompleteModal?.addEventListener("click", (event) => {
 });
 
 render();
+loadDriveStatus();
 
 async function processUploads(files) {
   if (!files.length || ocrRuntime.busy) return;
@@ -2569,17 +3372,29 @@ async function processUploads(files) {
   ocrRuntime.completed = 0;
   ocrRuntime.percent = 0;
   ocrRuntime.currentFile = files[0]?.name || "";
+  ocrRuntime.stage = "準備中";
   closeUploadCompleteModal();
   renderOcrRoadmap();
   try {
     const processed = [];
     for (const file of files) {
       ocrRuntime.currentFile = file.name;
+      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
       ocrRuntime.message = `OCR処理中 ${files.length}件`;
+      ocrRuntime.stage = isPdf ? "PDF確認中" : "画像確認中";
       renderOcrRoadmap();
       if (file.type.startsWith("image/") || file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
+        if (isPdf) {
+          ocrRuntime.stage = "PDF拆页・OCR中";
+          ocrRuntime.percent = Math.min(95, Math.round((ocrRuntime.completed / ocrRuntime.total) * 100) + 8);
+          renderOcrRoadmap();
+        } else {
+          ocrRuntime.stage = "画像OCR中";
+          renderOcrRoadmap();
+        }
         processed.push(await runRealOcr(file));
       } else {
+        ocrRuntime.stage = "手動確認待ち";
         processed.push(mockOcrProvider(file));
       }
       ocrRuntime.completed += 1;
@@ -2595,24 +3410,27 @@ async function processUploads(files) {
     searchInput.value = "";
     ocrRuntime.message = `OCR完了 ${processed.length}件 / 画像・PDFはAPI解析、CSV等は手動確認`;
     ocrRuntime.currentFile = "";
+    ocrRuntime.stage = "完了";
     ocrRuntime.percent = 100;
     render();
     openUploadCompleteModal(processed.length);
   } catch (error) {
     ocrRuntime.message = `OCR失敗: ${error.message || "server error"}`;
     ocrRuntime.currentFile = "";
+    ocrRuntime.stage = "失敗";
     renderOcrRoadmap();
     window.alert(`OCRに失敗しました: ${error.message || "server error"}`);
   } finally {
     ocrRuntime.busy = false;
     ocrRuntime.total = 0;
     ocrRuntime.completed = 0;
+    ocrRuntime.stage = "";
     renderOcrRoadmap();
   }
 }
 
 async function runRealOcr(file) {
-  const prepared = file.type.startsWith("image/") ? await optimizeImageForOcr(file) : await readFileAsDataUrl(file);
+  const prepared = file.type.startsWith("image/") ? await prepareImageForOcr(file) : await readFileAsDataUrl(file);
   const sourceHash = await hashString(prepared);
   const response = await fetch("http://localhost:4173/api/ocr", {
     method: "POST",
@@ -2633,6 +3451,50 @@ async function runRealOcr(file) {
   }
   lastOcrResultByHash[payload.document.hash] = { ...payload.document };
   return payload.document;
+}
+
+async function prepareImageForOcr(file) {
+  const lowerName = String(file.name || "").toLowerCase();
+  const isHeicLike =
+    file.type.includes("heic") ||
+    file.type.includes("heif") ||
+    lowerName.endsWith(".heic") ||
+    lowerName.endsWith(".heif");
+  if (isHeicLike) {
+    return convertHeicForOcr(file);
+  }
+  try {
+    return await optimizeImageForOcr(file);
+  } catch (error) {
+    console.warn("image preprocess failed, fallback to original upload", error);
+    return readFileAsDataUrl(file);
+  }
+}
+
+async function convertHeicForOcr(file) {
+  if (typeof window.heic2any !== "function") {
+    throw new Error("HEIC変換ライブラリが読み込まれていません");
+  }
+  try {
+    const converted = await window.heic2any({
+      blob: file,
+      toType: "image/jpeg",
+      quality: 0.88,
+    });
+    const blob = Array.isArray(converted) ? converted[0] : converted;
+    if (!(blob instanceof Blob)) {
+      throw new Error("HEIC conversion did not return a Blob");
+    }
+    const jpegFile = new File([blob], file.name.replace(/\.(heic|heif)$/i, ".jpg"), { type: "image/jpeg" });
+    const prepared = await optimizeImageForOcr(jpegFile);
+    if (!String(prepared).startsWith("data:image/jpeg") && !String(prepared).startsWith("data:image/png")) {
+      throw new Error("HEIC変換後の画像形式が不正です");
+    }
+    return prepared;
+  } catch (error) {
+    console.warn("heic2any conversion failed, fallback to server-side HEIC conversion", error);
+    return readFileAsDataUrl(file);
+  }
 }
 
 function readFileAsDataUrl(file) {

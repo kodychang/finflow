@@ -16,8 +16,20 @@ const OCR_MAX_PDF_PAGES = Number(process.env.OCR_MAX_PDF_PAGES || 6);
 const OCR_CACHE_PATH = path.join(ROOT, "data", "ocr_cache.json");
 const TRAINING_JSONL_PATH = path.join(ROOT, "data", "paddle_ocr_training.jsonl");
 const TRAINING_META_PATH = path.join(ROOT, "data", "training_samples.ndjson");
+const GOOGLE_DRIVE_AUTH_PATH = path.join(ROOT, "data", "google_drive_auth.json");
+const GOOGLE_DRIVE_SYNC_PATH = path.join(ROOT, "data", "google_drive_sync.json");
 const PDF_RENDER_SCRIPT = path.join(ROOT, "scripts", "render_pdf_pages.swift");
 const execFileAsync = promisify(execFile);
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || `http://localhost:${PORT}/auth/google-drive/callback`;
+const GOOGLE_DRIVE_SCOPES = [
+  "openid",
+  "email",
+  "profile",
+  "https://www.googleapis.com/auth/drive.file",
+];
+const oauthStates = new Map();
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -81,6 +93,48 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function base64UrlDecode(value) {
+  const normalized = String(value || "").replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  return Buffer.from(padded, "base64").toString("utf8");
+}
+
+function parseJwtPayload(token) {
+  try {
+    const parts = String(token || "").split(".");
+    if (parts.length < 2) return {};
+    return JSON.parse(base64UrlDecode(parts[1]));
+  } catch {
+    return {};
+  }
+}
+
+function driveAuthRecord() {
+  return safeReadJson(GOOGLE_DRIVE_AUTH_PATH, {
+    connected: false,
+    email: "",
+    scope: "",
+    lastSyncedAt: "",
+    tokens: null,
+  });
+}
+
+function saveDriveAuthRecord(record) {
+  safeWriteJson(GOOGLE_DRIVE_AUTH_PATH, record);
+}
+
+function driveSyncRecord() {
+  return safeReadJson(GOOGLE_DRIVE_SYNC_PATH, {
+    syncedAt: "",
+    folderCount: 0,
+    message: "未同期",
+  });
+}
+
+function saveDriveSyncRecord(record) {
+  safeWriteJson(GOOGLE_DRIVE_SYNC_PATH, record);
+}
+
 function parseDataUrl(dataUrl) {
   const match = String(dataUrl).match(/^data:([^;]+);base64,(.+)$/);
   if (!match) throw new Error("Invalid data URL");
@@ -89,6 +143,27 @@ function parseDataUrl(dataUrl) {
     base64: match[2],
     buffer: Buffer.from(match[2], "base64"),
   };
+}
+
+function isHeicInput({ mimeType, fileName }) {
+  const lower = String(fileName || "").toLowerCase();
+  return mimeType === "image/heic" || mimeType === "image/heif" || lower.endsWith(".heic") || lower.endsWith(".heif");
+}
+
+async function convertHeicBufferToJpegDataUrl(buffer) {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "finflow-heic-"));
+  const inputPath = path.join(tempRoot, "input.heic");
+  const outputPath = path.join(tempRoot, "output.jpg");
+  try {
+    fs.writeFileSync(inputPath, buffer);
+    await execFileAsync("/usr/bin/sips", ["-s", "format", "jpeg", inputPath, "--out", outputPath], {
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    const jpegBuffer = fs.readFileSync(outputPath);
+    return `data:image/jpeg;base64,${jpegBuffer.toString("base64")}`;
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
 }
 
 function extractJsonString(value) {
@@ -416,6 +491,7 @@ async function handleOcr(req, res) {
     }
 
     let ocr;
+    let sourceDataUrl = dataUrl;
     if (parsedInput.mimeType === "application/pdf") {
       const pages = await renderPdfPages(parsedInput.buffer);
       const pageResults = [];
@@ -424,9 +500,12 @@ async function handleOcr(req, res) {
       }
       ocr = mergePageResults(pageResults);
     } else {
-      ocr = await callOpenAIForOcr({ fileName, dataUrl, languageHint: language });
+      if (isHeicInput({ mimeType: parsedInput.mimeType, fileName })) {
+        sourceDataUrl = await convertHeicBufferToJpegDataUrl(parsedInput.buffer);
+      }
+      ocr = await callOpenAIForOcr({ fileName, dataUrl: sourceDataUrl, languageHint: language });
     }
-    const extension = path.extname(fileName).replace(".", "") || "jpg";
+    const extension = sourceDataUrl.startsWith("data:image/jpeg") ? "jpg" : path.extname(fileName).replace(".", "") || "jpg";
     const normalized = normalizeOcrDocument(ocr, { fileName, language, extension, sourceHash: cacheKey });
     cache[cacheKey] = normalized;
     safeWriteJson(OCR_CACHE_PATH, cache);
@@ -490,6 +569,191 @@ async function handleTrainingStats(req, res) {
   });
 }
 
+async function handleGoogleDriveStatus(req, res) {
+  sendJson(res, 200, { ok: true, drive: driveAuthRecord() });
+}
+
+async function handleGoogleDriveDisconnect(req, res) {
+  if (req.method !== "POST") {
+    sendJson(res, 405, { error: "Method not allowed" });
+    return;
+  }
+  saveDriveAuthRecord({
+    connected: false,
+    email: "",
+    scope: "",
+    lastSyncedAt: "",
+    tokens: null,
+  });
+  sendJson(res, 200, { ok: true });
+}
+
+async function googleApiFetch(url, options = {}, tokens = {}) {
+  const headers = {
+    Authorization: `Bearer ${tokens.access_token || ""}`,
+    "Content-Type": "application/json; charset=utf-8",
+    ...(options.headers || {}),
+  };
+  const response = await fetch(url, { ...options, headers });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Google Drive API error ${response.status}: ${text}`);
+  }
+  return response.json();
+}
+
+async function ensureDriveFolder({ name, parentId = "", tokens }) {
+  const search = new URL("https://www.googleapis.com/drive/v3/files");
+  const clauses = [
+    `name='${String(name).replace(/'/g, "\\'")}'`,
+    "mimeType='application/vnd.google-apps.folder'",
+    "trashed=false",
+  ];
+  if (parentId) {
+    clauses.push(`'${parentId}' in parents`);
+  }
+  search.searchParams.set("q", clauses.join(" and "));
+  search.searchParams.set("fields", "files(id,name)");
+  const existing = await googleApiFetch(search.toString(), { method: "GET", headers: { "Content-Type": undefined } }, tokens);
+  if (existing.files?.length) {
+    return existing.files[0].id;
+  }
+  const created = await googleApiFetch(
+    "https://www.googleapis.com/drive/v3/files?fields=id,name",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        name,
+        mimeType: "application/vnd.google-apps.folder",
+        parents: parentId ? [parentId] : undefined,
+      }),
+    },
+    tokens,
+  );
+  return created.id;
+}
+
+async function handleGoogleDriveSync(req, res) {
+  if (req.method !== "POST") {
+    sendJson(res, 405, { error: "Method not allowed" });
+    return;
+  }
+  const auth = driveAuthRecord();
+  if (!auth.connected || !auth.tokens?.access_token) {
+    sendJson(res, 400, { error: "Google Drive is not connected" });
+    return;
+  }
+  const folders = [
+    "FinFlow Backup/2026/法人/請求書",
+    "FinFlow Backup/2026/法人/領収書",
+    "FinFlow Backup/2026/法人/契約書",
+    "FinFlow Backup/2026/法人/税務書類",
+    "FinFlow Backup/2026/法人/口座明細",
+    "FinFlow Backup/2026/法人/特許",
+    "FinFlow Backup/2026/法人/不動産",
+    "FinFlow Backup/2026/法人/検査報告",
+    "FinFlow Backup/2026/法人/許認可",
+    "FinFlow Backup/2026/法人/保険",
+    "FinFlow Backup/2026/個人/領収書",
+    "FinFlow Backup/2026/個人/税務書類",
+    "FinFlow Backup/2026/個人/口座明細",
+    "FinFlow Backup/2026/確認待ち",
+  ];
+  let createdOrFound = 0;
+  for (const folderPath of folders) {
+    const parts = folderPath.split("/");
+    let parentId = "";
+    for (const part of parts) {
+      parentId = await ensureDriveFolder({ name: part, parentId, tokens: auth.tokens });
+      createdOrFound += 1;
+    }
+  }
+  const syncedAt = new Date().toISOString();
+  saveDriveAuthRecord({
+    ...auth,
+    lastSyncedAt: syncedAt,
+  });
+  const result = {
+    syncedAt,
+    lastSyncedAt: syncedAt,
+    folderCount: folders.length,
+    message: "Google Drive の保存先フォルダを同期しました",
+  };
+  saveDriveSyncRecord(result);
+  sendJson(res, 200, { ok: true, result });
+}
+
+function handleGoogleDriveStart(req, res) {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Google Drive OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.");
+    return;
+  }
+  const state = crypto.randomBytes(24).toString("hex");
+  oauthStates.set(state, Date.now());
+  const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  authUrl.searchParams.set("client_id", GOOGLE_CLIENT_ID);
+  authUrl.searchParams.set("redirect_uri", GOOGLE_REDIRECT_URI);
+  authUrl.searchParams.set("response_type", "code");
+  authUrl.searchParams.set("scope", GOOGLE_DRIVE_SCOPES.join(" "));
+  authUrl.searchParams.set("access_type", "offline");
+  authUrl.searchParams.set("include_granted_scopes", "true");
+  authUrl.searchParams.set("prompt", "consent");
+  authUrl.searchParams.set("state", state);
+  res.writeHead(302, { Location: authUrl.toString() });
+  res.end();
+}
+
+async function handleGoogleDriveCallback(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const state = url.searchParams.get("state") || "";
+  const code = url.searchParams.get("code") || "";
+  const error = url.searchParams.get("error") || "";
+  if (error) {
+    res.writeHead(302, { Location: "/index.html?drive=error" });
+    res.end();
+    return;
+  }
+  if (!code || !oauthStates.has(state)) {
+    res.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Invalid Google OAuth callback");
+    return;
+  }
+  oauthStates.delete(state);
+  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      code,
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      redirect_uri: GOOGLE_REDIRECT_URI,
+      grant_type: "authorization_code",
+    }),
+  });
+  const tokenPayload = await tokenResponse.json();
+  if (!tokenResponse.ok) {
+    res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end(tokenPayload.error_description || tokenPayload.error || "Google token exchange failed");
+    return;
+  }
+  const idTokenPayload = parseJwtPayload(tokenPayload.id_token || "");
+  saveDriveAuthRecord({
+    connected: true,
+    email: idTokenPayload.email || "",
+    scope: tokenPayload.scope || GOOGLE_DRIVE_SCOPES.join(" "),
+    lastSyncedAt: new Date().toISOString(),
+    tokens: {
+      access_token: tokenPayload.access_token || "",
+      refresh_token: tokenPayload.refresh_token || "",
+      expiry_date: tokenPayload.expires_in ? Date.now() + Number(tokenPayload.expires_in) * 1000 : 0,
+      token_type: tokenPayload.token_type || "Bearer",
+    },
+  });
+  res.writeHead(302, { Location: "/index.html?drive=connected" });
+  res.end();
+}
+
 function serveStatic(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   let pathname = decodeURIComponent(url.pathname);
@@ -513,6 +777,14 @@ function serveStatic(req, res) {
 }
 
 const server = http.createServer(async (req, res) => {
+  if (req.url.startsWith("/auth/google-drive/start")) {
+    handleGoogleDriveStart(req, res);
+    return;
+  }
+  if (req.url.startsWith("/auth/google-drive/callback")) {
+    await handleGoogleDriveCallback(req, res);
+    return;
+  }
   if (req.url.startsWith("/api/ocr")) {
     await handleOcr(req, res);
     return;
@@ -523,6 +795,18 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.url.startsWith("/api/training-stats")) {
     await handleTrainingStats(req, res);
+    return;
+  }
+  if (req.url.startsWith("/api/drive-auth-status")) {
+    await handleGoogleDriveStatus(req, res);
+    return;
+  }
+  if (req.url.startsWith("/api/drive-sync")) {
+    await handleGoogleDriveSync(req, res);
+    return;
+  }
+  if (req.url.startsWith("/api/drive-disconnect")) {
+    await handleGoogleDriveDisconnect(req, res);
     return;
   }
   serveStatic(req, res);

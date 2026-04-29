@@ -18,23 +18,25 @@
         </div>
 
         <nav class="nav-list">
-          <button class="nav-item active" data-view="home">ホーム</button>
-          <button class="nav-item" data-view="readiness">申告チェック</button>
-          <button class="nav-item" data-view="documents">書類一覧</button>
-          <button class="nav-item" data-view="accounts">設定</button>
-          <button class="nav-item" data-view="income">損益一覧</button>
-          <button class="nav-item" data-view="tax">税額見込み</button>
-          <button class="nav-item" data-view="customers">取引先管理</button>
-          <button class="nav-item" data-view="forms">帳票作成</button>
-          <button class="nav-item" data-view="feedback">カスタマーサポート</button>
-          <button class="nav-item" data-view="training">学習履歴</button>
+          <button class="nav-item active nav-primary" data-view="home"><span class="nav-icon">⌂</span><span>ホーム</span></button>
+          <button class="nav-item nav-primary" data-view="documents"><span class="nav-icon">▤</span><span>書類一覧</span></button>
+          <button class="nav-item nav-primary" data-view="tax"><span class="nav-icon">!</span><span>税額・申告</span></button>
+          <button class="nav-item nav-primary" data-view="forms"><span class="nav-icon">✎</span><span>帳票作成</span></button>
+          <div class="nav-group">
+            <button class="nav-section-toggle" id="manage-toggle" type="button"><span>管理</span><span class="nav-caret">▾</span></button>
+            <div class="nav-sublist hidden" id="manage-sublist">
+              <button class="nav-item nav-subitem" data-view="customers"><span class="nav-icon">◫</span><span>取引先</span></button>
+              <button class="nav-item nav-subitem" data-view="accounts"><span class="nav-icon">◧</span><span>口座</span></button>
+              <button class="nav-item nav-subitem" data-view="settings"><span class="nav-icon">⚙</span><span>設定</span></button>
+            </div>
+          </div>
         </nav>
 
-        <div class="storage-card">
-          <span>Storage</span>
-          <strong>S3 / MinIO ready</strong>
-          <small>private files, signed URLs, hash, versions</small>
-        </div>
+        <button class="storage-card" id="settings-shortcut" type="button">
+          <span>設定</span>
+          <strong>設定</strong>
+          <small>個人情報、言語、テーマ、契約を管理</small>
+        </button>
       </aside>
 
       <main class="workspace">
@@ -44,14 +46,7 @@
             <h2>日本の中小企業向け 税務漏れ防止ワーク台</h2>
           </div>
           <div class="topbar-actions">
-            <select id="language-select" class="language-select" aria-label="Language">
-              <option value="ja">日本語</option>
-              <option value="zh-Hant">繁體中文</option>
-              <option value="zh-Hans">简体中文</option>
-              <option value="en">English</option>
-            </select>
-            <button class="icon-button" id="simulate-ai" title="OCR status">OCR</button>
-            <label class="primary-upload">
+            <label class="primary-upload topbar-upload hidden">
               <input id="file-input" type="file" multiple accept="image/*,.pdf,.csv,.txt" />
               アップロード
             </label>
@@ -93,12 +88,11 @@
             <h3>今すぐアップロード</h3>
             <p>1枚ならそのまま確認画面へ、複数なら書類一覧へまとめて入れます。</p>
           </div>
-          <label class="home-upload-card">
+          <label class="home-upload-card hero-upload-card">
             <input id="home-file-input" type="file" multiple accept="image/*,.pdf,.csv,.txt" />
             <strong>画像・PDF・明細を追加</strong>
             <span>AIが仮分類し、あとでユーザーが確認して確定します。</span>
           </label>
-          <div class="ocr-mode-board" id="ocr-mode-board"></div>
         </section>
 
         <section class="simple-action-board home-only" id="simple-action-board"></section>
@@ -122,15 +116,45 @@
                 <button data-filter="tax">税務</button>
                 <button data-filter="staged">归档待ち</button>
               </div>
-              <input id="search-input" class="search-input" placeholder="検索: 店舗名、分類、金額" />
+              <div class="document-toolbar-actions">
+                <select id="document-sort" class="search-input document-sort">
+                  <option value="date_desc">日付が新しい順</option>
+                  <option value="date_asc">日付が古い順</option>
+                  <option value="name_asc">名前順</option>
+                  <option value="amount_desc">金額が大きい順</option>
+                </select>
+                <input id="search-input" class="search-input" placeholder="検索: 店舗名、分類、金額" />
+              </div>
             </div>
 
-            <div class="directory-grid" id="directory-grid"></div>
+            <section class="document-browser-strip">
+              <article class="browser-summary-card">
+                <span>保存ルール</span>
+                <strong>年度 / 区分 / 種類 / 日付順</strong>
+                <small>例: 2026 / 法人 / 請求書 / 20260420_株式会社サンプル_invoice_280000.png</small>
+              </article>
+              <article class="browser-summary-card">
+                <span>Drive連携後</span>
+                <strong>Google Drive でも同じ順序</strong>
+                <small>フォルダを開くだけで、前後の日付と種類がそのまま分かります。</small>
+              </article>
+            </section>
 
-            <div class="drop-zone" id="drop-zone">
+            <section class="document-hub-card document-filter-panel">
+              <div class="section-heading compact">
+                <h3>資料庫</h3>
+                <p>種類と保存先を選んで、必要な書類だけをすぐ絞り込みます。</p>
+              </div>
+              <div class="document-filter-grid">
+                <div class="document-type-grid" id="document-type-grid"></div>
+                <div class="directory-grid" id="directory-grid"></div>
+              </div>
+            </section>
+
+            <div class="drop-zone hidden" id="drop-zone">
               <div>
-                <strong>領収書・請求書・契約書・銀行明細をここへ</strong>
-                <span>画像、PDF、CSV、テキストを受け付けます。OCRエンジンは差し替え可能です。</span>
+                <strong>領収書・請求書・契約書・特許・不動産・検査報告を追加</strong>
+                <span>画像、PDF、CSV、テキストを受け付けます。OCRと手動確認の両方で整理します。</span>
               </div>
             </div>
 
@@ -157,29 +181,10 @@
             </div>
           </section>
 
-          <section class="center-panel hidden" id="income-view">
-            <div class="section-heading">
-              <h3>収入分析</h3>
-              <p>銀行入金、請求書、Stripe、Square、PayPay、現金、契約から集計します。</p>
-            </div>
-            <div class="analysis-grid" id="income-grid"></div>
-          </section>
-
-          <section class="center-panel hidden" id="readiness-view">
-            <div class="section-heading">
-              <h3>申告準備チェック</h3>
-              <p>税務署・自治体・政府へ提出/保存が必要になりやすい資料の漏れを先に見つけます。</p>
-            </div>
-            <div class="readiness-layout">
-              <div class="readiness-score" id="readiness-score"></div>
-              <div class="checklist-list" id="tax-checklist"></div>
-            </div>
-          </section>
-
-          <section class="center-panel hidden" id="accounts-view">
+          <section class="center-panel hidden" id="settings-view">
             <div class="section-heading">
               <h3>アカウント設定</h3>
-              <p>法人情報、個人情報、電話確認、口座設定、購読プラン、子アカウント権限をここでまとめて管理します。</p>
+              <p>法人情報、個人情報、電話確認、購読プラン、子アカウント権限をここでまとめて管理します。</p>
             </div>
             <div class="profile-layout">
               <section class="profile-card">
@@ -307,6 +312,7 @@
                         <th>角色</th>
                         <th>状态</th>
                         <th>权限摘要</th>
+                        <th>操作</th>
                       </tr>
                     </thead>
                     <tbody id="employee-table"></tbody>
@@ -314,24 +320,64 @@
                 </div>
               </div>
             </section>
-            <div class="bank-strategy">
-              <article>
-                <strong>今のおすすめ</strong>
-                <span>手入力、CSV取込、PDF/写真の明細アップロードを先に整え、AI照合で抜け漏れを減らします。</span>
-              </article>
-              <article>
-                <strong>あとから追加</strong>
-                <span>銀行APIや会計ソフト連携は後段で追加し、まずは証憑と口座の整合性を確実にします。</span>
-              </article>
+            <section class="profile-card">
+              <div class="section-heading compact">
+                <h3>表示</h3>
+                <p>言語と配色を切り替えます。</p>
+              </div>
+              <form id="appearance-form" class="profile-form">
+                <label>
+                  言語
+                  <select id="language-select" name="language">
+                    <option value="ja">日本語</option>
+                    <option value="zh-Hant">繁體中文</option>
+                    <option value="zh-Hans">简体中文</option>
+                    <option value="en">English</option>
+                  </select>
+                </label>
+                <label>
+                  テーマ
+                  <select id="theme-select" name="theme">
+                    <option value="light">白</option>
+                    <option value="mono">黒白</option>
+                    <option value="dark">夜間</option>
+                    <option value="forest">深緑</option>
+                  </select>
+                </label>
+              </form>
+            </section>
+            <section class="profile-card">
+              <div class="section-heading compact">
+                <h3>Drive同期</h3>
+                <p>Google Drive と同じ分類で保存し、探しやすい構成にします。</p>
+              </div>
+              <div class="drive-auth-card compact-drive-auth">
+                <div>
+                  <strong>Google Drive</strong>
+                  <span id="drive-auth-status">未連携 / Google OAuth が必要です</span>
+                </div>
+                <div class="detail-actions">
+                  <button class="confirm-button" id="connect-drive-button" type="button">連携</button>
+                  <button class="secondary-button" id="documents-sync-drive-button" type="button">今すぐ同期</button>
+                  <button class="secondary-button hidden" id="disconnect-drive-button" type="button">連携解除</button>
+                </div>
+              </div>
+              <div class="sync-log" id="drive-sync-log"></div>
+              <div id="drive-structure"></div>
+            </section>
+          </section>
+
+          <section class="center-panel hidden" id="accounts-view">
+            <div class="section-heading">
+              <h3>口座一覧</h3>
+              <p>口座は一覧で確認し、必要な時だけ追加・編集します。明細連携や Google Drive バックアップもここで管理します。</p>
             </div>
+            <div class="account-page-toolbar">
+              <button class="confirm-button" id="open-account-create-button" type="button">口座を追加</button>
+            </div>
+            <div class="account-list compact-account-list" id="account-list"></div>
             <form id="manual-transaction-form" class="manual-transaction-form">
-              <select name="account">
-                <option>会社銀行口座</option>
-                <option>会社クレジットカード</option>
-                <option>個人銀行口座</option>
-                <option>個人クレジットカード</option>
-                <option>現金</option>
-              </select>
+              <select name="account"></select>
               <input name="date" type="date" value="2026-04-28" />
               <input name="description" placeholder="摘要 / 店铺 / 入金来源" />
               <input name="amount" type="number" step="1" placeholder="金额" />
@@ -341,42 +387,7 @@
               </select>
               <button type="submit">手动追加</button>
             </form>
-            <section class="profile-card">
-              <div class="section-heading compact">
-                <h3>口座一覧</h3>
-                <p>口座名、種別、所有区分、接続方法、混在有無、残高を編集できます。必要なら新規口座も追加します。</p>
-              </div>
-              <form id="account-create-form" class="manual-transaction-form">
-                <input name="name" placeholder="新しい口座名" />
-                <select name="type">
-                  <option value="bank">銀行口座</option>
-                  <option value="credit_card">カード</option>
-                  <option value="payment">決済口座</option>
-                </select>
-                <select name="owner">
-                  <option value="company">法人</option>
-                  <option value="personal">個人</option>
-                  <option value="mixed">混在</option>
-                </select>
-                <input name="balance" type="number" step="1" placeholder="残高" />
-                <select name="connection">
-                  <option value="manual">手入力</option>
-                  <option value="manual_csv">CSV取込</option>
-                  <option value="statement_upload">明細アップロード</option>
-                  <option value="api_future">API連携予定</option>
-                </select>
-                <button type="submit">口座を追加</button>
-              </form>
-            </section>
-            <div class="account-list" id="account-list"></div>
             <div class="transaction-list" id="transaction-list"></div>
-            <section class="drive-backup-card">
-              <div class="section-heading compact">
-                <h3>Google Drive バックアップ構成</h3>
-                <p>ダウンロード後もフォルダで探しやすい並びにします。法人・個人・年度・書類種別ごとに独立運用できます。</p>
-              </div>
-              <div id="drive-structure"></div>
-            </section>
           </section>
 
           <section class="center-panel hidden" id="forms-view">
@@ -439,7 +450,7 @@
                 </label>
                 <label>
                   品目
-                  <input name="item_label" placeholder="例: Web制作・運用費" />
+                  <input name="item_label" list="item-history" placeholder="例: Web制作・運用費" />
                 </label>
                 <label>
                   数量
@@ -458,8 +469,15 @@
                   </select>
                 </label>
                 <label>
+                  入金口座
+                  <div class="linked-field">
+                    <select name="payment_account"></select>
+                    <button class="secondary-button inline-add-button" id="quick-add-account-button" type="button">追加</button>
+                  </div>
+                </label>
+                <label>
                   入金方法
-                  <input name="payment_method" placeholder="銀行振込 / 現金 / カード" />
+                  <input name="payment_method" list="payment-method-history" placeholder="口座連動 / 手入力" />
                 </label>
                 <label class="income-only">
                   振込先メモ
@@ -518,43 +536,9 @@
             <div class="customer-layout">
               <div class="search-create-panel">
                 <input id="customer-search" placeholder="取引先名・メール・電話・登録番号で検索。なければそのまま新規登録" />
-                <button class="confirm-button" id="create-customer-button">この内容で新規登録</button>
+                <button class="confirm-button" id="create-customer-button">新規登録</button>
               </div>
               <div class="customer-list" id="customer-list"></div>
-            </div>
-          </section>
-
-          <section class="center-panel hidden" id="feedback-view">
-            <div class="section-heading">
-              <h3>カスタマーサポート</h3>
-              <p>OCR、申告見込み、会員課金、操作相談をまとめて受け付け、対応状況を追えるようにします。</p>
-            </div>
-            <div class="feedback-layout">
-              <form id="feedback-form" class="feedback-form">
-                <label>
-                  お問い合わせ種別
-                  <select name="type">
-                    <option value="ocr">OCR識別の相談</option>
-                    <option value="tax">申告・税額見込み</option>
-                    <option value="billing">契約・請求</option>
-                    <option value="feature">操作方法・改善要望</option>
-                  </select>
-                </label>
-                <label>
-                  緊急度
-                  <select name="priority">
-                    <option value="normal">通常</option>
-                    <option value="high">高め</option>
-                    <option value="urgent">至急</option>
-                  </select>
-                </label>
-                <label class="wide">
-                  ご相談内容
-                  <textarea name="message" rows="4" placeholder="困っている点、対象書類、希望対応を入力してください"></textarea>
-                </label>
-                <button class="confirm-button" type="submit">サポート依頼を送信</button>
-              </form>
-              <div class="feedback-list" id="feedback-list"></div>
             </div>
           </section>
 
@@ -565,6 +549,27 @@
             </div>
             <div class="tax-layout">
               <div class="tax-controls">
+                <label>
+                  年度決算日
+                  <input id="fiscal-year-end" type="date" value="2026-12-31" />
+                </label>
+                <label>
+                  申告主体
+                  <select id="filing-entity-mode">
+                    <option value="both">個人 + 法人</option>
+                    <option value="personal">個人事業のみ</option>
+                    <option value="company">法人のみ</option>
+                  </select>
+                </label>
+                <label>
+                  青色申告 / 特典
+                  <select id="blue-return-mode">
+                    <option value="650000">青色 65万円控除</option>
+                    <option value="550000">青色 55万円控除</option>
+                    <option value="100000">青色 10万円控除</option>
+                    <option value="0">白色申告</option>
+                  </select>
+                </label>
                 <label>
                   個人所得控除見込
                   <input id="personal-deductions" type="number" min="0" step="10000" value="1600000" />
@@ -584,27 +589,54 @@
                     <option value="exempt">免税事業者</option>
                   </select>
                 </label>
+                <label>
+                  予定納税・中間納付
+                  <input id="prepaid-tax" type="number" min="0" step="1000" value="0" />
+                </label>
+                <label>
+                  納税準備目標率
+                  <input id="reserve-rate" type="number" min="0" max="100" step="1" value="25" />
+                </label>
               </div>
               <div class="tax-results" id="tax-results"></div>
             </div>
-          </section>
-
-          <section class="center-panel hidden" id="training-view">
             <div class="section-heading">
-              <h3>学習データ</h3>
-              <p>AI初期結果、ユーザー修正、変更フィールドを保存し、PaddleOCR最適化へ接続します。</p>
+              <h3>申告準備チェック</h3>
+              <p>提出漏れ、証憑不足、期限切れを同じ画面で確認します。</p>
             </div>
-            <div class="training-log" id="training-log"></div>
+            <div class="readiness-layout">
+              <div class="readiness-score" id="readiness-score"></div>
+              <div class="checklist-list" id="tax-checklist"></div>
+            </div>
           </section>
 
-          <aside class="detail-panel" aria-label="Document detail">
+        </section>
+      </main>
+    </div>
+
+    <nav class="mobile-nav" aria-label="Mobile navigation">
+      <button class="active" data-view="home">ホーム</button>
+      <button data-view="documents">書類</button>
+      <button data-view="tax">税額</button>
+      <button data-view="forms">帳票</button>
+      <button data-view="settings">設定</button>
+    </nav>
+
+    <datalist id="item-history"></datalist>
+    <datalist id="payment-method-history"></datalist>
+
+    <div class="modal-backdrop hidden" id="detail-modal" aria-hidden="true">
+      <aside class="detail-panel detail-modal-panel" aria-label="Document detail">
             <div class="detail-header">
               <div>
                 <span id="detail-status" class="status-badge">未確認</span>
                 <h3 id="detail-title">ファイルを選択</h3>
               </div>
-              <button id="confirm-button" class="confirm-button">確認済みにする</button>
-              <button id="delete-button" class="secondary-button">削除</button>
+              <div class="detail-actions">
+                <button id="confirm-button" class="confirm-button">確認済みにする</button>
+                <button id="delete-button" class="secondary-button">削除</button>
+                <button id="detail-close-button" class="secondary-button" type="button">閉じる</button>
+              </div>
             </div>
 
             <div class="preview-card" id="preview-card">
@@ -766,22 +798,7 @@
               <div id="workflow-steps"></div>
             </div>
           </aside>
-        </section>
-      </main>
     </div>
-
-    <nav class="mobile-nav" aria-label="Mobile navigation">
-      <button class="active" data-view="home">ホーム</button>
-      <button data-view="readiness">申告</button>
-      <button data-view="documents">書類</button>
-      <button data-view="accounts">設定</button>
-      <button data-view="income">損益</button>
-      <button data-view="tax">税額</button>
-      <button data-view="customers">取引先</button>
-      <button data-view="forms">帳票</button>
-      <button data-view="feedback">相談</button>
-      <button data-view="training">学習</button>
-    </nav>
 
     <div class="modal-backdrop hidden" id="upload-complete-modal" aria-hidden="true">
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="upload-complete-title">
@@ -795,6 +812,198 @@
       </div>
     </div>
 
+    <div class="modal-backdrop hidden" id="account-modal" aria-hidden="true">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="account-modal-title">
+        <div class="section-heading compact">
+          <h3 id="account-modal-title">口座を編集</h3>
+          <p>口座名、種別、所有区分、接続方法、残高をここで設定します。</p>
+        </div>
+        <form id="account-create-form" class="feedback-form">
+          <input type="hidden" name="accountId" />
+          <label>
+            口座名
+            <input name="name" placeholder="新しい口座名" />
+          </label>
+          <label>
+            種別
+            <select name="type">
+              <option value="bank">銀行口座</option>
+              <option value="credit_card">カード</option>
+              <option value="payment">決済口座</option>
+            </select>
+          </label>
+          <label>
+            所有区分
+            <select name="owner">
+              <option value="company">法人</option>
+              <option value="personal">個人</option>
+              <option value="mixed">混在</option>
+            </select>
+          </label>
+          <label>
+            残高
+            <input name="balance" type="number" step="1" placeholder="残高" />
+          </label>
+          <label>
+            接続方法
+            <select name="connection">
+              <option value="manual">手入力</option>
+              <option value="manual_csv">CSV取込</option>
+              <option value="statement_upload">明細アップロード</option>
+              <option value="api_future">API連携予定</option>
+            </select>
+          </label>
+          <label class="account-check">
+            <input name="mixed" type="checkbox" />
+            混在利用あり
+          </label>
+        </form>
+        <div class="modal-actions">
+          <button class="secondary-button" id="account-modal-cancel" type="button">キャンセル</button>
+          <button class="confirm-button" id="account-modal-save" type="button">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop hidden" id="customer-modal" aria-hidden="true">
+      <div class="modal-card modal-card-wide" role="dialog" aria-modal="true" aria-labelledby="customer-modal-title">
+        <div class="section-heading compact">
+          <h3 id="customer-modal-title">取引先を追加</h3>
+          <p>検索して見つからない場合だけ追加し、必要な項目だけ編集します。</p>
+        </div>
+        <form id="customer-form" class="feedback-form">
+          <input type="hidden" name="customerId" />
+          <label>取引先名<input name="name" /></label>
+          <label>区分<select name="ownerType"><option value="company">法人</option><option value="personal">個人</option></select></label>
+          <label>登録番号<input name="invoiceNumber" /></label>
+          <label>法人番号<input name="corporateNumber" /></label>
+          <label>郵便番号<input name="postalCode" /></label>
+          <label class="wide">住所<input name="address" /></label>
+          <label>担当者<input name="contactName" /></label>
+          <label>部署<input name="department" /></label>
+          <label>Email<input name="email" /></label>
+          <label>電話<input name="phone" /></label>
+          <label>支払条件<input name="paymentTerms" /></label>
+          <label class="wide">メモ<textarea name="memo" rows="3"></textarea></label>
+        </form>
+        <div class="modal-actions">
+          <button class="secondary-button" id="customer-modal-close" type="button">キャンセル</button>
+          <button class="confirm-button" id="customer-modal-save" type="button">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop hidden" id="employee-modal" aria-hidden="true">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="employee-modal-title">
+        <div class="section-heading compact">
+          <h3 id="employee-modal-title">子アカウントを編集</h3>
+          <p>利用人数は契約プランの上限まで追加できます。</p>
+        </div>
+        <form id="employee-form" class="feedback-form">
+          <input type="hidden" name="employeeId" />
+          <label>
+            姓名
+            <input name="name" />
+          </label>
+          <label>
+            Email
+            <input name="email" type="email" />
+          </label>
+          <label>
+            角色
+            <select name="role">
+              <option value="admin">admin</option>
+              <option value="accountant">accountant</option>
+              <option value="staff">staff</option>
+              <option value="viewer">viewer</option>
+            </select>
+          </label>
+          <label>
+            状态
+            <select name="status">
+              <option value="active">active</option>
+              <option value="invited">invited</option>
+              <option value="suspended">suspended</option>
+            </select>
+          </label>
+        </form>
+        <div class="modal-actions">
+          <button class="secondary-button" id="employee-modal-cancel" type="button">キャンセル</button>
+          <button class="confirm-button" id="employee-modal-save" type="button">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop hidden" id="generated-pdf-modal" aria-hidden="true">
+      <div class="modal-card modal-card-wide pdf-modal-card" role="dialog" aria-modal="true" aria-labelledby="generated-pdf-title">
+        <div class="section-heading compact pdf-modal-header">
+          <div>
+            <h3 id="generated-pdf-title">PDFプレビュー</h3>
+            <p id="generated-pdf-subtitle">A4で確認してから保存できます。</p>
+          </div>
+          <button class="secondary-button" id="generated-pdf-close" type="button">閉じる</button>
+        </div>
+        <div class="pdf-modal-toolbar">
+          <button class="secondary-button" id="generated-pdf-open" type="button">新しいタブ</button>
+          <button class="secondary-button" id="generated-pdf-print" type="button">印刷 / PDF保存</button>
+          <button class="confirm-button" id="generated-pdf-download" type="button">ダウンロード</button>
+        </div>
+        <div class="pdf-preview-frame-wrap">
+          <iframe id="generated-pdf-frame" title="generated pdf preview"></iframe>
+        </div>
+      </div>
+    </div>
+
+    <button class="support-fab" id="support-fab" type="button" aria-label="サポート">?</button>
+    <div class="modal-backdrop hidden" id="support-modal" aria-hidden="true">
+      <div class="modal-card modal-card-wide" role="dialog" aria-modal="true" aria-labelledby="support-modal-title">
+        <div class="section-heading compact">
+          <h3 id="support-modal-title">サポート</h3>
+          <p>画像を付けるか、文章だけで相談できます。</p>
+        </div>
+        <div class="support-capture-layout">
+          <div class="support-capture-stage" id="support-capture-stage">
+            <div class="support-capture-box hidden" id="support-capture-box"></div>
+            <p id="support-capture-hint">必要なら範囲を選択して添付します。</p>
+          </div>
+          <form id="feedback-form" class="feedback-form">
+            <label>
+              種別
+              <select name="type">
+                <option value="ocr">OCR</option>
+                <option value="tax">税額</option>
+                <option value="billing">契約</option>
+                <option value="feature">使い方</option>
+              </select>
+            </label>
+            <label>
+              緊急度
+              <select name="priority">
+                <option value="normal">通常</option>
+                <option value="high">高め</option>
+                <option value="urgent">至急</option>
+              </select>
+            </label>
+            <label class="wide">
+              内容
+              <textarea name="message" rows="4" placeholder="状況と希望対応を入力"></textarea>
+            </label>
+            <div class="support-options wide">
+              <button class="secondary-button" id="support-select-capture" type="button">範囲を選ぶ</button>
+              <button class="secondary-button" id="support-clear-capture" type="button">画像なし</button>
+              <span id="support-capture-status">画像なし</span>
+            </div>
+          </form>
+        </div>
+        <div class="modal-actions">
+          <button class="secondary-button" id="support-close" type="button">閉じる</button>
+          <button class="confirm-button" id="support-submit" type="button">送信</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/heic2any/0.0.4/heic2any.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script src="./app.js"></script>
   </body>
 </html>
