@@ -362,14 +362,19 @@
             <div class="form-builder-layout">
               <form id="business-form-generator" class="feedback-form">
                 <label>
+                  帳票区分
+                  <select name="direction">
+                    <option value="income">收入 / 売上</option>
+                    <option value="expense">支出 / 精算</option>
+                  </select>
+                </label>
+                <label>
                   テンプレート
                   <select name="template">
-                    <option value="invoice">請求書</option>
                     <option value="quotation">見積書</option>
-                    <option value="receipt">領収書</option>
+                    <option value="invoice">請求書</option>
                     <option value="delivery_note">納品書</option>
-                    <option value="payment_request">支払依頼書</option>
-                    <option value="tax_summary">申告チェック表</option>
+                    <option value="receipt">領収書</option>
                   </select>
                 </label>
                 <label>
@@ -394,6 +399,14 @@
                 <label>
                   支払期限
                   <input name="due_date" type="date" value="2026-05-31" />
+                </label>
+                <label class="income-only">
+                  見積有効期限
+                  <input name="valid_until" type="date" value="2026-05-31" />
+                </label>
+                <label class="expense-only hidden">
+                  支払予定日
+                  <input name="expense_date" type="date" value="2026-05-31" />
                 </label>
                 <label>
                   金额
@@ -423,12 +436,33 @@
                   入金方法
                   <input name="payment_method" placeholder="銀行振込 / 現金 / カード" />
                 </label>
+                <label class="income-only">
+                  振込先メモ
+                  <input name="bank_account_note" placeholder="銀行名・支店・口座名義など" />
+                </label>
+                <label class="expense-only hidden">
+                  申請部門
+                  <input name="requester_department" placeholder="例: 営業部 / 制作部" />
+                </label>
+                <label class="expense-only hidden">
+                  承認者
+                  <input name="approval_owner" placeholder="例: 代表取締役 / 経理責任者" />
+                </label>
+                <label class="expense-only hidden">
+                  添付書類
+                  <select name="attachment_status">
+                    <option value="receipt_attached">領収書あり</option>
+                    <option value="invoice_attached">請求書あり</option>
+                    <option value="missing">添付待ち</option>
+                  </select>
+                </label>
                 <label>
                   備考定型
                   <select name="preset_note">
                     <option value="standard">標準</option>
                     <option value="tax_followup">申告確認向け</option>
                     <option value="urgent">早めの入金お願い</option>
+                    <option value="expense_clear">経費精算向け</option>
                   </select>
                 </label>
                 <label class="wide">

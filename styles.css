@@ -1251,6 +1251,10 @@ tbody tr.selected {
   gap: 8px;
 }
 
+.hidden {
+  display: none;
+}
+
 .mobile-preview-button {
   display: none;
 }
@@ -1379,10 +1383,6 @@ tbody tr.selected {
 .log-item {
   display: grid;
   gap: 6px;
-}
-
-.hidden {
-  display: none;
 }
 
 .mobile-nav {

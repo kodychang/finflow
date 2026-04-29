@@ -632,18 +632,25 @@ let generatedForms = [
 ];
 
 let formDraft = {
+  direction: "income",
   template: "invoice",
   owner_type: "company",
   customer_query: "株式会社サンプル",
   document_title: "2026年4月分 Web制作費",
   issue_date: "2026-04-29",
   due_date: "2026-05-31",
+  valid_until: "2026-05-31",
+  expense_date: "2026-05-31",
   amount: 280000,
   item_label: "Web制作・運用費",
   quantity: 1,
   unit_price: 280000,
   tax_rate: 10,
   payment_method: "銀行振込",
+  bank_account_note: "三井住友銀行 渋谷支店 普通 1234567",
+  requester_department: "",
+  approval_owner: "",
+  attachment_status: "receipt_attached",
   preset_note: "standard",
   memo: "お振込確認後、領収データを自動保管します。",
 };
@@ -1517,18 +1524,25 @@ function formTemplateLabel(template) {
 function currentFormDraft() {
   const data = new FormData(businessFormGenerator);
   return {
+    direction: String(data.get("direction") || formDraft.direction || "income"),
     template: String(data.get("template") || formDraft.template),
     owner_type: String(data.get("owner_type") || formDraft.owner_type),
     customer_query: String(data.get("customer_query") || formDraft.customer_query),
     document_title: String(data.get("document_title") || formDraft.document_title),
     issue_date: String(data.get("issue_date") || formDraft.issue_date),
     due_date: String(data.get("due_date") || formDraft.due_date),
+    valid_until: String(data.get("valid_until") || formDraft.valid_until),
+    expense_date: String(data.get("expense_date") || formDraft.expense_date),
     amount: Number(data.get("amount") || formDraft.amount || 0),
     item_label: String(data.get("item_label") || formDraft.item_label),
     quantity: Number(data.get("quantity") || formDraft.quantity || 1),
     unit_price: Number(data.get("unit_price") || formDraft.unit_price || 0),
     tax_rate: Number(data.get("tax_rate") || formDraft.tax_rate || 10),
     payment_method: String(data.get("payment_method") || formDraft.payment_method),
+    bank_account_note: String(data.get("bank_account_note") || formDraft.bank_account_note),
+    requester_department: String(data.get("requester_department") || formDraft.requester_department),
+    approval_owner: String(data.get("approval_owner") || formDraft.approval_owner),
+    attachment_status: String(data.get("attachment_status") || formDraft.attachment_status),
     preset_note: String(data.get("preset_note") || formDraft.preset_note),
     memo: String(data.get("memo") || formDraft.memo),
   };
@@ -1539,12 +1553,44 @@ function presetNoteText(key) {
     standard: "お支払期限までにお振込をお願いいたします。",
     tax_followup: "保存用として発行し、申告資料に添付できる形式で保管します。",
     urgent: "恐れ入りますが、お早めのお手続きをお願いいたします。",
+    expense_clear: "支払内容と証憑を確認のうえ、精算または振込処理をお願いいたします。",
   }[key] || "お支払期限までにお振込をお願いいたします。";
+}
+
+function templatesForDirection(direction) {
+  if (direction === "expense") {
+    return [
+      { value: "payment_request", label: "支払依頼書" },
+      { value: "tax_summary", label: "経費精算書" },
+      { value: "receipt", label: "領収書整理票" },
+    ];
+  }
+  return [
+    { value: "quotation", label: "見積書" },
+    { value: "invoice", label: "請求書" },
+    { value: "delivery_note", label: "納品書" },
+    { value: "receipt", label: "領収書" },
+  ];
+}
+
+function syncFormMode() {
+  if (!businessFormGenerator) return;
+  const direction = String(new FormData(businessFormGenerator).get("direction") || formDraft.direction || "income");
+  const templateSelect = businessFormGenerator.elements.namedItem("template");
+  const options = templatesForDirection(direction);
+  templateSelect.innerHTML = options.map((item) => `<option value="${item.value}">${item.label}</option>`).join("");
+  const valid = options.some((item) => item.value === formDraft.template);
+  templateSelect.value = valid ? formDraft.template : options[0].value;
+  formDraft.template = templateSelect.value;
+  businessFormGenerator.querySelectorAll(".income-only").forEach((node) => node.classList.toggle("hidden", direction !== "income"));
+  businessFormGenerator.querySelectorAll(".expense-only").forEach((node) => node.classList.toggle("hidden", direction !== "expense"));
 }
 
 function renderFormPreview(forceOpenMobile = false) {
   const previewNode = document.querySelector("#form-preview");
   if (!previewNode || !businessFormGenerator) return;
+  formDraft = currentFormDraft();
+  syncFormMode();
   formDraft = currentFormDraft();
   previewNode.classList.toggle("mobile-preview-open", forceOpenMobile);
   const result = findOrCreateCustomer(formDraft.customer_query, formDraft.owner_type, "preview", false);
@@ -1553,6 +1599,11 @@ function renderFormPreview(forceOpenMobile = false) {
   const subtotal = formDraft.unit_price * Math.max(1, formDraft.quantity);
   const total = formDraft.amount || subtotal;
   const taxAmount = formDraft.tax_rate ? Math.round(total * (formDraft.tax_rate / (100 + formDraft.tax_rate))) : 0;
+  const isExpense = formDraft.direction === "expense";
+  const titleLabel = isExpense ? "支払先" : "宛先";
+  const senderLabel = isExpense ? "申請元" : "発行元";
+  const dueLabel = isExpense ? "支払予定日" : formDraft.template === "quotation" ? "見積有効期限" : "支払期限";
+  const dueValue = isExpense ? formDraft.expense_date || formDraft.due_date : formDraft.template === "quotation" ? formDraft.valid_until || formDraft.due_date : formDraft.due_date;
   previewNode.innerHTML = `
     <article class="jp-form-sheet">
       <div class="jp-form-head">
@@ -1567,18 +1618,18 @@ function renderFormPreview(forceOpenMobile = false) {
       </div>
       <div class="jp-form-meta">
         <div><span>発行日</span><strong>${formDraft.issue_date || "-"}</strong></div>
-        <div><span>支払期限</span><strong>${formDraft.due_date || "-"}</strong></div>
+        <div><span>${dueLabel}</span><strong>${dueValue || "-"}</strong></div>
         <div><span>税率</span><strong>${formDraft.tax_rate}%</strong></div>
       </div>
       <div class="jp-form-parties">
         <section>
-          <span>宛先</span>
+          <span>${titleLabel}</span>
           <strong>${escapeHtml(customer.name || "取引先未入力")}</strong>
           <p>${escapeHtml(customer.address || "住所未登録")}</p>
           <p>${escapeHtml(customer.contactName || "担当未登録")} / ${escapeHtml(customer.phone || "電話未登録")}</p>
         </section>
         <section>
-          <span>発行元</span>
+          <span>${senderLabel}</span>
           <strong>${escapeHtml(sender.companyName || sender.fullName || "発行元未入力")}</strong>
           <p>${escapeHtml(sender.address || "")}</p>
           <p>${escapeHtml(sender.phone || "")} / ${escapeHtml(sender.email || "")}</p>
@@ -1605,6 +1656,7 @@ function renderFormPreview(forceOpenMobile = false) {
       <div class="jp-form-note">
         <span>支払方法</span>
         <p>${escapeHtml(formDraft.payment_method || "未入力")}</p>
+        ${isExpense ? `<span>申請情報</span><p>${escapeHtml(formDraft.requester_department || "部門未入力")} / ${escapeHtml(formDraft.approval_owner || "承認者未入力")} / ${escapeHtml(formDraft.attachment_status || "添付未入力")}</p>` : `<span>振込先</span><p>${escapeHtml(formDraft.bank_account_note || "未入力")}</p>`}
         <span>備考</span>
         <p>${escapeHtml(formDraft.memo || presetNoteText(formDraft.preset_note))}</p>
       </div>
@@ -2174,6 +2226,7 @@ businessFormGenerator.addEventListener("submit", (event) => {
   if (amount > 0) result.customer.revenue += amount;
   generatedForms.unshift({
     id: `form-${Date.now()}`,
+    direction: String(data.get("direction") || "income"),
     template: data.get("template"),
     customer: result.customer.name,
     ownerType,
@@ -2188,6 +2241,12 @@ businessFormGenerator.addEventListener("submit", (event) => {
     unitPrice: Number(data.get("unit_price") || amount),
     taxRate: Number(data.get("tax_rate") || 10),
     paymentMethod: String(data.get("payment_method") || ""),
+    validUntil: String(data.get("valid_until") || ""),
+    expenseDate: String(data.get("expense_date") || ""),
+    bankAccountNote: String(data.get("bank_account_note") || ""),
+    requesterDepartment: String(data.get("requester_department") || ""),
+    approvalOwner: String(data.get("approval_owner") || ""),
+    attachmentStatus: String(data.get("attachment_status") || ""),
     memo: String(data.get("memo") || presetNoteText(data.get("preset_note"))),
     documentNumber: formNumber(String(data.get("template") || "invoice")),
   });
@@ -2196,6 +2255,10 @@ businessFormGenerator.addEventListener("submit", (event) => {
 });
 
 businessFormGenerator.addEventListener("input", () => {
+  renderFormPreview();
+});
+
+businessFormGenerator.addEventListener("change", () => {
   renderFormPreview();
 });
 
