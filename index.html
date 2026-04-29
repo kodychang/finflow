@@ -18,7 +18,7 @@
         </div>
 
         <nav class="nav-list">
-          <button class="nav-item active" data-view="documents">ホーム</button>
+          <button class="nav-item active" data-view="home">ホーム</button>
           <button class="nav-item" data-view="readiness">申告チェック</button>
           <button class="nav-item" data-view="documents">書類一覧</button>
           <button class="nav-item" data-view="accounts">口座・プロフィール</button>
@@ -89,6 +89,19 @@
 
         <section class="notice-strip home-only" id="notice-strip" aria-label="Announcements"></section>
 
+        <section class="home-upload home-only">
+          <div class="section-heading compact">
+            <h3>今すぐアップロード</h3>
+            <p>1枚ならそのまま確認画面へ、複数なら書類一覧へまとめて入れます。</p>
+          </div>
+          <label class="home-upload-card">
+            <input id="home-file-input" type="file" multiple accept="image/*,.pdf,.csv,.txt" />
+            <strong>画像・PDF・明細を追加</strong>
+            <span>AIが仮分類し、あとでユーザーが確認して確定します。</span>
+          </label>
+          <div class="ocr-mode-board" id="ocr-mode-board"></div>
+        </section>
+
         <section class="simple-action-board home-only" id="simple-action-board"></section>
 
         <section class="home-policy home-only" aria-label="Official policy updates">
@@ -99,8 +112,8 @@
           <div class="policy-layout" id="home-policy-list"></div>
         </section>
 
-        <section class="content-grid">
-          <section class="center-panel" id="documents-view">
+        <section class="content-grid" id="content-grid">
+          <section class="center-panel hidden" id="documents-view">
             <div class="panel-toolbar">
               <div class="segmented-control" aria-label="Document filters">
                 <button class="active" data-filter="all">すべて</button>
@@ -532,6 +545,7 @@
                 <h3 id="detail-title">ファイルを選択</h3>
               </div>
               <button id="confirm-button" class="confirm-button">確認済みにする</button>
+              <button id="delete-button" class="secondary-button">削除</button>
             </div>
 
             <div class="preview-card" id="preview-card">
@@ -698,7 +712,7 @@
     </div>
 
     <nav class="mobile-nav" aria-label="Mobile navigation">
-      <button class="active" data-view="documents">ホーム</button>
+      <button class="active" data-view="home">ホーム</button>
       <button data-view="readiness">申告</button>
       <button data-view="documents">書類</button>
       <button data-view="accounts">口座</button>

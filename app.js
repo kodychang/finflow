@@ -416,6 +416,21 @@ const driveFolders = [
   "FinFlow Backup/2026/確認待ち",
 ];
 
+const ocrRoadmap = [
+  {
+    title: "前期: Gemini / GPT Vision",
+    body: "アップロード直後は外部 API で文字と項目を抽出し、ユーザー修正を学習用に蓄積します。",
+  },
+  {
+    title: "中期: 修正データを学習化",
+    body: "確定後の項目差分、OCR原文、書類種別、日付、税率を教師データとして保存します。",
+  },
+  {
+    title: "後期: PaddleOCR 切替",
+    body: "蓄積した日本語帳票データを使い、PaddleOCR を主系統にして API コストを下げます。",
+  },
+];
+
 let bankTransactions = [
   { id: "txn-001", account: "会社銀行口座", date: "2026-04-20", description: "株式会社サンプル 入金", amount: 280000, type: "income", source: "manual_csv", matched: "client_invoice_0420.png" },
   { id: "txn-002", account: "会社クレジットカード", date: "2026-04-01", description: "Meta Ads", amount: -30000, type: "expense", source: "statement_upload", matched: "meta_ads_receipt_april.pdf" },
@@ -743,7 +758,7 @@ let documents = [
 
 let selectedId = documents[0].id;
 let currentFilter = "all";
-let currentView = "documents";
+let currentView = "home";
 let currentDirectoryFilter = "";
 let currentSmartFilter = "";
 let trainingSamples = [];
@@ -753,6 +768,7 @@ const form = document.querySelector("#detail-form");
 const searchInput = document.querySelector("#search-input");
 const dropZone = document.querySelector("#drop-zone");
 const fileInput = document.querySelector("#file-input");
+const homeFileInput = document.querySelector("#home-file-input");
 const languageSelect = document.querySelector("#language-select");
 const taxInputIds = ["personal-deductions", "business-tax-rate", "corporate-local-rate", "consumption-tax-mode"];
 const announcementForm = document.querySelector("#announcement-form");
@@ -771,11 +787,11 @@ function mockOcrProvider(file) {
   const isIncome = lower.includes("invoice") || lower.includes("売上") || lower.includes("income");
   const isBank = lower.includes("bank") || lower.includes("銀行");
   const isContract = lower.includes("contract") || lower.includes("契約");
-  const amount = isIncome ? 180000 : lower.includes("tax") ? 52000 : 12800 + Math.floor(Math.random() * 68000);
-  const taxAmount = Math.round(amount / 11);
+  const amount = isIncome ? 180000 : lower.includes("tax") ? 52000 : 0;
+  const taxAmount = amount ? Math.round(amount / 11) : 0;
   const issuedAt = inferIssueDate(lower) || today;
   const dueAt = isIncome ? addDays(issuedAt, 30) : "";
-  const vendor = isIncome ? "新規クライアント" : isBank ? "銀行明細" : "未確認店舗";
+  const vendor = isIncome ? "新規クライアント" : isBank ? "銀行明細" : file.name.replace(/\.[^.]+$/, "").slice(0, 24) || "未確認書類";
   const documentType = isBank ? "bank_statement" : isContract ? "contract" : isIncome ? "invoice" : "receipt";
   const extension = file.name.includes(".") ? file.name.split(".").pop() : "file";
   const ownerType = lower.includes("personal") || lower.includes("個人") ? "personal" : "company";
@@ -801,20 +817,21 @@ function mockOcrProvider(file) {
     due_at: dueAt,
     amount,
     tax_amount: taxAmount,
-    tax_rate: "10%",
+    tax_rate: amount ? "10%" : "",
     vendor,
     invoice_number: "",
-    category: isBank ? "銀行明細" : isContract ? "契約書" : isIncome ? "売上" : guessCategory(lower),
+    category: isBank ? "銀行明細" : isContract ? "契約書" : isIncome ? "売上" : "要確認",
     payment_method: isBank ? "bank_transfer" : "credit_card",
     account: isIncome || isBank ? "会社銀行口座" : "会社クレジットカード",
     tax_deductible: !isIncome,
-    confidence: Number((0.62 + Math.random() * 0.27).toFixed(2)),
+    confidence: Number((0.41 + Math.random() * 0.18).toFixed(2)),
     need_review: true,
-    summary: "AI仮解析。ユーザー確認後に学習サンプルとして保存されます。",
+    summary: "仮解析です。前期は Gemini/GPT API を想定し、ユーザー確認後の修正を学習用に保存します。",
     review_notes: buildReviewNotes({ document_type: documentType, owner_type: ownerType, vendor, amount, issued_at: issuedAt, due_at: dueAt, invoice_number: "" }),
-    ocr_text: `OCR mock: ${file.name} / amount ${amount} / generated at ${new Date().toISOString()}`,
+    ocr_text: `preview OCR: ${file.name} / generated at ${new Date().toISOString()}`,
     hash: `sha256:${file.name.length}-${file.size}-${file.lastModified}`,
     language: languageSelect.value === "ja" ? "ja/zh/en" : languageSelect.value,
+    ocr_engine: "gemini_or_gpt_phase1",
   };
 }
 
@@ -829,13 +846,13 @@ function suggestDirectory(doc) {
 
 function buildReviewNotes(doc) {
   const checks = [
-    doc.issued_at ? "发行日已识别" : "发行日缺失",
-    doc.amount ? "金额已识别" : "金额缺失",
-    doc.tax_amount !== undefined ? "税额候选已识别" : "税额缺失",
-    doc.invoice_number ? "登録番号已识别" : "登録番号未识别，需用户确认是否必要",
-    doc.due_at ? "期限已识别" : "期限未识别或不适用",
+    doc.issued_at ? "発行日候補あり" : "発行日未確定",
+    doc.amount ? "金額候補あり" : "金額未確定",
+    doc.tax_amount ? "税額候補あり" : "税額未確定",
+    doc.invoice_number ? "登録番号候補あり" : "登録番号未確定",
+    doc.due_at ? "期限候補あり" : "期限未確定または対象外",
   ];
-  return `日本商务/税务标准检查: ${checks.join(" / ")}。AI建议目录: ${suggestDirectory(doc)}。为节省Token，仅提交关键字段和低置信度片段给AI复核。`;
+  return `前期OCR方針: Gemini/GPT API で抽出し、確定データを将来の PaddleOCR 学習へ回します。確認項目: ${checks.join(" / ")}。仮の整理先: ${suggestDirectory(doc)}。`;
 }
 
 function buildRenamedName(doc) {
@@ -1222,6 +1239,21 @@ function renderPolicyUpdates() {
   document.querySelectorAll("#home-policy-list, #policy-list").forEach((list) => {
     list.innerHTML = html;
   });
+}
+
+function renderOcrRoadmap() {
+  const node = document.querySelector("#ocr-mode-board");
+  if (!node) return;
+  node.innerHTML = ocrRoadmap
+    .map(
+      (item) => `
+        <article class="ocr-mode-card">
+          <strong>${item.title}</strong>
+          <span>${item.body}</span>
+        </article>
+      `,
+    )
+    .join("");
 }
 
 function renderAccounts() {
@@ -1878,12 +1910,14 @@ function setSmartFilter(filter) {
 }
 
 function renderViews() {
-  ["documents", "readiness", "income", "tax", "membership", "accounts", "forms", "customers", "feedback", "training"].forEach((view) => {
+  ["home", "documents", "readiness", "income", "tax", "membership", "accounts", "forms", "customers", "feedback", "training"].forEach((view) => {
     document.querySelector(`#${view}-view`)?.classList.toggle("hidden", view !== currentView);
   });
 
+  document.querySelector("#content-grid")?.classList.toggle("hidden", currentView === "home");
+
   document.querySelectorAll(".home-only").forEach((section) => {
-    section.classList.toggle("hidden", currentView !== "documents");
+    section.classList.toggle("hidden", currentView !== "home");
   });
 
   document.querySelectorAll("[data-view]").forEach((button) => {
@@ -1894,6 +1928,7 @@ function renderViews() {
 function render() {
   renderViews();
   renderNotices();
+  renderOcrRoadmap();
   renderActionBoard();
   renderReadiness();
   renderPolicyUpdates();
@@ -1960,6 +1995,18 @@ document.querySelector("#confirm-button").addEventListener("click", () => {
     fields: result.changed.length ? result.changed.join(", ") : "no_user_change",
     time: new Date().toLocaleString("ja-JP"),
   });
+  currentFilter = "all";
+  currentSmartFilter = "";
+  currentDirectoryFilter = "";
+  searchInput.value = "";
+  render();
+});
+
+document.querySelector("#delete-button").addEventListener("click", () => {
+  const index = documents.findIndex((doc) => doc.id === selectedId);
+  if (index === -1) return;
+  documents.splice(index, 1);
+  selectedId = documents[0]?.id || "";
   currentFilter = "all";
   currentSmartFilter = "";
   currentDirectoryFilter = "";
@@ -2261,15 +2308,25 @@ languageSelect.addEventListener("change", () => {
 
 function importFiles(fileList) {
   const newDocs = [...fileList].map(mockOcrProvider);
+  if (!newDocs.length) return;
   documents = [...newDocs, ...documents];
   selectedId = newDocs[0]?.id || selectedId;
   currentView = "documents";
+  currentFilter = "all";
+  currentSmartFilter = "";
+  currentDirectoryFilter = "";
+  searchInput.value = "";
   render();
 }
 
 fileInput.addEventListener("change", (event) => {
   importFiles(event.target.files);
   fileInput.value = "";
+});
+
+homeFileInput?.addEventListener("change", (event) => {
+  importFiles(event.target.files);
+  homeFileInput.value = "";
 });
 
 ["dragenter", "dragover"].forEach((eventName) => {

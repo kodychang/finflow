@@ -255,6 +255,57 @@ button {
   margin-bottom: 14px;
 }
 
+.home-upload {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.home-upload-card {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border: 1px dashed #9fb0a6;
+  border-radius: 8px;
+  background: #f8faf8;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.home-upload-card input {
+  display: none;
+}
+
+.home-upload-card span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ocr-mode-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ocr-mode-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.ocr-mode-card strong,
+.ocr-mode-card span {
+  display: block;
+}
+
+.ocr-mode-card span {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .home-policy {
   margin-bottom: 14px;
 }
@@ -568,6 +619,11 @@ tbody tr.selected {
   justify-content: space-between;
   gap: 12px;
   align-items: start;
+}
+
+.detail-header .confirm-button,
+.detail-header .secondary-button {
+  min-width: 92px;
 }
 
 .detail-header h3 {
@@ -1412,6 +1468,7 @@ tbody tr.selected {
   .customer-layout,
   .directory-grid,
   .simple-action-board,
+  .ocr-mode-board,
   .readiness-layout,
   .policy-layout,
   .bank-strategy,
@@ -1465,11 +1522,12 @@ tbody tr.selected {
   }
 
   .mobile-nav button {
-    min-width: 72px;
-    min-height: 56px;
+    min-width: 64px;
+    min-height: 50px;
     border: 0;
     background: transparent;
     color: var(--muted);
+    font-size: 12px;
   }
 
   .mobile-nav button.active {
