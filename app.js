@@ -2047,6 +2047,7 @@ document.querySelector("#confirm-button").addEventListener("click", () => {
   if (!result) return;
   const changedFields = result.changed;
   const beforeSnapshot = lastOcrResultByHash[result.doc.hash] || null;
+  const finalSnapshot = { ...result.doc };
   result.doc.status = "done";
   result.doc.archive_status = "archived";
   result.doc.target_directory = result.doc.target_directory === "pending_review" ? suggestDirectory(result.doc) : result.doc.target_directory;
@@ -2066,11 +2067,18 @@ document.querySelector("#confirm-button").addEventListener("click", () => {
       ocr_text: result.doc.ocr_text || "",
       initial_document: beforeSnapshot,
       final_document: result.doc,
+      before_fields: beforeSnapshot,
+      after_fields: result.doc,
       changed_fields: changedFields,
+      document_type: result.doc.document_type || "",
+      language: result.doc.language || appLang,
+      confidence_before: beforeSnapshot.confidence ?? null,
+      confidence_after: result.doc.confidence ?? null,
     }).catch((error) => {
       console.warn("training sample save failed", error);
     });
   }
+  lastOcrResultByHash[result.doc.hash] = { ...finalSnapshot, ...result.doc };
   currentFilter = "all";
   currentSmartFilter = "";
   currentDirectoryFilter = "";

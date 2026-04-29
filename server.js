@@ -2,6 +2,9 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const os = require("node:os");
+const { execFile } = require("node:child_process");
+const { promisify } = require("node:util");
 
 const PORT = Number(process.env.PORT || 4173);
 const ROOT = __dirname;
@@ -9,9 +12,12 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_MODEL = process.env.OPENAI_OCR_MODEL || "gpt-4.1-mini";
 const OCR_MAX_BYTES = Number(process.env.OCR_MAX_BYTES || 8 * 1024 * 1024);
 const OCR_MAX_RETRIES = Number(process.env.OCR_MAX_RETRIES || 2);
+const OCR_MAX_PDF_PAGES = Number(process.env.OCR_MAX_PDF_PAGES || 6);
 const OCR_CACHE_PATH = path.join(ROOT, "data", "ocr_cache.json");
 const TRAINING_JSONL_PATH = path.join(ROOT, "data", "paddle_ocr_training.jsonl");
 const TRAINING_META_PATH = path.join(ROOT, "data", "training_samples.ndjson");
+const PDF_RENDER_SCRIPT = path.join(ROOT, "scripts", "render_pdf_pages.swift");
+const execFileAsync = promisify(execFile);
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -73,6 +79,16 @@ function sha256(value) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function parseDataUrl(dataUrl) {
+  const match = String(dataUrl).match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) throw new Error("Invalid data URL");
+  return {
+    mimeType: match[1],
+    base64: match[2],
+    buffer: Buffer.from(match[2], "base64"),
+  };
 }
 
 function sanitizeFilePart(value) {
@@ -147,6 +163,8 @@ async function callOpenAIForOcr({ fileName, dataUrl, languageHint }) {
 }
 
 function buildJapanOcrPrompt({ fileName, languageHint, isPdf }) {
+  const lower = String(fileName || "").toLowerCase();
+  const isBankDoc = ["bank", "statement", "card", "visa", "master", "amex", "jcb", "口座", "明細", "カード"].some((keyword) => lower.includes(keyword));
   return [
     "You are an OCR extraction engine for Japanese SME bookkeeping, invoice retention, and tax filing support.",
     "Target documents include Japanese receipts, invoices, quotations, payment requests, bank statements, contracts, and tax notices.",
@@ -158,12 +176,53 @@ function buildJapanOcrPrompt({ fileName, languageHint, isPdf }) {
     "Use one of transaction_type: income, expense, other.",
     "Prefer Japanese accounting categories such as 売上, 広告宣伝費, 交通費, 通信費, 接待交際費, 消耗品費, 外注費, 家賃, 水道光熱費, 雑費, 税金, 契約書, 銀行明細.",
     "For Japanese receipts and invoices, check whether the issuer registration number appears as T + 13 digits. Put it into invoice_number.",
-    "For bank statements or credit card statements, extract the main account institution or statement issuer into vendor, and summarize visible transaction context.",
+    isBankDoc
+      ? "This file looks like a Japanese bank statement or credit card statement. Prioritize statement issuer, account institution, closing date, payment date, total debit/credit, and classify as bank_statement when appropriate."
+      : "For bank statements or credit card statements, extract the main account institution or statement issuer into vendor, and summarize visible transaction context.",
     `Language hint: ${languageHint || "ja"}.`,
     `Original file name: ${fileName}.`,
     `Input type: ${isPdf ? "pdf" : "image"}.`,
     'JSON schema: {"document_type":"","owner_type":"","transaction_type":"","date":"","issue_date":"","due_date":"","amount":0,"tax_amount":0,"tax_rate":"","vendor":"","invoice_number":"","category":"","payment_method":"","summary":"","ocr_text":"","confidence":0,"need_review":true}',
   ].join("\n");
+}
+
+async function renderPdfPages(pdfBuffer) {
+  ensureDataDir();
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "finflow-pdf-"));
+  const inputPath = path.join(tempRoot, "input.pdf");
+  const outputDir = path.join(tempRoot, "pages");
+  fs.writeFileSync(inputPath, pdfBuffer);
+  const { stdout } = await execFileAsync("/usr/bin/swift", [PDF_RENDER_SCRIPT, inputPath, outputDir, String(OCR_MAX_PDF_PAGES)], {
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  const pages = JSON.parse(stdout || "[]");
+  const rendered = pages.map((page) => {
+    const imageBuffer = fs.readFileSync(page.path);
+    return {
+      page: page.page,
+      dataUrl: `data:image/png;base64,${imageBuffer.toString("base64")}`,
+    };
+  });
+  fs.rmSync(tempRoot, { recursive: true, force: true });
+  return rendered;
+}
+
+function mergePageResults(pageResults) {
+  if (!pageResults.length) return {};
+  const merged = { ...pageResults[0] };
+  merged.ocr_text = pageResults.map((item, index) => `--- page ${index + 1} ---\n${item.ocr_text || ""}`).join("\n");
+  merged.summary = pageResults.map((item) => item.summary).filter(Boolean).join(" / ");
+  merged.confidence = Number((pageResults.reduce((sum, item) => sum + Number(item.confidence || 0), 0) / pageResults.length).toFixed(2));
+  for (const item of pageResults) {
+    if (!merged.vendor && item.vendor) merged.vendor = item.vendor;
+    if (!merged.invoice_number && item.invoice_number) merged.invoice_number = item.invoice_number;
+    if ((!merged.amount || merged.amount === 0) && item.amount) merged.amount = item.amount;
+    if ((!merged.tax_amount || merged.tax_amount === 0) && item.tax_amount) merged.tax_amount = item.tax_amount;
+    if (!merged.date && item.date) merged.date = item.date;
+    if (!merged.issue_date && item.issue_date) merged.issue_date = item.issue_date;
+    if (!merged.due_date && item.due_date) merged.due_date = item.due_date;
+  }
+  return merged;
 }
 
 function normalizeOcrDocument(ocr, { fileName, language, extension, sourceHash }) {
@@ -236,8 +295,25 @@ function saveTrainingSample(payload) {
       document_type: payload.final_document?.document_type || "",
       owner_type: payload.final_document?.owner_type || "",
       changed_fields: payload.changed_fields || [],
+      language: payload.language || payload.final_document?.language || "",
+      confidence_before: payload.initial_document?.confidence ?? null,
+      confidence_after: payload.final_document?.confidence ?? null,
+      before_fields: payload.before_fields || payload.initial_document || {},
+      after_fields: payload.after_fields || payload.final_document || {},
     },
   });
+}
+
+function readNdjson(filePath) {
+  try {
+    return fs
+      .readFileSync(filePath, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+  } catch {
+    return [];
+  }
 }
 
 async function handleOcr(req, res) {
@@ -269,20 +345,30 @@ async function handleOcr(req, res) {
       sendJson(res, 400, { error: "dataUrl is required" });
       return;
     }
-    const rawBase64 = dataUrl.split(",")[1] || "";
-    const bytes = Buffer.byteLength(rawBase64, "base64");
+    const parsedInput = parseDataUrl(dataUrl);
+    const bytes = parsedInput.buffer.length;
     if (bytes > OCR_MAX_BYTES) {
       sendJson(res, 413, { error: `File too large for OCR. Limit is ${OCR_MAX_BYTES} bytes.` });
       return;
     }
-    const cacheKey = sourceHash || sha256(`${fileName}:${rawBase64.slice(0, 2000)}`);
+    const cacheKey = sourceHash || sha256(`${fileName}:${parsedInput.base64.slice(0, 2000)}`);
     const cache = safeReadJson(OCR_CACHE_PATH, {});
     if (cache[cacheKey]) {
       sendJson(res, 200, { ok: true, document: { ...cache[cacheKey], id: `doc-${Date.now()}-${Math.round(Math.random() * 9999)}` }, cached: true });
       return;
     }
 
-    const ocr = await callOpenAIForOcr({ fileName, dataUrl, languageHint: language });
+    let ocr;
+    if (parsedInput.mimeType === "application/pdf") {
+      const pages = await renderPdfPages(parsedInput.buffer);
+      const pageResults = [];
+      for (const page of pages) {
+        pageResults.push(await callOpenAIForOcr({ fileName: `${fileName}#page-${page.page}`, dataUrl: page.dataUrl, languageHint: language }));
+      }
+      ocr = mergePageResults(pageResults);
+    } else {
+      ocr = await callOpenAIForOcr({ fileName, dataUrl, languageHint: language });
+    }
     const extension = path.extname(fileName).replace(".", "") || "jpg";
     const normalized = normalizeOcrDocument(ocr, { fileName, language, extension, sourceHash: cacheKey });
     cache[cacheKey] = normalized;
@@ -318,6 +404,35 @@ async function handleTrainingSample(req, res) {
   }
 }
 
+async function handleTrainingStats(req, res) {
+  const meta = readNdjson(TRAINING_META_PATH);
+  const cache = safeReadJson(OCR_CACHE_PATH, {});
+  const total = meta.length;
+  const exactHits = meta.filter((item) => !item.changed_fields || item.changed_fields.length === 0).length;
+  const latest = meta
+    .slice(-10)
+    .reverse()
+    .map((item) => ({
+      id: item.id,
+      file_name: item.file_name,
+      document_type: item.final_document?.document_type || "",
+      language: item.language || item.final_document?.language || "",
+      confidence_before: item.initial_document?.confidence ?? null,
+      confidence_after: item.final_document?.confidence ?? null,
+      changed_fields: item.changed_fields || [],
+      created_at: item.created_at,
+    }));
+  sendJson(res, 200, {
+    ok: true,
+    stats: {
+      total_samples: total,
+      exact_hit_rate: total ? Number((exactHits / total).toFixed(4)) : 0,
+      cache_entries: Object.keys(cache).length,
+      latest_samples: latest,
+    },
+  });
+}
+
 function serveStatic(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   let pathname = decodeURIComponent(url.pathname);
@@ -347,6 +462,10 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.url.startsWith("/api/training-sample")) {
     await handleTrainingSample(req, res);
+    return;
+  }
+  if (req.url.startsWith("/api/training-stats")) {
+    await handleTrainingStats(req, res);
     return;
   }
   serveStatic(req, res);
