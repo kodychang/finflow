@@ -91,6 +91,63 @@ function parseDataUrl(dataUrl) {
   };
 }
 
+function extractJsonString(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    throw new Error("OCR returned an empty response");
+  }
+  const fencedMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const candidate = fencedMatch ? fencedMatch[1].trim() : text;
+  if (candidate.startsWith("{") && candidate.endsWith("}")) {
+    return candidate;
+  }
+  const start = candidate.indexOf("{");
+  const end = candidate.lastIndexOf("}");
+  if (start !== -1 && end !== -1 && end > start) {
+    return candidate.slice(start, end + 1);
+  }
+  throw new Error(`OCR did not return valid JSON: ${candidate.slice(0, 200)}`);
+}
+
+function extractOutputText(payload) {
+  if (typeof payload.output_text === "string" && payload.output_text.trim()) {
+    return payload.output_text;
+  }
+  const fragments = [];
+  for (const item of payload.output || []) {
+    for (const content of item.content || []) {
+      if (content.type === "output_text" && content.text) {
+        fragments.push(content.text);
+      }
+    }
+  }
+  return fragments.join("\n").trim();
+}
+
+function repairJsonString(text) {
+  let repaired = String(text || "");
+  repaired = repaired.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, " ");
+  repaired = repaired.replace(/\r?\n/g, "\\n");
+  repaired = repaired.replace(/\t/g, " ");
+  repaired = repaired.replace(/\\(?!["\\/bfnrtu])/g, "\\\\");
+  repaired = repaired.replace(/,\s*([}\]])/g, "$1");
+  return repaired;
+}
+
+function parseOcrJson(rawText) {
+  const jsonText = extractJsonString(rawText);
+  try {
+    return JSON.parse(jsonText);
+  } catch (error) {
+    const repaired = repairJsonString(jsonText);
+    try {
+      return JSON.parse(repaired);
+    } catch {
+      throw new Error(`OCR JSON parse failed: ${error.message}`);
+    }
+  }
+}
+
 function sanitizeFilePart(value) {
   return String(value || "")
     .trim()
@@ -147,8 +204,8 @@ async function callOpenAIForOcr({ fileName, dataUrl, languageHint }) {
 
     if (response.ok) {
       const payload = await response.json();
-      const rawText = payload.output_text || "";
-      return JSON.parse(rawText);
+      const rawText = extractOutputText(payload);
+      return parseOcrJson(rawText);
     }
 
     const errorText = await response.text();

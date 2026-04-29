@@ -369,10 +369,10 @@ const aiPipelineRules = [
 ];
 
 const accounts = [
-  { name: "会社銀行口座", type: "bank", owner: "company", balance: 1840000, mixed: false, progress: 86, connection: "manual_csv" },
-  { name: "会社クレジットカード", type: "credit_card", owner: "company", balance: -246800, mixed: false, progress: 72, connection: "manual_csv" },
-  { name: "個人銀行口座", type: "bank", owner: "personal", balance: 930000, mixed: true, progress: 54, connection: "manual" },
-  { name: "PayPay", type: "payment", owner: "mixed", balance: 128000, mixed: true, progress: 38, connection: "statement_upload" },
+  { id: "acc-001", name: "会社銀行口座", type: "bank", owner: "company", balance: 1840000, mixed: false, progress: 86, connection: "manual_csv" },
+  { id: "acc-002", name: "会社クレジットカード", type: "credit_card", owner: "company", balance: -246800, mixed: false, progress: 72, connection: "manual_csv" },
+  { id: "acc-003", name: "個人銀行口座", type: "bank", owner: "personal", balance: 930000, mixed: true, progress: 54, connection: "manual" },
+  { id: "acc-004", name: "PayPay", type: "payment", owner: "mixed", balance: 128000, mixed: true, progress: 38, connection: "statement_upload" },
 ];
 
 const companyProfile = {
@@ -784,13 +784,20 @@ const feedbackForm = document.querySelector("#feedback-form");
 const businessFormGenerator = document.querySelector("#business-form-generator");
 const customerSearch = document.querySelector("#customer-search");
 const manualTransactionForm = document.querySelector("#manual-transaction-form");
+const accountCreateForm = document.querySelector("#account-create-form");
 const companyProfileForm = document.querySelector("#company-profile-form");
 const personalProfileForm = document.querySelector("#personal-profile-form");
 const phoneVerificationForm = document.querySelector("#phone-verification-form");
 const previewFormButton = document.querySelector("#preview-form-button");
+const uploadCompleteModal = document.querySelector("#upload-complete-modal");
+const uploadCompleteMessage = document.querySelector("#upload-complete-message");
 let ocrRuntime = {
   busy: false,
   message: "OCR未実行",
+  total: 0,
+  completed: 0,
+  percent: 0,
+  currentFile: "",
 };
 let lastOcrResultByHash = {};
 
@@ -1256,10 +1263,17 @@ function renderPolicyUpdates() {
 function renderOcrRoadmap() {
   const node = document.querySelector("#ocr-mode-board");
   if (!node) return;
+  const progressHtml = ocrRuntime.busy
+    ? `<div class="ocr-progress">
+        <div class="ocr-progress-bar"><span style="width:${ocrRuntime.percent}%"></span></div>
+        <small>${ocrRuntime.completed}/${ocrRuntime.total} ${escapeHtml(ocrRuntime.currentFile || "")} ${ocrRuntime.percent}%</small>
+      </div>`
+    : "";
   node.innerHTML =
     `<article class="ocr-mode-card">
       <strong>現在の状態</strong>
       <span>${escapeHtml(ocrRuntime.message)}</span>
+      ${progressHtml}
     </article>` +
     ocrRoadmap
     .map(
@@ -1277,18 +1291,56 @@ function renderAccounts() {
   bindProfileForm(companyProfileForm, companyProfile);
   bindProfileForm(personalProfileForm, personalProfile);
   renderPhoneVerification();
+  const accountSelect = manualTransactionForm?.querySelector('select[name="account"]');
+  if (accountSelect) {
+    accountSelect.innerHTML = accounts.map((account) => `<option>${escapeHtml(account.name)}</option>`).join("");
+  }
   document.querySelector("#account-list").innerHTML = accounts
     .map(
       (account) => `
-        <article class="account-card">
-          <div>
+        <article class="account-card" data-account-id="${account.id}">
+          <div class="account-card-top">
+            <div>
             <span>${accountOwnerLabel(account.owner)} / ${accountTypeLabel(account.type)} / ${connectionLabel(account.connection)}</span>
             <strong>${account.name}</strong>
             <div class="progress-bar"><i style="width:${account.progress}%"></i></div>
+            </div>
+            <div class="number">
+              <strong>${yen.format(account.balance)}</strong>
+              <span>${account.mixed ? "混用確認あり" : "整理済み"}</span>
+            </div>
           </div>
-          <div class="number">
-            <strong>${yen.format(account.balance)}</strong>
-            <span>${account.mixed ? "混用確認あり" : "整理済み"}</span>
+          <div class="account-edit-grid">
+            <label>
+              口座名
+              <input data-account-field="name" value="${escapeHtml(account.name)}" />
+            </label>
+            <label>
+              種別
+              <select data-account-field="type">
+                ${["bank", "credit_card", "payment"].map((type) => `<option value="${type}" ${account.type === type ? "selected" : ""}>${accountTypeLabel(type)}</option>`).join("")}
+              </select>
+            </label>
+            <label>
+              所有区分
+              <select data-account-field="owner">
+                ${["company", "personal", "mixed"].map((owner) => `<option value="${owner}" ${account.owner === owner ? "selected" : ""}>${accountOwnerLabel(owner)}</option>`).join("")}
+              </select>
+            </label>
+            <label>
+              接続方法
+              <select data-account-field="connection">
+                ${["manual", "manual_csv", "statement_upload", "api_future"].map((connection) => `<option value="${connection}" ${account.connection === connection ? "selected" : ""}>${connectionLabel(connection)}</option>`).join("")}
+              </select>
+            </label>
+            <label>
+              残高
+              <input data-account-field="balance" type="number" step="1" value="${account.balance}" />
+            </label>
+            <label class="account-check">
+              <input data-account-field="mixed" type="checkbox" ${account.mixed ? "checked" : ""} />
+              混在利用あり
+            </label>
           </div>
         </article>
       `,
@@ -1742,19 +1794,36 @@ function customerInput(customer, field, label) {
 }
 
 function renderFeedback() {
+  const typeLabel = {
+    ocr: "OCR識別の相談",
+    tax: "申告・税額見込み",
+    billing: "契約・請求",
+    feature: "操作方法・改善要望",
+  };
+  const priorityLabel = {
+    normal: "通常",
+    high: "高め",
+    urgent: "至急",
+  };
+  const statusLabel = {
+    open: "受付中",
+    in_review: "確認中",
+    resolved: "回答済み",
+    closed: "完了",
+  };
   document.querySelector("#feedback-list").innerHTML = feedbackTickets
     .map(
       (ticket) => `
         <article class="feedback-ticket">
           <strong>${escapeHtml(ticket.message)}</strong>
           <div class="ticket-meta">
-            <span>${ticket.type}</span>
-            <span>${ticket.priority}</span>
+            <span>${typeLabel[ticket.type] || ticket.type}</span>
+            <span>${priorityLabel[ticket.priority] || ticket.priority}</span>
             <span>${ticket.createdAt}</span>
           </div>
           <select class="status-select" data-feedback-id="${ticket.id}">
             ${["open", "in_review", "resolved", "closed"]
-              .map((status) => `<option value="${status}" ${ticket.status === status ? "selected" : ""}>${status}</option>`)
+              .map((status) => `<option value="${status}" ${ticket.status === status ? "selected" : ""}>${statusLabel[status] || status}</option>`)
               .join("")}
           </select>
         </article>
@@ -2168,6 +2237,48 @@ document.querySelector("#add-employee-button").addEventListener("click", () => {
   render();
 });
 
+accountCreateForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const data = new FormData(accountCreateForm);
+  const name = String(data.get("name") || "").trim();
+  if (!name) return;
+  const owner = String(data.get("owner") || "company");
+  accounts.unshift({
+    id: `acc-${Date.now()}`,
+    name,
+    type: String(data.get("type") || "bank"),
+    owner,
+    balance: Number(data.get("balance") || 0),
+    mixed: owner === "mixed",
+    progress: 12,
+    connection: String(data.get("connection") || "manual"),
+  });
+  accountCreateForm.reset();
+  renderAccounts();
+});
+
+document.querySelector("#account-list")?.addEventListener("input", (event) => {
+  const card = event.target.closest("[data-account-id]");
+  const field = event.target.dataset.accountField;
+  if (!card || !field) return;
+  const account = accounts.find((item) => item.id === card.dataset.accountId);
+  if (!account) return;
+  if (field === "balance") {
+    account[field] = Number(event.target.value || 0);
+  } else if (field === "mixed") {
+    account[field] = event.target.checked;
+  } else {
+    account[field] = event.target.value;
+  }
+  if (field === "owner" && event.target.value === "mixed") {
+    account.mixed = true;
+  }
+  if (field === "owner" && event.target.value !== "mixed" && event.target.type !== "checkbox") {
+    account.mixed = false;
+  }
+  renderAccounts();
+});
+
 document.querySelector("#employee-table").addEventListener("change", (event) => {
   const roleId = event.target.dataset.employeeId;
   const statusId = event.target.dataset.employeeStatusId;
@@ -2400,6 +2511,19 @@ function importFiles(fileList) {
   processUploads([...fileList]);
 }
 
+function openUploadCompleteModal(processedCount) {
+  if (!uploadCompleteModal || !uploadCompleteMessage) return;
+  uploadCompleteMessage.textContent = `OCR処理が完了しました。${processedCount}件を書類一覧に反映しました。`;
+  uploadCompleteModal.classList.remove("hidden");
+  uploadCompleteModal.setAttribute("aria-hidden", "false");
+}
+
+function closeUploadCompleteModal() {
+  if (!uploadCompleteModal) return;
+  uploadCompleteModal.classList.add("hidden");
+  uploadCompleteModal.setAttribute("aria-hidden", "true");
+}
+
 fileInput.addEventListener("change", (event) => {
   importFiles(event.target.files);
   fileInput.value = "";
@@ -2428,21 +2552,39 @@ dropZone.addEventListener("drop", (event) => {
   importFiles(event.dataTransfer.files);
 });
 
+document.querySelector("#upload-complete-close")?.addEventListener("click", closeUploadCompleteModal);
+uploadCompleteModal?.addEventListener("click", (event) => {
+  if (event.target === uploadCompleteModal) {
+    closeUploadCompleteModal();
+  }
+});
+
 render();
 
 async function processUploads(files) {
   if (!files.length || ocrRuntime.busy) return;
   ocrRuntime.busy = true;
   ocrRuntime.message = `OCR処理中 ${files.length}件`;
+  ocrRuntime.total = files.length;
+  ocrRuntime.completed = 0;
+  ocrRuntime.percent = 0;
+  ocrRuntime.currentFile = files[0]?.name || "";
+  closeUploadCompleteModal();
   renderOcrRoadmap();
   try {
     const processed = [];
     for (const file of files) {
+      ocrRuntime.currentFile = file.name;
+      ocrRuntime.message = `OCR処理中 ${files.length}件`;
+      renderOcrRoadmap();
       if (file.type.startsWith("image/") || file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
         processed.push(await runRealOcr(file));
       } else {
         processed.push(mockOcrProvider(file));
       }
+      ocrRuntime.completed += 1;
+      ocrRuntime.percent = Math.min(100, Math.round((ocrRuntime.completed / ocrRuntime.total) * 100));
+      renderOcrRoadmap();
     }
     documents = [...processed, ...documents];
     selectedId = processed[0]?.id || selectedId;
@@ -2452,13 +2594,19 @@ async function processUploads(files) {
     currentDirectoryFilter = "";
     searchInput.value = "";
     ocrRuntime.message = `OCR完了 ${processed.length}件 / 画像・PDFはAPI解析、CSV等は手動確認`;
+    ocrRuntime.currentFile = "";
+    ocrRuntime.percent = 100;
     render();
+    openUploadCompleteModal(processed.length);
   } catch (error) {
     ocrRuntime.message = `OCR失敗: ${error.message || "server error"}`;
+    ocrRuntime.currentFile = "";
     renderOcrRoadmap();
     window.alert(`OCRに失敗しました: ${error.message || "server error"}`);
   } finally {
     ocrRuntime.busy = false;
+    ocrRuntime.total = 0;
+    ocrRuntime.completed = 0;
     renderOcrRoadmap();
   }
 }
@@ -2476,7 +2624,10 @@ async function runRealOcr(file) {
       sourceHash,
     }),
   });
-  const payload = await response.json();
+  const payload = await response.json().catch(async () => {
+    const text = await response.text().catch(() => "");
+    throw new Error(text || "OCR server returned invalid JSON");
+  });
   if (!response.ok || !payload.ok || !payload.document) {
     throw new Error(payload.error || "OCR API error");
   }
@@ -2496,7 +2647,7 @@ function readFileAsDataUrl(file) {
 async function optimizeImageForOcr(file) {
   const dataUrl = await readFileAsDataUrl(file);
   const image = await loadImage(dataUrl);
-  const maxSide = 1800;
+  const maxSide = 1600;
   const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
   const width = Math.max(1, Math.round(image.width * scale));
   const height = Math.max(1, Math.round(image.height * scale));
@@ -2507,7 +2658,14 @@ async function optimizeImageForOcr(file) {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, width, height);
   ctx.drawImage(image, 0, 0, width, height);
-  return canvas.toDataURL("image/jpeg", 0.86);
+  let quality = 0.82;
+  let output = canvas.toDataURL("image/jpeg", quality);
+  const maxBytes = 1.5 * 1024 * 1024;
+  while (estimateDataUrlBytes(output) > maxBytes && quality > 0.45) {
+    quality = Number((quality - 0.08).toFixed(2));
+    output = canvas.toDataURL("image/jpeg", quality);
+  }
+  return output;
 }
 
 function loadImage(dataUrl) {
@@ -2523,6 +2681,12 @@ async function hashString(value) {
   const bytes = new TextEncoder().encode(value);
   const hashBuffer = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(hashBuffer)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function estimateDataUrlBytes(dataUrl) {
+  const base64 = String(dataUrl).split(",")[1] || "";
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.floor((base64.length * 3) / 4) - padding;
 }
 
 async function saveTrainingSample(payload) {

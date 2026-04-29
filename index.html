@@ -21,13 +21,12 @@
           <button class="nav-item active" data-view="home">ホーム</button>
           <button class="nav-item" data-view="readiness">申告チェック</button>
           <button class="nav-item" data-view="documents">書類一覧</button>
-          <button class="nav-item" data-view="accounts">口座・プロフィール</button>
+          <button class="nav-item" data-view="accounts">設定</button>
           <button class="nav-item" data-view="income">損益一覧</button>
           <button class="nav-item" data-view="tax">税額見込み</button>
           <button class="nav-item" data-view="customers">取引先管理</button>
           <button class="nav-item" data-view="forms">帳票作成</button>
-          <button class="nav-item" data-view="membership">会員・権限</button>
-          <button class="nav-item" data-view="feedback">ご意見</button>
+          <button class="nav-item" data-view="feedback">カスタマーサポート</button>
           <button class="nav-item" data-view="training">学習履歴</button>
         </nav>
 
@@ -179,8 +178,8 @@
 
           <section class="center-panel hidden" id="accounts-view">
             <div class="section-heading">
-              <h3>口座・事業者プロフィール</h3>
-              <p>会社情報、個人情報、電話確認、口座一覧、Google Drive バックアップ構成をここでまとめて管理します。</p>
+              <h3>アカウント設定</h3>
+              <p>法人情報、個人情報、電話確認、口座設定、購読プラン、子アカウント権限をここでまとめて管理します。</p>
             </div>
             <div class="profile-layout">
               <section class="profile-card">
@@ -284,6 +283,37 @@
                 <div class="verification-status" id="verification-status"></div>
               </section>
             </div>
+            <section class="profile-card subscription-card">
+              <div class="section-heading compact">
+                <h3>契約プランと子アカウント</h3>
+                <p>月額プラン、利用中の上限、担当者ごとの権限を同じ画面で管理します。</p>
+              </div>
+              <div class="membership-layout">
+                <div class="plan-grid" id="plan-grid"></div>
+                <div class="section-heading compact">
+                  <h3>子アカウントと権限</h3>
+                  <p>Owner は設定全体、Accountant は確認と帳票、Staff はアップロード中心、Viewer は閲覧のみです。</p>
+                </div>
+                <div class="employee-toolbar">
+                  <button class="confirm-button" id="add-employee-button">子アカウントを追加</button>
+                  <span id="employee-quota"></span>
+                </div>
+                <div class="employee-table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>姓名</th>
+                        <th>Email</th>
+                        <th>角色</th>
+                        <th>状态</th>
+                        <th>权限摘要</th>
+                      </tr>
+                    </thead>
+                    <tbody id="employee-table"></tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
             <div class="bank-strategy">
               <article>
                 <strong>今のおすすめ</strong>
@@ -311,6 +341,33 @@
               </select>
               <button type="submit">手动追加</button>
             </form>
+            <section class="profile-card">
+              <div class="section-heading compact">
+                <h3>口座一覧</h3>
+                <p>口座名、種別、所有区分、接続方法、混在有無、残高を編集できます。必要なら新規口座も追加します。</p>
+              </div>
+              <form id="account-create-form" class="manual-transaction-form">
+                <input name="name" placeholder="新しい口座名" />
+                <select name="type">
+                  <option value="bank">銀行口座</option>
+                  <option value="credit_card">カード</option>
+                  <option value="payment">決済口座</option>
+                </select>
+                <select name="owner">
+                  <option value="company">法人</option>
+                  <option value="personal">個人</option>
+                  <option value="mixed">混在</option>
+                </select>
+                <input name="balance" type="number" step="1" placeholder="残高" />
+                <select name="connection">
+                  <option value="manual">手入力</option>
+                  <option value="manual_csv">CSV取込</option>
+                  <option value="statement_upload">明細アップロード</option>
+                  <option value="api_future">API連携予定</option>
+                </select>
+                <button type="submit">口座を追加</button>
+              </form>
+            </section>
             <div class="account-list" id="account-list"></div>
             <div class="transaction-list" id="transaction-list"></div>
             <section class="drive-backup-card">
@@ -320,38 +377,6 @@
               </div>
               <div id="drive-structure"></div>
             </section>
-          </section>
-
-          <section class="center-panel hidden" id="membership-view">
-            <div class="section-heading">
-              <h3>会员系统与权限管理</h3>
-              <p>订阅会员费按月计费。¥1,500/月可增加员工账号3名，¥2,500/月可增加员工账号6名。</p>
-            </div>
-            <div class="membership-layout">
-              <div class="plan-grid" id="plan-grid"></div>
-              <div class="section-heading compact">
-                <h3>员工账号与角色</h3>
-                <p>Owner 可管理用户侧账单与员工，Accountant 可确认财务资料，Staff 可上传文件，Viewer 只读。平台经营者后台不对普通用户开放。</p>
-              </div>
-              <div class="employee-toolbar">
-                <button class="confirm-button" id="add-employee-button">增加员工账号</button>
-                <span id="employee-quota"></span>
-              </div>
-              <div class="employee-table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>姓名</th>
-                      <th>Email</th>
-                      <th>角色</th>
-                      <th>状态</th>
-                      <th>权限摘要</th>
-                    </tr>
-                  </thead>
-                  <tbody id="employee-table"></tbody>
-                </table>
-              </div>
-            </div>
           </section>
 
           <section class="center-panel hidden" id="forms-view">
@@ -501,33 +526,33 @@
 
           <section class="center-panel hidden" id="feedback-view">
             <div class="section-heading">
-              <h3>客户反馈机制</h3>
-              <p>收集问题、功能请求、税务/识别错误反馈，并在后台形成处理状态。</p>
+              <h3>カスタマーサポート</h3>
+              <p>OCR、申告見込み、会員課金、操作相談をまとめて受け付け、対応状況を追えるようにします。</p>
             </div>
             <div class="feedback-layout">
               <form id="feedback-form" class="feedback-form">
                 <label>
-                  类型
+                  お問い合わせ種別
                   <select name="type">
-                    <option value="ocr">OCR识别问题</option>
-                    <option value="tax">报税预估问题</option>
-                    <option value="billing">会员/支付问题</option>
-                    <option value="feature">功能建议</option>
+                    <option value="ocr">OCR識別の相談</option>
+                    <option value="tax">申告・税額見込み</option>
+                    <option value="billing">契約・請求</option>
+                    <option value="feature">操作方法・改善要望</option>
                   </select>
                 </label>
                 <label>
-                  优先级
+                  緊急度
                   <select name="priority">
-                    <option value="normal">普通</option>
-                    <option value="high">高</option>
-                    <option value="urgent">紧急</option>
+                    <option value="normal">通常</option>
+                    <option value="high">高め</option>
+                    <option value="urgent">至急</option>
                   </select>
                 </label>
                 <label class="wide">
-                  内容
-                  <textarea name="message" rows="4" placeholder="请描述问题或建议"></textarea>
+                  ご相談内容
+                  <textarea name="message" rows="4" placeholder="困っている点、対象書類、希望対応を入力してください"></textarea>
                 </label>
-                <button class="confirm-button" type="submit">提交反馈</button>
+                <button class="confirm-button" type="submit">サポート依頼を送信</button>
               </form>
               <div class="feedback-list" id="feedback-list"></div>
             </div>
@@ -749,15 +774,26 @@
       <button class="active" data-view="home">ホーム</button>
       <button data-view="readiness">申告</button>
       <button data-view="documents">書類</button>
-      <button data-view="accounts">口座</button>
+      <button data-view="accounts">設定</button>
       <button data-view="income">損益</button>
       <button data-view="tax">税額</button>
       <button data-view="customers">取引先</button>
       <button data-view="forms">帳票</button>
-      <button data-view="membership">権限</button>
-      <button data-view="feedback">意見</button>
+      <button data-view="feedback">相談</button>
       <button data-view="training">学習</button>
     </nav>
+
+    <div class="modal-backdrop hidden" id="upload-complete-modal" aria-hidden="true">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="upload-complete-title">
+        <div class="section-heading compact">
+          <h3 id="upload-complete-title">アップロード完了</h3>
+          <p id="upload-complete-message">OCR処理が完了しました。</p>
+        </div>
+        <div class="modal-actions">
+          <button class="confirm-button" id="upload-complete-close" type="button">確認</button>
+        </div>
+      </div>
+    </div>
 
     <script src="./app.js"></script>
   </body>
