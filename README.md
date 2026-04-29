@@ -33,7 +33,12 @@ Notes:
 
 - Real image OCR now runs through `POST /api/ocr` on the local server.
 - The frontend must be opened via `http://localhost:4173`, not `file://...`, otherwise browser OCR requests will fail.
-- Image files are sent to OpenAI vision through the local server. PDF and CSV files still fall back to the manual confirmation flow in this version.
+- Image files and PDFs are sent to OpenAI vision through the local server. CSV files still fall back to the manual confirmation flow.
+- The browser downsizes large images before upload to reduce OCR cost.
+- OCR results are cached locally in `data/ocr_cache.json` using a content hash to avoid repeat charges on the same file.
+- User-confirmed corrections are saved to:
+  - `data/training_samples.ndjson`
+  - `data/paddle_ocr_training.jsonl`
 
 The platform operator prototype is separated from the customer workspace:
 

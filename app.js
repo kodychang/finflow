@@ -792,6 +792,7 @@ let ocrRuntime = {
   busy: false,
   message: "OCR未実行",
 };
+let lastOcrResultByHash = {};
 
 function mockOcrProvider(file) {
   const lower = file.name.toLowerCase();
@@ -2044,6 +2045,8 @@ form.addEventListener("input", () => {
 document.querySelector("#confirm-button").addEventListener("click", () => {
   const result = commitFormChanges();
   if (!result) return;
+  const changedFields = result.changed;
+  const beforeSnapshot = lastOcrResultByHash[result.doc.hash] || null;
   result.doc.status = "done";
   result.doc.archive_status = "archived";
   result.doc.target_directory = result.doc.target_directory === "pending_review" ? suggestDirectory(result.doc) : result.doc.target_directory;
@@ -2056,6 +2059,18 @@ document.querySelector("#confirm-button").addEventListener("click", () => {
     fields: result.changed.length ? result.changed.join(", ") : "no_user_change",
     time: new Date().toLocaleString("ja-JP"),
   });
+  if (beforeSnapshot) {
+    void saveTrainingSample({
+      file_name: result.doc.original_name || result.doc.name,
+      ocr_engine: result.doc.ocr_engine || "unknown",
+      ocr_text: result.doc.ocr_text || "",
+      initial_document: beforeSnapshot,
+      final_document: result.doc,
+      changed_fields: changedFields,
+    }).catch((error) => {
+      console.warn("training sample save failed", error);
+    });
+  }
   currentFilter = "all";
   currentSmartFilter = "";
   currentDirectoryFilter = "";
@@ -2076,7 +2091,7 @@ document.querySelector("#delete-button").addEventListener("click", () => {
 });
 
 document.querySelector("#simulate-ai").addEventListener("click", () => {
-  window.alert(`OCR状態: ${ocrRuntime.message}\n画像はローカルOCR API経由で解析します。PDF/CSVは現時点では手動確認フローです。`);
+  window.alert(`OCR状態: ${ocrRuntime.message}\n画像とPDFはローカルOCR API経由で解析します。CSVは現時点では手動確認フローです。`);
 });
 
 document.querySelectorAll(".segmented-control button").forEach((button) => {
@@ -2415,7 +2430,7 @@ async function processUploads(files) {
   try {
     const processed = [];
     for (const file of files) {
-      if (file.type.startsWith("image/")) {
+      if (file.type.startsWith("image/") || file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
         processed.push(await runRealOcr(file));
       } else {
         processed.push(mockOcrProvider(file));
@@ -2428,7 +2443,7 @@ async function processUploads(files) {
     currentSmartFilter = "";
     currentDirectoryFilter = "";
     searchInput.value = "";
-    ocrRuntime.message = `OCR完了 ${processed.length}件 / 画像はAPI解析、非画像は手動確認`;
+    ocrRuntime.message = `OCR完了 ${processed.length}件 / 画像・PDFはAPI解析、CSV等は手動確認`;
     render();
   } catch (error) {
     ocrRuntime.message = `OCR失敗: ${error.message || "server error"}`;
@@ -2441,20 +2456,23 @@ async function processUploads(files) {
 }
 
 async function runRealOcr(file) {
-  const dataUrl = await readFileAsDataUrl(file);
+  const prepared = file.type.startsWith("image/") ? await optimizeImageForOcr(file) : await readFileAsDataUrl(file);
+  const sourceHash = await hashString(prepared);
   const response = await fetch("http://localhost:4173/api/ocr", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       fileName: file.name,
-      dataUrl,
+      dataUrl: prepared,
       language: languageSelect.value,
+      sourceHash,
     }),
   });
   const payload = await response.json();
   if (!response.ok || !payload.ok || !payload.document) {
     throw new Error(payload.error || "OCR API error");
   }
+  lastOcrResultByHash[payload.document.hash] = { ...payload.document };
   return payload.document;
 }
 
@@ -2465,4 +2483,48 @@ function readFileAsDataUrl(file) {
     reader.onerror = () => reject(new Error("ファイル読込に失敗しました"));
     reader.readAsDataURL(file);
   });
+}
+
+async function optimizeImageForOcr(file) {
+  const dataUrl = await readFileAsDataUrl(file);
+  const image = await loadImage(dataUrl);
+  const maxSide = 1800;
+  const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+  const width = Math.max(1, Math.round(image.width * scale));
+  const height = Math.max(1, Math.round(image.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(image, 0, 0, width, height);
+  return canvas.toDataURL("image/jpeg", 0.86);
+}
+
+function loadImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("画像前処理に失敗しました"));
+    image.src = dataUrl;
+  });
+}
+
+async function hashString(value) {
+  const bytes = new TextEncoder().encode(value);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(hashBuffer)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function saveTrainingSample(payload) {
+  const response = await fetch("http://localhost:4173/api/training-sample", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error || "training sample save failed");
+  }
 }
