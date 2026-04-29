@@ -788,6 +788,10 @@ const companyProfileForm = document.querySelector("#company-profile-form");
 const personalProfileForm = document.querySelector("#personal-profile-form");
 const phoneVerificationForm = document.querySelector("#phone-verification-form");
 const previewFormButton = document.querySelector("#preview-form-button");
+let ocrRuntime = {
+  busy: false,
+  message: "OCR未実行",
+};
 
 function mockOcrProvider(file) {
   const lower = file.name.toLowerCase();
@@ -1251,7 +1255,12 @@ function renderPolicyUpdates() {
 function renderOcrRoadmap() {
   const node = document.querySelector("#ocr-mode-board");
   if (!node) return;
-  node.innerHTML = ocrRoadmap
+  node.innerHTML =
+    `<article class="ocr-mode-card">
+      <strong>現在の状態</strong>
+      <span>${escapeHtml(ocrRuntime.message)}</span>
+    </article>` +
+    ocrRoadmap
     .map(
       (item) => `
         <article class="ocr-mode-card">
@@ -2067,12 +2076,7 @@ document.querySelector("#delete-button").addEventListener("click", () => {
 });
 
 document.querySelector("#simulate-ai").addEventListener("click", () => {
-  documents = documents.map((doc) => ({
-    ...doc,
-    confidence: Number(Math.min(0.98, doc.confidence + 0.03).toFixed(2)),
-    need_review: doc.confidence < 0.82,
-  }));
-  render();
+  window.alert(`OCR状態: ${ocrRuntime.message}\n画像はローカルOCR API経由で解析します。PDF/CSVは現時点では手動確認フローです。`);
 });
 
 document.querySelectorAll(".segmented-control button").forEach((button) => {
@@ -2370,16 +2374,7 @@ languageSelect.addEventListener("change", () => {
 });
 
 function importFiles(fileList) {
-  const newDocs = [...fileList].map(mockOcrProvider);
-  if (!newDocs.length) return;
-  documents = [...newDocs, ...documents];
-  selectedId = newDocs[0]?.id || selectedId;
-  currentView = "documents";
-  currentFilter = "all";
-  currentSmartFilter = "";
-  currentDirectoryFilter = "";
-  searchInput.value = "";
-  render();
+  processUploads([...fileList]);
 }
 
 fileInput.addEventListener("change", (event) => {
@@ -2411,3 +2406,63 @@ dropZone.addEventListener("drop", (event) => {
 });
 
 render();
+
+async function processUploads(files) {
+  if (!files.length || ocrRuntime.busy) return;
+  ocrRuntime.busy = true;
+  ocrRuntime.message = `OCR処理中 ${files.length}件`;
+  renderOcrRoadmap();
+  try {
+    const processed = [];
+    for (const file of files) {
+      if (file.type.startsWith("image/")) {
+        processed.push(await runRealOcr(file));
+      } else {
+        processed.push(mockOcrProvider(file));
+      }
+    }
+    documents = [...processed, ...documents];
+    selectedId = processed[0]?.id || selectedId;
+    currentView = "documents";
+    currentFilter = "all";
+    currentSmartFilter = "";
+    currentDirectoryFilter = "";
+    searchInput.value = "";
+    ocrRuntime.message = `OCR完了 ${processed.length}件 / 画像はAPI解析、非画像は手動確認`;
+    render();
+  } catch (error) {
+    ocrRuntime.message = `OCR失敗: ${error.message || "server error"}`;
+    renderOcrRoadmap();
+    window.alert(`OCRに失敗しました: ${error.message || "server error"}`);
+  } finally {
+    ocrRuntime.busy = false;
+    renderOcrRoadmap();
+  }
+}
+
+async function runRealOcr(file) {
+  const dataUrl = await readFileAsDataUrl(file);
+  const response = await fetch("http://localhost:4173/api/ocr", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      fileName: file.name,
+      dataUrl,
+      language: languageSelect.value,
+    }),
+  });
+  const payload = await response.json();
+  if (!response.ok || !payload.ok || !payload.document) {
+    throw new Error(payload.error || "OCR API error");
+  }
+  return payload.document;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("ファイル読込に失敗しました"));
+    reader.readAsDataURL(file);
+  });
+}

@@ -24,10 +24,16 @@ The current implementation is a dependency-free static web app because this work
 ## Run Locally
 
 ```bash
-python3 -m http.server 4173
+OPENAI_API_KEY=your_key_here node server.js
 ```
 
 Open `http://localhost:4173`.
+
+Notes:
+
+- Real image OCR now runs through `POST /api/ocr` on the local server.
+- The frontend must be opened via `http://localhost:4173`, not `file://...`, otherwise browser OCR requests will fail.
+- Image files are sent to OpenAI vision through the local server. PDF and CSV files still fall back to the manual confirmation flow in this version.
 
 The platform operator prototype is separated from the customer workspace:
 
@@ -41,7 +47,8 @@ In production, the operator admin must use a separate authentication policy with
 - `index.html`: application shell and product views
 - `admin.html`: separate platform operator admin prototype
 - `styles.css`: responsive desktop three-column and mobile tab UI
-- `app.js`: mock OCR provider, document state, editable detail panel, training sample log
+- `app.js`: OCR client flow, document state, editable detail panel, training sample log
+- `server.js`: static file server plus real OCR API proxy to OpenAI vision
 - `SYSTEM_DESIGN.md`: target architecture for Next.js, NestJS, PostgreSQL, Prisma, object storage, OCR engines, and training data
 - `SECURITY_OPTIONS.md`: security, encryption, anti-abuse, and alerting options
 
