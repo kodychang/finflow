@@ -1043,6 +1043,87 @@ tbody tr.selected {
   gap: 10px;
 }
 
+.profile-layout {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+}
+
+.profile-card,
+.drive-backup-card,
+.form-preview-panel {
+  background: #f8faf8;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.profile-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.profile-form label,
+.verification-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.profile-form input,
+.verification-form input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px;
+}
+
+.verification-actions {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.verification-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.verification-status small {
+  color: var(--muted);
+}
+
+.drive-folder-list {
+  display: grid;
+  gap: 8px;
+}
+
+.drive-folder-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.drive-folder-row strong,
+.drive-folder-row span {
+  display: block;
+}
+
+.drive-folder-row span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .ticket-meta {
   display: flex;
   flex-wrap: wrap;
@@ -1106,6 +1187,110 @@ tbody tr.selected {
   background: var(--accent);
   color: #ffffff;
   padding: 8px 10px;
+}
+
+.form-builder-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.mobile-preview-button {
+  display: none;
+}
+
+.jp-form-sheet {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid #cfd8d2;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.jp-form-head,
+.jp-form-meta,
+.jp-form-parties,
+.jp-form-total {
+  display: grid;
+  gap: 10px;
+}
+
+.jp-form-head,
+.jp-form-total {
+  grid-template-columns: minmax(0, 1fr) 160px;
+}
+
+.jp-form-head span,
+.jp-form-meta span,
+.jp-form-parties span,
+.jp-form-note span,
+.jp-form-number span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.jp-form-head strong {
+  display: block;
+  font-size: 22px;
+  margin-top: 4px;
+}
+
+.jp-form-meta {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.jp-form-meta div,
+.jp-form-total div {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #f8faf8;
+}
+
+.jp-form-meta strong,
+.jp-form-total strong {
+  display: block;
+  margin-top: 4px;
+}
+
+.jp-form-parties {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.jp-form-parties section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.jp-form-parties strong {
+  display: block;
+  margin: 4px 0 8px;
+}
+
+.jp-form-parties p,
+.jp-form-note p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.jp-form-table {
+  width: 100%;
+  min-width: 0;
+}
+
+.jp-form-table th {
+  position: static;
+}
+
+.jp-form-note {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8faf8;
 }
 
 .transaction-list {
@@ -1223,6 +1408,7 @@ tbody tr.selected {
   .admin-grid,
   .feedback-layout,
   .form-builder-layout,
+  .profile-layout,
   .customer-layout,
   .directory-grid,
   .simple-action-board,
@@ -1239,6 +1425,27 @@ tbody tr.selected {
 
   .customer-edit-grid {
     grid-template-columns: 1fr;
+  }
+
+  .profile-form,
+  .jp-form-head,
+  .jp-form-meta,
+  .jp-form-parties,
+  .jp-form-total,
+  .verification-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .mobile-preview-button {
+    display: inline-flex;
+  }
+
+  #form-preview {
+    display: none;
+  }
+
+  #form-preview.mobile-preview-open {
+    display: block;
   }
 
   .detail-form {

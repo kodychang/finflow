@@ -4,7 +4,7 @@ const yen = new Intl.NumberFormat("ja-JP", {
   maximumFractionDigits: 0,
 });
 
-const today = "2026-04-28";
+const today = "2026-04-29";
 let appLang = "ja";
 
 const uiText = {
@@ -375,6 +375,47 @@ const accounts = [
   { name: "PayPay", type: "payment", owner: "mixed", balance: 128000, mixed: true, progress: 38, connection: "statement_upload" },
 ];
 
+const companyProfile = {
+  companyName: "株式会社サンプル",
+  corporateNumber: "1234567890123",
+  invoiceNumber: "T1234567890123",
+  postalCode: "100-0001",
+  address: "東京都千代田区千代田1-1",
+  representative: "田中 太郎",
+  phone: "03-1234-5678",
+  email: "office@example.jp",
+};
+
+const personalProfile = {
+  fullName: "田中 太郎",
+  tradeName: "FinFlow Studio",
+  postalCode: "154-0001",
+  address: "東京都世田谷区池尻1-2-3",
+  phone: "090-1234-5678",
+  email: "taro@example.jp",
+  residentTaxMemo: "都民税は6月通知、普通徴収の確認が必要",
+  identityStatus: "本人確認済み",
+};
+
+let phoneVerification = {
+  phone: "090-1234-5678",
+  sent: false,
+  verified: false,
+  lastSentAt: "",
+};
+
+const driveFolders = [
+  "FinFlow Backup/2026/法人/請求書",
+  "FinFlow Backup/2026/法人/領収書",
+  "FinFlow Backup/2026/法人/契約書",
+  "FinFlow Backup/2026/法人/税務書類",
+  "FinFlow Backup/2026/法人/口座明細",
+  "FinFlow Backup/2026/個人/領収書",
+  "FinFlow Backup/2026/個人/税務書類",
+  "FinFlow Backup/2026/個人/口座明細",
+  "FinFlow Backup/2026/確認待ち",
+];
+
 let bankTransactions = [
   { id: "txn-001", account: "会社銀行口座", date: "2026-04-20", description: "株式会社サンプル 入金", amount: 280000, type: "income", source: "manual_csv", matched: "client_invoice_0420.png" },
   { id: "txn-002", account: "会社クレジットカード", date: "2026-04-01", description: "Meta Ads", amount: -30000, type: "expense", source: "statement_upload", matched: "meta_ads_receipt_april.pdf" },
@@ -554,8 +595,43 @@ let customers = [
 ];
 
 let generatedForms = [
-  { id: "form-001", template: "invoice", customer: "株式会社サンプル", ownerType: "company", amount: 280000, status: "draft", createdAt: "2026-04-28 12:00" },
+  {
+    id: "form-001",
+    template: "invoice",
+    customer: "株式会社サンプル",
+    ownerType: "company",
+    amount: 280000,
+    status: "draft",
+    createdAt: "2026-04-28 12:00",
+    title: "2026年4月分 Web制作費",
+    issueDate: "2026-04-28",
+    dueDate: "2026-05-31",
+    itemLabel: "Web制作・運用費",
+    quantity: 1,
+    unitPrice: 280000,
+    taxRate: 10,
+    paymentMethod: "銀行振込",
+    memo: "お振込確認後、領収データを自動保管します。",
+    documentNumber: "INV-2026-0401",
+  },
 ];
+
+let formDraft = {
+  template: "invoice",
+  owner_type: "company",
+  customer_query: "株式会社サンプル",
+  document_title: "2026年4月分 Web制作費",
+  issue_date: "2026-04-29",
+  due_date: "2026-05-31",
+  amount: 280000,
+  item_label: "Web制作・運用費",
+  quantity: 1,
+  unit_price: 280000,
+  tax_rate: 10,
+  payment_method: "銀行振込",
+  preset_note: "standard",
+  memo: "お振込確認後、領収データを自動保管します。",
+};
 
 let documents = [
   {
@@ -685,6 +761,10 @@ const feedbackForm = document.querySelector("#feedback-form");
 const businessFormGenerator = document.querySelector("#business-form-generator");
 const customerSearch = document.querySelector("#customer-search");
 const manualTransactionForm = document.querySelector("#manual-transaction-form");
+const companyProfileForm = document.querySelector("#company-profile-form");
+const personalProfileForm = document.querySelector("#personal-profile-form");
+const phoneVerificationForm = document.querySelector("#phone-verification-form");
+const previewFormButton = document.querySelector("#preview-form-button");
 
 function mockOcrProvider(file) {
   const lower = file.name.toLowerCase();
@@ -805,10 +885,32 @@ function employeeUsage() {
   return employees.filter((employee) => employee.role !== "owner").length;
 }
 
-function findOrCreateCustomer(query, ownerType = "company", source = "manual") {
+function findOrCreateCustomer(query, ownerType = "company", source = "manual", createIfMissing = true) {
   const name = String(query || "").trim() || "未命名客户";
   const existing = customers.find((customer) => customer.name.toLowerCase() === name.toLowerCase());
   if (existing) return { customer: existing, created: false };
+  if (!createIfMissing) {
+    return {
+      customer: {
+        id: "preview-customer",
+        name,
+        ownerType,
+        invoiceNumber: "",
+        corporateNumber: "",
+        postalCode: "",
+        address: "",
+        contactName: "",
+        department: "",
+        email: "",
+        phone: "",
+        paymentTerms: "",
+        source,
+        revenue: 0,
+        memo: "",
+      },
+      created: false,
+    };
+  }
   const customer = {
     id: `cus-${Date.now()}`,
     name,
@@ -1045,19 +1147,19 @@ function renderActionBoard() {
   const profitState = summary.profit >= 0 ? "目前是黒字" : "目前是赤字";
   document.querySelector("#simple-action-board").innerHTML = `
     <article class="action-card primary-action">
-      <span>今年の状態</span>
+      <span>今年の着地見込み</span>
       <strong>${profitState} / ${yen.format(summary.profit)}</strong>
-      <small>目标利益 ${yen.format(annualGoal.targetProfit)}，还差 ${yen.format(Math.max(0, gap))}</small>
+      <small>目標利益 ${yen.format(annualGoal.targetProfit)}、不足 ${yen.format(Math.max(0, gap))}</small>
     </article>
     <article class="action-card">
-      <span>今天先做</span>
-      <strong>${issues.length ? issues[0].label : "没有紧急漏项"}</strong>
-      <small>${issues.length ? issues[0].doc.vendor + " / " + issues[0].doc.renamed_name : "继续上传本月收据和银行明细"}</small>
+      <span>今日の優先確認</span>
+      <strong>${issues.length ? issues[0].label : "急ぎの確認はありません"}</strong>
+      <small>${issues.length ? issues[0].doc.vendor + " / " + issues[0].doc.renamed_name : "今月分の領収書と口座明細を続けて追加"}</small>
     </article>
     <article class="action-card">
-      <span>防止税务误解</span>
-      <strong>${issues.length} 个风险点</strong>
-      <small>缺证明、缺期限、个人/法人混用、税率不明会优先提醒</small>
+      <span>申告ミス防止</span>
+      <strong>${issues.length} 件の見直し候補</strong>
+      <small>都民税、期限、証憑不足、個人/法人混在、税率不明を優先表示</small>
     </article>
   `;
 }
@@ -1123,12 +1225,15 @@ function renderPolicyUpdates() {
 }
 
 function renderAccounts() {
+  bindProfileForm(companyProfileForm, companyProfile);
+  bindProfileForm(personalProfileForm, personalProfile);
+  renderPhoneVerification();
   document.querySelector("#account-list").innerHTML = accounts
     .map(
       (account) => `
         <article class="account-card">
           <div>
-            <span>${account.owner} / ${account.type} / ${connectionLabel(account.connection)}</span>
+            <span>${accountOwnerLabel(account.owner)} / ${accountTypeLabel(account.type)} / ${connectionLabel(account.connection)}</span>
             <strong>${account.name}</strong>
             <div class="progress-bar"><i style="width:${account.progress}%"></i></div>
           </div>
@@ -1141,23 +1246,47 @@ function renderAccounts() {
     )
     .join("");
   renderTransactions();
+  renderDriveStructure();
+}
+
+function bindProfileForm(formNode, source) {
+  if (!formNode) return;
+  [...formNode.elements].forEach((field) => {
+    if (field.name && source[field.name] !== undefined) field.value = source[field.name];
+  });
 }
 
 function connectionLabel(connection) {
   const labels = {
-    manual: "手动输入",
-    manual_csv: "CSV/手动",
-    statement_upload: "明细上传",
-    api_future: "API后期",
+    manual: "手入力",
+    manual_csv: "CSV取込",
+    statement_upload: "明細アップロード",
+    api_future: "API連携予定",
   };
   return labels[connection] || connection;
+}
+
+function accountOwnerLabel(owner) {
+  return {
+    company: "法人",
+    personal: "個人",
+    mixed: "混在",
+  }[owner] || owner;
+}
+
+function accountTypeLabel(type) {
+  return {
+    bank: "銀行口座",
+    credit_card: "カード",
+    payment: "決済口座",
+  }[type] || type;
 }
 
 function renderTransactions() {
   document.querySelector("#transaction-list").innerHTML = `
     <div class="section-heading compact">
-      <h3>银行・カード交易</h3>
-      <p>当前使用手动/CSV/明细上传。AI 可把交易与发票、收据、合同匹配。</p>
+      <h3>入出金一覧</h3>
+      <p>手入力、CSV、明細アップロードをまとめ、証憑との照合漏れを防ぎます。</p>
     </div>
     ${bankTransactions
       .map(
@@ -1175,6 +1304,27 @@ function renderTransactions() {
         `,
       )
       .join("")}
+  `;
+}
+
+function renderPhoneVerification() {
+  const status = document.querySelector("#verification-status");
+  if (!status) return;
+  const sentLabel = phoneVerification.sent ? `送信済み ${phoneVerification.lastSentAt}` : "未送信";
+  const verifyLabel = phoneVerification.verified ? "電話確認済み" : "電話確認前";
+  status.innerHTML = `
+    <span class="status-badge ${phoneVerification.verified ? "done" : "review"}">${verifyLabel}</span>
+    <small>${phoneVerification.phone || "番号未入力"} / ${sentLabel}</small>
+  `;
+}
+
+function renderDriveStructure() {
+  const node = document.querySelector("#drive-structure");
+  if (!node) return;
+  node.innerHTML = `
+    <div class="drive-folder-list">
+      ${driveFolders.map((folder) => `<article class="drive-folder-row"><strong>${folder}</strong><span>年度・区分・書類種別で整理</span></article>`).join("")}
+    </div>
   `;
 }
 
@@ -1302,15 +1452,16 @@ function renderAdmin() {
 }
 
 function renderGeneratedForms() {
+  renderFormPreview();
   document.querySelector("#generated-forms").innerHTML = generatedForms
     .map(
       (formItem) => `
         <article class="feedback-ticket">
           <strong>${formTemplateLabel(formItem.template)} - ${escapeHtml(formItem.customer)}</strong>
           <div class="ticket-meta">
-            <span>${formItem.ownerType === "company" ? "法人" : "个人"}</span>
+            <span>${formItem.ownerType === "company" ? "法人" : "個人"}</span>
             <span>${yen.format(formItem.amount)}</span>
-            <span>${formItem.status}</span>
+            <span>${formItem.documentNumber || "下書き"}</span>
             <span>${formItem.createdAt}</span>
           </div>
         </article>
@@ -1326,9 +1477,112 @@ function formTemplateLabel(template) {
     receipt: "領収書",
     delivery_note: "納品書",
     payment_request: "支払依頼書",
-    tax_summary: "报税资料整理表",
+    tax_summary: "申告チェック表",
   };
   return labels[template] || template;
+}
+
+function currentFormDraft() {
+  const data = new FormData(businessFormGenerator);
+  return {
+    template: String(data.get("template") || formDraft.template),
+    owner_type: String(data.get("owner_type") || formDraft.owner_type),
+    customer_query: String(data.get("customer_query") || formDraft.customer_query),
+    document_title: String(data.get("document_title") || formDraft.document_title),
+    issue_date: String(data.get("issue_date") || formDraft.issue_date),
+    due_date: String(data.get("due_date") || formDraft.due_date),
+    amount: Number(data.get("amount") || formDraft.amount || 0),
+    item_label: String(data.get("item_label") || formDraft.item_label),
+    quantity: Number(data.get("quantity") || formDraft.quantity || 1),
+    unit_price: Number(data.get("unit_price") || formDraft.unit_price || 0),
+    tax_rate: Number(data.get("tax_rate") || formDraft.tax_rate || 10),
+    payment_method: String(data.get("payment_method") || formDraft.payment_method),
+    preset_note: String(data.get("preset_note") || formDraft.preset_note),
+    memo: String(data.get("memo") || formDraft.memo),
+  };
+}
+
+function presetNoteText(key) {
+  return {
+    standard: "お支払期限までにお振込をお願いいたします。",
+    tax_followup: "保存用として発行し、申告資料に添付できる形式で保管します。",
+    urgent: "恐れ入りますが、お早めのお手続きをお願いいたします。",
+  }[key] || "お支払期限までにお振込をお願いいたします。";
+}
+
+function renderFormPreview(forceOpenMobile = false) {
+  const previewNode = document.querySelector("#form-preview");
+  if (!previewNode || !businessFormGenerator) return;
+  formDraft = currentFormDraft();
+  previewNode.classList.toggle("mobile-preview-open", forceOpenMobile);
+  const result = findOrCreateCustomer(formDraft.customer_query, formDraft.owner_type, "preview", false);
+  const customer = result.customer;
+  const sender = formDraft.owner_type === "company" ? companyProfile : personalProfile;
+  const subtotal = formDraft.unit_price * Math.max(1, formDraft.quantity);
+  const total = formDraft.amount || subtotal;
+  const taxAmount = formDraft.tax_rate ? Math.round(total * (formDraft.tax_rate / (100 + formDraft.tax_rate))) : 0;
+  previewNode.innerHTML = `
+    <article class="jp-form-sheet">
+      <div class="jp-form-head">
+        <div>
+          <span>${formTemplateLabel(formDraft.template)}</span>
+          <strong>${escapeHtml(formDraft.document_title || "件名未入力")}</strong>
+        </div>
+        <div class="jp-form-number">
+          <span>No.</span>
+          <strong>${formNumber(formDraft.template)}</strong>
+        </div>
+      </div>
+      <div class="jp-form-meta">
+        <div><span>発行日</span><strong>${formDraft.issue_date || "-"}</strong></div>
+        <div><span>支払期限</span><strong>${formDraft.due_date || "-"}</strong></div>
+        <div><span>税率</span><strong>${formDraft.tax_rate}%</strong></div>
+      </div>
+      <div class="jp-form-parties">
+        <section>
+          <span>宛先</span>
+          <strong>${escapeHtml(customer.name || "取引先未入力")}</strong>
+          <p>${escapeHtml(customer.address || "住所未登録")}</p>
+          <p>${escapeHtml(customer.contactName || "担当未登録")} / ${escapeHtml(customer.phone || "電話未登録")}</p>
+        </section>
+        <section>
+          <span>発行元</span>
+          <strong>${escapeHtml(sender.companyName || sender.fullName || "発行元未入力")}</strong>
+          <p>${escapeHtml(sender.address || "")}</p>
+          <p>${escapeHtml(sender.phone || "")} / ${escapeHtml(sender.email || "")}</p>
+        </section>
+      </div>
+      <table class="jp-form-table">
+        <thead>
+          <tr><th>内容</th><th>数量</th><th>単価</th><th>金額</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>${escapeHtml(formDraft.item_label || "内容未入力")}</td>
+            <td>${Math.max(1, formDraft.quantity)}</td>
+            <td>${yen.format(formDraft.unit_price || total)}</td>
+            <td>${yen.format(total)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="jp-form-total">
+        <div><span>小計</span><strong>${yen.format(total)}</strong></div>
+        <div><span>消費税</span><strong>${yen.format(taxAmount)}</strong></div>
+        <div><span>合計</span><strong>${yen.format(total)}</strong></div>
+      </div>
+      <div class="jp-form-note">
+        <span>支払方法</span>
+        <p>${escapeHtml(formDraft.payment_method || "未入力")}</p>
+        <span>備考</span>
+        <p>${escapeHtml(formDraft.memo || presetNoteText(formDraft.preset_note))}</p>
+      </div>
+    </article>
+  `;
+}
+
+function formNumber(template) {
+  const prefix = { invoice: "INV", quotation: "QT", receipt: "RC", delivery_note: "DN", payment_request: "PR", tax_summary: "TX" }[template] || "FM";
+  return `${prefix}-2026-04`;
 }
 
 function renderCustomers() {
@@ -1338,7 +1592,10 @@ function renderCustomers() {
       .toLowerCase()
       .includes(query),
   );
-  const createHint = query && visible.length === 0 ? `<article class="feedback-ticket"><strong>没有找到「${escapeHtml(customerSearch.value)}」</strong><span>点击“搜索不到，建立新客户”会直接建立。</span></article>` : "";
+  const createHint =
+    query && visible.length === 0
+      ? `<article class="feedback-ticket"><strong>「${escapeHtml(customerSearch.value)}」はまだ登録されていません</strong><span>このまま新規登録すると、あとで請求書や申告資料にも使えます。</span></article>`
+      : "";
   document.querySelector("#customer-list").innerHTML =
     createHint +
     visible
@@ -1348,7 +1605,7 @@ function renderCustomers() {
             <div class="customer-card-header">
               <div>
                 <strong>${escapeHtml(customer.name)}</strong>
-                <span>${customer.ownerType === "company" ? "法人客户" : "个人客户"} / 来源: ${customer.source} / 売上 ${yen.format(customer.revenue)}</span>
+                <span>${customer.ownerType === "company" ? "法人取引先" : "個人取引先"} / 登録元: ${customer.source} / 売上 ${yen.format(customer.revenue)}</span>
               </div>
               <button class="secondary-button" data-save-customer="${customer.id}">保存</button>
             </div>
@@ -1358,20 +1615,20 @@ function renderCustomers() {
                 区分
                 <select data-customer-field="ownerType">
                   <option value="company" ${customer.ownerType === "company" ? "selected" : ""}>法人</option>
-                  <option value="personal" ${customer.ownerType === "personal" ? "selected" : ""}>个人</option>
+                  <option value="personal" ${customer.ownerType === "personal" ? "selected" : ""}>個人</option>
                 </select>
               </label>
               ${customerInput(customer, "invoiceNumber", "登録番号")}
               ${customerInput(customer, "corporateNumber", "法人番号")}
               ${customerInput(customer, "postalCode", "郵便番号")}
               ${customerInput(customer, "address", "住所")}
-              ${customerInput(customer, "contactName", "联系人")}
+              ${customerInput(customer, "contactName", "担当者")}
               ${customerInput(customer, "department", "部署")}
               ${customerInput(customer, "email", "Email")}
-              ${customerInput(customer, "phone", "电话")}
-              ${customerInput(customer, "paymentTerms", "付款条件")}
+              ${customerInput(customer, "phone", "電話")}
+              ${customerInput(customer, "paymentTerms", "支払条件")}
               <label class="wide">
-                备注 / 报税确认事项
+                メモ / 申告確認事項
                 <textarea data-customer-field="memo" rows="2">${escapeHtml(customer.memo || "")}</textarea>
               </label>
             </div>
@@ -1559,16 +1816,16 @@ function normalizeLanguage() {
 function applyStaticLabels() {
   const labels = {
     ja: {
-      nav: ["ホーム", "申告準備", "書類センター", "口座整理", "収支分析", "税額予測", "取引先管理", "帳票作成", "会員・権限", "お問い合わせ", "学習データ"],
-      eyebrow: "2026年度 / 個人事業主 + 法人",
-      title: "日本の中小企業向け 税務漏れ防止ワーク台",
+      nav: ["ホーム", "申告チェック", "書類一覧", "口座・プロフィール", "損益一覧", "税額見込み", "取引先管理", "帳票作成", "会員・権限", "ご意見", "学習履歴"],
+      eyebrow: "2026年度 / 個人事業 + 法人",
+      title: "日本の中小企業向け 申告もれ防止ワークスペース",
       metrics: ["年度売上", "年度支出", "今年の利益見込み", "漏れ・確認待ち", "AI使用量削減"],
       metricNotes: ["確認済み入金 / 請求書", "証憑あり経費 / 未確認あり", "黒字/赤字を自動判定", "領収書・期限・登録番号", "局所OCR・低信頼度のみAI再判定"],
       headers: ["状態", "整理先", "保存名", "日付", "発行日", "期限", "取引先", "種別", "法人/個人", "分類", "金額", "信頼度"],
       search: "検索: 店舗名、分類、金額",
     },
     "zh-Hant": {
-      nav: ["首頁", "申報準備", "文件中心", "帳戶整理", "收支分析", "稅額預估", "客戶管理", "表單生成", "會員與權限", "客戶反饋", "學習資料"],
+      nav: ["首頁", "申報檢查", "文件列表", "帳戶與資料", "損益列表", "稅額預估", "客戶管理", "表單生成", "會員與權限", "意見回饋", "學習紀錄"],
       eyebrow: "2026年度 / 個人事業主 + 法人",
       title: "日本中小企業稅務防漏工作台",
       metrics: ["年度收入", "年度支出", "今年預估損益", "缺漏與待確認", "AI使用量節省"],
@@ -1577,7 +1834,7 @@ function applyStaticLabels() {
       search: "搜尋：店名、分類、金額",
     },
     "zh-Hans": {
-      nav: ["首页", "申报准备", "文件中心", "账户整理", "收支分析", "税额预估", "客户管理", "表单生成", "会员与权限", "客户反馈", "学习数据"],
+      nav: ["首页", "申报检查", "文件列表", "账户与资料", "损益列表", "税额预估", "客户管理", "表单生成", "会员与权限", "意见反馈", "学习记录"],
       eyebrow: "2026年度 / 个人事业主 + 法人",
       title: "日本中小企业税务防漏工作台",
       metrics: ["年度收入", "年度支出", "今年预估盈亏", "缺漏与待确认", "AI使用量节省"],
@@ -1586,7 +1843,7 @@ function applyStaticLabels() {
       search: "搜索：店名、分类、金额",
     },
     en: {
-      nav: ["Home", "Filing readiness", "Documents", "Accounts", "P&L analysis", "Tax estimate", "Customers", "Forms", "Membership", "Feedback", "Training data"],
+      nav: ["Home", "Filing check", "Documents", "Accounts", "P&L", "Tax estimate", "Customers", "Forms", "Membership", "Feedback", "Training log"],
       eyebrow: "FY2026 / Sole proprietors + companies",
       title: "Tax-readiness workspace for Japanese SMEs",
       metrics: ["Annual revenue", "Annual expenses", "Projected profit", "Missing / review", "AI usage saved"],
@@ -1876,12 +2133,66 @@ businessFormGenerator.addEventListener("submit", (event) => {
     amount,
     status: "draft",
     createdAt: new Date().toLocaleString("ja-JP"),
+    title: String(data.get("document_title") || ""),
+    issueDate: String(data.get("issue_date") || ""),
+    dueDate: String(data.get("due_date") || ""),
+    itemLabel: String(data.get("item_label") || ""),
+    quantity: Number(data.get("quantity") || 1),
+    unitPrice: Number(data.get("unit_price") || amount),
+    taxRate: Number(data.get("tax_rate") || 10),
+    paymentMethod: String(data.get("payment_method") || ""),
+    memo: String(data.get("memo") || presetNoteText(data.get("preset_note"))),
+    documentNumber: formNumber(String(data.get("template") || "invoice")),
   });
-  businessFormGenerator.reset();
+  formDraft = currentFormDraft();
   render();
 });
 
+businessFormGenerator.addEventListener("input", () => {
+  renderFormPreview();
+});
+
+previewFormButton?.addEventListener("click", () => {
+  renderFormPreview(true);
+});
+
 customerSearch.addEventListener("input", renderCustomers);
+
+companyProfileForm?.addEventListener("input", (event) => {
+  if (!event.target.name) return;
+  companyProfile[event.target.name] = event.target.value;
+  renderFormPreview();
+});
+
+personalProfileForm?.addEventListener("input", (event) => {
+  if (!event.target.name) return;
+  personalProfile[event.target.name] = event.target.value;
+  renderFormPreview();
+});
+
+phoneVerificationForm?.addEventListener("input", (event) => {
+  if (!event.target.name) return;
+  if (event.target.name === "phone") {
+    phoneVerification.phone = event.target.value;
+    renderPhoneVerification();
+  }
+});
+
+document.querySelector("#send-code-button")?.addEventListener("click", () => {
+  phoneVerification.sent = true;
+  phoneVerification.verified = false;
+  phoneVerification.lastSentAt = new Date().toLocaleString("ja-JP");
+  renderPhoneVerification();
+});
+
+document.querySelector("#verify-code-button")?.addEventListener("click", () => {
+  const code = String(new FormData(phoneVerificationForm).get("code") || "").trim();
+  if (code.length < 4) return;
+  phoneVerification.verified = true;
+  phoneVerification.sent = true;
+  phoneVerification.lastSentAt = new Date().toLocaleString("ja-JP");
+  renderPhoneVerification();
+});
 
 manualTransactionForm.addEventListener("submit", (event) => {
   event.preventDefault();

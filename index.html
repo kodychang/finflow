@@ -19,16 +19,16 @@
 
         <nav class="nav-list">
           <button class="nav-item active" data-view="documents">ホーム</button>
-          <button class="nav-item" data-view="readiness">申告準備</button>
-          <button class="nav-item" data-view="documents">書類センター</button>
-          <button class="nav-item" data-view="accounts">口座整理</button>
-          <button class="nav-item" data-view="income">収支分析</button>
-          <button class="nav-item" data-view="tax">税額予測</button>
+          <button class="nav-item" data-view="readiness">申告チェック</button>
+          <button class="nav-item" data-view="documents">書類一覧</button>
+          <button class="nav-item" data-view="accounts">口座・プロフィール</button>
+          <button class="nav-item" data-view="income">損益一覧</button>
+          <button class="nav-item" data-view="tax">税額見込み</button>
           <button class="nav-item" data-view="customers">取引先管理</button>
-          <button class="nav-item" data-view="forms">表单生成</button>
+          <button class="nav-item" data-view="forms">帳票作成</button>
           <button class="nav-item" data-view="membership">会員・権限</button>
-          <button class="nav-item" data-view="feedback">客户反馈</button>
-          <button class="nav-item" data-view="training">学習データ</button>
+          <button class="nav-item" data-view="feedback">ご意見</button>
+          <button class="nav-item" data-view="training">学習履歴</button>
         </nav>
 
         <div class="storage-card">
@@ -166,17 +166,119 @@
 
           <section class="center-panel hidden" id="accounts-view">
             <div class="section-heading">
-              <h3>会社・個人口座</h3>
-              <p>第一版は銀行API連携を必須にせず、手動入力・CSV/明細アップロード・AI照合を優先します。</p>
+              <h3>口座・事業者プロフィール</h3>
+              <p>会社情報、個人情報、電話確認、口座一覧、Google Drive バックアップ構成をここでまとめて管理します。</p>
+            </div>
+            <div class="profile-layout">
+              <section class="profile-card">
+                <div class="section-heading compact">
+                  <h3>法人情報</h3>
+                  <p>請求書、届出、インボイス対応で使う基本情報です。</p>
+                </div>
+                <form id="company-profile-form" class="profile-form">
+                  <label>
+                    会社名
+                    <input name="companyName" />
+                  </label>
+                  <label>
+                    法人番号
+                    <input name="corporateNumber" />
+                  </label>
+                  <label>
+                    登録番号
+                    <input name="invoiceNumber" />
+                  </label>
+                  <label>
+                    郵便番号
+                    <input name="postalCode" />
+                  </label>
+                  <label class="wide">
+                    住所
+                    <input name="address" />
+                  </label>
+                  <label>
+                    代表者名
+                    <input name="representative" />
+                  </label>
+                  <label>
+                    電話番号
+                    <input name="phone" />
+                  </label>
+                  <label>
+                    メール
+                    <input name="email" />
+                  </label>
+                </form>
+              </section>
+
+              <section class="profile-card">
+                <div class="section-heading compact">
+                  <h3>個人情報</h3>
+                  <p>個人事業・家計混在の整理、住民税や国民年金関連の確認に使います。</p>
+                </div>
+                <form id="personal-profile-form" class="profile-form">
+                  <label>
+                    氏名
+                    <input name="fullName" />
+                  </label>
+                  <label>
+                    屋号
+                    <input name="tradeName" />
+                  </label>
+                  <label>
+                    郵便番号
+                    <input name="postalCode" />
+                  </label>
+                  <label class="wide">
+                    住所
+                    <input name="address" />
+                  </label>
+                  <label>
+                    電話番号
+                    <input name="phone" />
+                  </label>
+                  <label>
+                    メール
+                    <input name="email" />
+                  </label>
+                  <label>
+                    住民税メモ
+                    <input name="residentTaxMemo" />
+                  </label>
+                  <label>
+                    本人確認
+                    <input name="identityStatus" />
+                  </label>
+                </form>
+              </section>
+
+              <section class="profile-card verification-card">
+                <div class="section-heading compact">
+                  <h3>電話確認</h3>
+                  <p>本番では SMS/音声認証を想定。試作では確認コードの流れだけ用意します。</p>
+                </div>
+                <form id="phone-verification-form" class="verification-form">
+                  <label>
+                    確認先の電話番号
+                    <input name="phone" placeholder="090-1234-5678" />
+                  </label>
+                  <div class="verification-actions">
+                    <button type="button" class="secondary-button" id="send-code-button">確認コード送信</button>
+                    <input name="code" placeholder="6桁コード" />
+                    <button type="button" class="confirm-button" id="verify-code-button">電話確認を完了</button>
+                  </div>
+                </form>
+                <div class="verification-status" id="verification-status"></div>
+              </section>
             </div>
             <div class="bank-strategy">
               <article>
-                <strong>推奨: MVP</strong>
-                <span>用户手动输入、CSV导入、PDF/照片明细上传。AI 自动识别交易并与发票/收据匹配。</span>
+                <strong>今のおすすめ</strong>
+                <span>手入力、CSV取込、PDF/写真の明細アップロードを先に整え、AI照合で抜け漏れを減らします。</span>
               </article>
               <article>
-                <strong>后期: API连接</strong>
-                <span>银行/信用卡 API、会计软件 API、聚合商连接作为高级功能，需要 OAuth、合规和维护。</span>
+                <strong>あとから追加</strong>
+                <span>銀行APIや会計ソフト連携は後段で追加し、まずは証憑と口座の整合性を確実にします。</span>
               </article>
             </div>
             <form id="manual-transaction-form" class="manual-transaction-form">
@@ -198,6 +300,13 @@
             </form>
             <div class="account-list" id="account-list"></div>
             <div class="transaction-list" id="transaction-list"></div>
+            <section class="drive-backup-card">
+              <div class="section-heading compact">
+                <h3>Google Drive バックアップ構成</h3>
+                <p>ダウンロード後もフォルダで探しやすい並びにします。法人・個人・年度・書類種別ごとに独立運用できます。</p>
+              </div>
+              <div id="drive-structure"></div>
+            </section>
           </section>
 
           <section class="center-panel hidden" id="membership-view">
@@ -234,56 +343,110 @@
 
           <section class="center-panel hidden" id="forms-view">
             <div class="section-heading">
-              <h3>商业表单生成</h3>
-              <p>根据客户、个人/法人、已确认文件和交易资料生成商务需要的表单。</p>
+              <h3>帳票作成</h3>
+              <p>日本の商習慣に合わせた見やすい帳票を、その場で入力しながら作成します。保存後も再編集できます。</p>
             </div>
             <div class="form-builder-layout">
               <form id="business-form-generator" class="feedback-form">
                 <label>
-                  表单类型
+                  テンプレート
                   <select name="template">
-                    <option value="invoice">請求書 / Invoice</option>
-                    <option value="quotation">見積書 / Quotation</option>
-                    <option value="receipt">領収書 / Receipt</option>
-                    <option value="delivery_note">納品書 / Delivery note</option>
+                    <option value="invoice">請求書</option>
+                    <option value="quotation">見積書</option>
+                    <option value="receipt">領収書</option>
+                    <option value="delivery_note">納品書</option>
                     <option value="payment_request">支払依頼書</option>
-                    <option value="tax_summary">报税资料整理表</option>
+                    <option value="tax_summary">申告チェック表</option>
                   </select>
                 </label>
                 <label>
-                  归属
+                  発行元
                   <select name="owner_type">
                     <option value="company">法人</option>
-                    <option value="personal">个人</option>
+                    <option value="personal">個人</option>
                   </select>
                 </label>
                 <label>
-                  客户搜索
-                  <input name="customer_query" placeholder="搜索客户；没有结果会自动建立" />
+                  宛先検索
+                  <input name="customer_query" placeholder="取引先名・電話・メールで検索。なければ新規作成" />
+                </label>
+                <label>
+                  件名
+                  <input name="document_title" placeholder="例: 2026年4月分 Web制作費" />
+                </label>
+                <label>
+                  発行日
+                  <input name="issue_date" type="date" value="2026-04-29" />
+                </label>
+                <label>
+                  支払期限
+                  <input name="due_date" type="date" value="2026-05-31" />
                 </label>
                 <label>
                   金额
                   <input name="amount" type="number" min="0" step="1" placeholder="自动带入或手动输入" />
                 </label>
-                <label class="wide">
-                  摘要
-                  <textarea name="memo" rows="3" placeholder="表单用途、项目、付款条件"></textarea>
+                <label>
+                  品目
+                  <input name="item_label" placeholder="例: Web制作・運用費" />
                 </label>
-                <button class="confirm-button" type="submit">生成表单</button>
+                <label>
+                  数量
+                  <input name="quantity" type="number" min="1" step="1" value="1" />
+                </label>
+                <label>
+                  単価
+                  <input name="unit_price" type="number" min="0" step="1" placeholder="単価" />
+                </label>
+                <label>
+                  税率
+                  <select name="tax_rate">
+                    <option value="10">10%</option>
+                    <option value="8">8%</option>
+                    <option value="0">0%</option>
+                  </select>
+                </label>
+                <label>
+                  入金方法
+                  <input name="payment_method" placeholder="銀行振込 / 現金 / カード" />
+                </label>
+                <label>
+                  備考定型
+                  <select name="preset_note">
+                    <option value="standard">標準</option>
+                    <option value="tax_followup">申告確認向け</option>
+                    <option value="urgent">早めの入金お願い</option>
+                  </select>
+                </label>
+                <label class="wide">
+                  備考
+                  <textarea name="memo" rows="3" placeholder="用途、案件名、支払条件、申告で残したい説明"></textarea>
+                </label>
+                <div class="form-builder-actions wide">
+                  <button class="secondary-button mobile-preview-button" id="preview-form-button" type="button">プレビュー</button>
+                  <button class="confirm-button" type="submit">帳票を保存</button>
+                </div>
               </form>
-              <div class="generated-list" id="generated-forms"></div>
+              <div class="form-preview-panel">
+                <div class="section-heading compact">
+                  <h3>プレビュー</h3>
+                  <p>デスクトップでは入力しながら即時更新。スマホではプレビュー操作で表示します。</p>
+                </div>
+                <div id="form-preview"></div>
+                <div class="generated-list" id="generated-forms"></div>
+              </div>
             </div>
           </section>
 
           <section class="center-panel hidden" id="customers-view">
             <div class="section-heading">
-              <h3>客户管理</h3>
-              <p>从上传文件、发票、合同、银行入金中自动建立客户。列表中可直接编辑日本报税与商务往来需要的厂商信息。</p>
+              <h3>取引先台帳</h3>
+              <p>書類、入金、契約から自動候補を作り、見つからなければその場で新規登録できます。請求・申告に必要な項目だけに絞っています。</p>
             </div>
             <div class="customer-layout">
               <div class="search-create-panel">
-                <input id="customer-search" placeholder="搜索客户名称、Email、电话；没有结果会显示新建" />
-                <button class="confirm-button" id="create-customer-button">搜索不到，建立新客户</button>
+                <input id="customer-search" placeholder="取引先名・メール・電話・登録番号で検索。なければそのまま新規登録" />
+                <button class="confirm-button" id="create-customer-button">この内容で新規登録</button>
               </div>
               <div class="customer-list" id="customer-list"></div>
             </div>
@@ -539,12 +702,12 @@
       <button data-view="readiness">申告</button>
       <button data-view="documents">書類</button>
       <button data-view="accounts">口座</button>
-      <button data-view="income">収支</button>
+      <button data-view="income">損益</button>
       <button data-view="tax">税額</button>
       <button data-view="customers">取引先</button>
-      <button data-view="forms">表单</button>
-      <button data-view="membership">会员</button>
-      <button data-view="feedback">反馈</button>
+      <button data-view="forms">帳票</button>
+      <button data-view="membership">権限</button>
+      <button data-view="feedback">意見</button>
       <button data-view="training">学習</button>
     </nav>
 
