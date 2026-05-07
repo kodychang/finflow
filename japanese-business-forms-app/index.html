@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shoko Forms | 日本商業帳票作成</title>
+    <link rel="stylesheet" href="./styles.css?v=related-toggle-fix3" />
+  </head>
+  <body>
+    <nav class="mobile-view-switcher" aria-label="モバイル画面切替">
+      <button class="is-active" type="button" data-mobile-view="menu">メニュー</button>
+      <button type="button" data-mobile-view="form">入力</button>
+      <button type="button" data-mobile-view="preview">プレビュー</button>
+    </nav>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">商</div>
+          <div>
+            <strong>Shoko Forms</strong>
+            <span>日本商業帳票作成</span>
+          </div>
+        </div>
+
+        <section class="nav-select-panel">
+          <div class="side-panel-title">帳票種類</div>
+          <select id="docTypeSelect" aria-label="帳票種類"></select>
+        </section>
+
+        <section class="flow-panel">
+          <div class="side-panel-title">取引フロー</div>
+          <div id="currentFormHints" class="current-form-hints" aria-label="現在の帳票ヒント"></div>
+          <div id="flowSteps" class="flow-steps" aria-label="操作流程">
+            <div><strong>1</strong><span>見積</span><small>条件・金額を提示</small></div>
+            <div><strong>2</strong><span>注文 / 発注</span><small>顧客注文と仕入発注</small></div>
+            <div><strong>3</strong><span>納品</span><small>出荷・納品記録</small></div>
+            <div><strong>4</strong><span>請求</span><small>振込先と支払期限</small></div>
+            <div><strong>5</strong><span>領収</span><small>入金後の証憑</small></div>
+          </div>
+        </section>
+
+        <section class="side-panel conversion-panel">
+          <div class="side-panel-title">文書変換</div>
+          <div id="conversionStatus" class="conversion-status">変換可能な帳票を開いてください</div>
+          <select id="conversionTarget" aria-label="変換先帳票"></select>
+          <button id="convertDocumentBtn" class="secondary-button" type="button">変換して作成</button>
+        </section>
+
+        <section class="master-actions">
+          <div class="side-panel-title">マスタ管理</div>
+          <button id="openCustomerMasterBtn" class="master-button" type="button">取引先管理</button>
+          <button id="openItemMasterBtn" class="master-button" type="button">商品・サービス管理</button>
+          <button id="openOperationHistoryBtn" class="master-button" type="button">チーム操作履歴</button>
+        </section>
+
+        <section class="side-panel">
+          <div class="side-panel-title">最近の帳票</div>
+          <div id="recentList" class="recent-list"></div>
+        </section>
+
+        <section class="settings-entry">
+          <button id="openSettingsBtn" class="master-button" type="button">設定 / バックアップ</button>
+        </section>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div class="topbar-title">
+            <p class="eyebrow">Commercial document studio</p>
+            <h1 id="pageTitle">請求書作成</h1>
+            <div class="quick-flow">
+              <button id="newDocumentBtn" class="icon-button" type="button" title="新規作成" aria-label="新規作成">+</button>
+              <button id="nextStepBtn" class="secondary-button" type="button">次工程へ</button>
+            </div>
+          </div>
+          <div class="toolbar template-toolbar" aria-label="テンプレートと表示">
+            <button id="exportHtmlBtn" class="secondary-button" type="button">HTMLメール</button>
+            <div class="template-control" aria-label="帳票テンプレート">
+              <select id="templateSelect" aria-label="帳票テンプレート"></select>
+              <button id="templateManageBtn" class="secondary-button" type="button">テンプレート管理</button>
+            </div>
+          </div>
+          <div class="toolbar action-toolbar" aria-label="保存と出力">
+            <div class="copy-as-control" aria-label="コピーとして作成">
+              <select id="copyAsTarget" aria-label="コピー先帳票"></select>
+              <button id="copyAsBtn" class="secondary-button" type="button">コピーとして作成</button>
+            </div>
+            <button id="copyJsonBtn" class="secondary-button" type="button">JSON出力</button>
+            <button id="saveBtn" class="secondary-button" type="button">保存</button>
+            <button id="printBtn" class="primary-button" type="button">印刷 / PDF</button>
+          </div>
+        </header>
+
+        <section class="editor-grid">
+          <form id="documentForm" class="editor" autocomplete="off">
+            <section class="form-section">
+              <div class="section-heading">
+                <h2 id="basicSectionTitle">基本情報</h2>
+                <span id="saveStatus">未保存</span>
+              </div>
+              <div class="field-grid two">
+                <label>
+                  <span id="docNumberLabel">帳票番号</span>
+                  <input id="docNumber" name="docNumber" type="text" />
+                </label>
+                <label>
+                  <span id="issueDateLabel">発行日</span>
+                  <input id="issueDate" name="issueDate" type="date" />
+                </label>
+                <label>
+                  <span id="transactionDateLabel">取引年月日</span>
+                  <input id="transactionDate" name="transactionDate" type="date" />
+                </label>
+                <label>
+                  <span id="dueDateLabel">支払期限 / 納期</span>
+                  <input id="dueDate" name="dueDate" type="date" />
+                </label>
+                <label>
+                  敬称
+                  <select id="honorific" name="honorific">
+                    <option value="御中">御中</option>
+                    <option value="様">様</option>
+                    <option value="">なし</option>
+                  </select>
+                </label>
+                <label class="inline-check wide">
+                  <input id="showRelatedNumber" name="showRelatedNumber" type="checkbox" checked onclick="syncRelatedNumberVisibility(); setDirty(true)" onchange="syncRelatedNumberVisibility(); setDirty(true)" />
+                  <span>関連番号を表示</span>
+                </label>
+              </div>
+            </section>
+
+            <section class="form-section">
+              <div class="section-heading">
+                <h2 id="partySectionTitle">取引先</h2>
+                <div class="section-actions">
+                  <button id="loadCustomerBtn" class="text-button" type="button">サンプル読込</button>
+                  <button id="saveCustomerBtn" class="text-button" type="button">マスタ保存</button>
+                </div>
+              </div>
+              <div class="field-grid">
+                <label>
+                  <span id="partyNameLabel">会社名 / 氏名</span>
+                  <input id="customerName" name="customerName" type="text" placeholder="株式会社サンプル" list="customerOptions" autocomplete="off" />
+                  <datalist id="customerOptions"></datalist>
+                </label>
+                <label>
+                  <span id="partyAddressLabel">住所</span>
+                  <textarea id="customerAddress" name="customerAddress" rows="2" placeholder="東京都千代田区..."></textarea>
+                </label>
+                <label>
+                  <span id="partyContactLabel">担当者</span>
+                  <input id="customerContact" name="customerContact" type="text" placeholder="経理部 山田" />
+                </label>
+              </div>
+            </section>
+
+            <section class="form-section">
+              <div class="section-heading">
+                <h2 id="issuerSectionTitle">発行者</h2>
+                <button id="loadIssuerBtn" class="text-button" type="button">自社サンプル</button>
+              </div>
+              <div class="field-grid two">
+                <label>
+                  自社名
+                  <input id="issuerName" name="issuerName" type="text" autocomplete="off" list="issuerCompanyOptions" />
+                  <datalist id="issuerCompanyOptions"></datalist>
+                </label>
+                <label>
+                  登録番号
+                  <input id="issuerRegistration" name="issuerRegistration" type="text" placeholder="T1234567890123" />
+                </label>
+                <label class="wide">
+                  自社住所
+                  <textarea id="issuerAddress" name="issuerAddress" rows="2"></textarea>
+                </label>
+                <label>
+                  聯絡人
+                  <input id="issuerContact" name="issuerContact" type="text" />
+                </label>
+                <label>
+                  電話
+                  <input id="issuerPhone" name="issuerPhone" type="tel" />
+                </label>
+                <label>
+                  メール
+                  <input id="issuerEmail" name="issuerEmail" type="email" />
+                </label>
+              </div>
+            </section>
+
+            <section class="form-section">
+              <div class="section-heading">
+                <h2>明細</h2>
+                <div class="section-actions">
+                  <button id="addProductLineBtn" class="text-button" type="button">商品から追加</button>
+                  <button id="addLineBtn" class="text-button" type="button">行を追加</button>
+                </div>
+              </div>
+              <div class="line-table-wrap">
+                <table class="line-table">
+                  <thead>
+                    <tr>
+                      <th>品目</th>
+                      <th>型番</th>
+                      <th>仕様</th>
+                      <th>数量</th>
+                      <th>単価</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="lineItems"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="form-section">
+              <div class="section-heading">
+                <h2>税額設定</h2>
+              </div>
+              <div class="field-grid two tax-setting-grid">
+                <label>
+                  税額
+                  <select id="taxMode" name="taxMode">
+                    <option value="standard10">合計に10%を加算</option>
+                    <option value="reduced8">合計に8%を加算</option>
+                    <option value="none">税額なし</option>
+                  </select>
+                </label>
+              </div>
+            </section>
+
+            <section class="form-section">
+              <div class="field-grid">
+                <label>
+                  <span id="notesLabel">備考</span>
+                  <textarea id="notes" name="notes" rows="3" placeholder="振込手数料は貴社にてご負担ください。"></textarea>
+                </label>
+                <label id="bankDetailsField">
+                  <span id="bankDetailsLabel">振込先</span>
+                  <textarea id="bankDetails" name="bankDetails" rows="3" placeholder="三井住友銀行 東京支店 普通 1234567"></textarea>
+                </label>
+                <label>
+                  <span id="documentSpecificsLabel">帳票別メモ</span>
+                  <textarea id="documentSpecifics" name="documentSpecifics" rows="3" placeholder="見積条件、注文条件、物流情報、請求条件など"></textarea>
+                </label>
+              </div>
+            </section>
+
+            <section class="form-section notice-editor">
+              <div class="section-heading">
+                <h2>通知</h2>
+                <button id="addNoticeBtn" class="text-button" type="button">通知を追加</button>
+              </div>
+              <div class="notice-compose">
+                <select id="noticeType" aria-label="通知タイプ">
+                  <option value="priceChange">価格調整通知</option>
+                  <option value="delay">納期遅延通知</option>
+                  <option value="businessHours">営業時間通知</option>
+                  <option value="cancel">注文取消通知</option>
+                  <option value="general">一般通知</option>
+                </select>
+                <input id="noticeTitle" type="text" placeholder="通知タイトル" />
+                <textarea id="noticeBody" rows="3" placeholder="お客様の注文に関する周辺連絡事項を入力してください。"></textarea>
+              </div>
+              <div id="noticeList" class="notice-list"></div>
+            </section>
+          </form>
+
+          <section class="preview-column">
+            <article id="printArea" class="document-preview" aria-label="帳票プレビュー">
+              <div class="document-safe-area">
+                <div class="doc-topline"></div>
+                <header class="doc-header">
+                  <div class="doc-brand-block">
+                    <div class="doc-logo" id="previewLogo">Logo</div>
+                    <div>
+                      <h2 id="previewTitle">請求書</h2>
+                      <p id="previewSubtitle">Invoice</p>
+                      <p id="previewLead" class="doc-lead"></p>
+                    </div>
+                  </div>
+                  <dl class="doc-meta">
+                    <div><dt id="previewNumberLabel">番号</dt><dd id="previewNumber"></dd></div>
+                    <div><dt id="previewIssueDateLabel">発行日</dt><dd id="previewIssueDate"></dd></div>
+                    <div><dt id="previewTransactionDateLabel">取引日</dt><dd id="previewTransactionDate"></dd></div>
+                    <div><dt id="previewDueDateLabel">期限</dt><dd id="previewDueDate"></dd></div>
+                    <div id="previewSourceRow"><dt id="previewSourceLabel">変換元</dt><dd id="previewSource"></dd></div>
+                  </dl>
+                </header>
+
+                <section class="party-row">
+                  <div class="customer-block">
+                    <p id="previewCustomerName" class="party-name"></p>
+                    <p id="previewCustomerAddress"></p>
+                    <p id="previewCustomerContact"></p>
+                  </div>
+                  <div class="issuer-block">
+                    <span id="invoiceBadge" class="invoice-badge">適格請求書対応</span>
+                    <strong id="previewIssuerName"></strong>
+                    <p id="previewIssuerAddress"></p>
+                    <p id="previewIssuerRegistration"></p>
+                    <p id="previewIssuerContact"></p>
+                    <div id="previewSeal" class="preview-seal-slot" aria-label="印章"></div>
+                  </div>
+                </section>
+
+                <section id="totalBanner" class="total-banner">
+                  <div class="total-label-cell">
+                    <span id="totalLabel">ご請求金額</span>
+                  </div>
+                  <div class="total-amount-cell">
+                    <strong id="previewGrandTotal">¥0</strong>
+                  </div>
+                  <div id="previewBannerBank" class="total-bank-row">
+                    <div class="total-bank-label-cell"><span>振込先 / 支払期限</span></div>
+                    <div class="total-bank-text-cell"><small id="previewBannerBankText" class="total-bank-note"></small></div>
+                  </div>
+                </section>
+
+                <table class="preview-table">
+                  <thead>
+                    <tr>
+                      <th>品目</th>
+                      <th>型番 / 仕様</th>
+                      <th>数量</th>
+                      <th>単価</th>
+                      <th>金額</th>
+                    </tr>
+                  </thead>
+                  <tbody id="previewLines"></tbody>
+                </table>
+
+                <section class="summary-row">
+                  <div>
+                    <h3>備考</h3>
+                    <p id="previewNotes"></p>
+                    <h3 id="previewBankTitle">振込先</h3>
+                    <p id="previewBank"></p>
+                    <h3 id="previewSpecificsTitle">帳票別メモ</h3>
+                    <p id="previewSpecifics"></p>
+                    <section id="previewNoticeSection" class="preview-notices">
+                      <h3>通知事項</h3>
+                      <div id="previewNotices"></div>
+                    </section>
+                  </div>
+                  <dl class="totals">
+                    <div><dt>小計</dt><dd id="previewSubtotal">¥0</dd></div>
+                    <div><dt>10%対象</dt><dd id="previewTaxable10">¥0</dd></div>
+                    <div><dt>消費税 10%</dt><dd id="previewTax10">¥0</dd></div>
+                    <div><dt>8%対象</dt><dd id="previewTaxable8">¥0</dd></div>
+                    <div><dt>消費税 8%</dt><dd id="previewTax8">¥0</dd></div>
+                    <div><dt>非課税</dt><dd id="previewTaxable0">¥0</dd></div>
+                    <div class="grand"><dt>合計</dt><dd id="previewTotal">¥0</dd></div>
+                  </dl>
+                </section>
+                <section class="invoice-check">
+                  <h3>インボイス記載事項</h3>
+                  <ul id="invoiceChecklist"></ul>
+                  <div id="invoiceIssues" class="invoice-issues"></div>
+                  <p>※ 税額設定に基づき、帳票全体の税額を1回端数処理。</p>
+                </section>
+              </div>
+            </article>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="leaveGuardDialog" class="leave-guard-dialog">
+      <form method="dialog" class="modal-card leave-guard-card">
+        <header>
+          <h2>未保存の帳票があります</h2>
+          <button class="icon-button" value="cancel" aria-label="閉じる">x</button>
+        </header>
+        <div class="leave-guard-body">
+          <strong id="leaveGuardTitle">帳票を移動しますか？</strong>
+          <p id="leaveGuardMessage">保存、破棄、削除のいずれかを選んでください。</p>
+        </div>
+        <div class="leave-guard-actions">
+          <button id="leaveGuardDeleteBtn" class="secondary-button danger-button" value="delete" type="submit">削除して移動</button>
+          <button id="leaveGuardDiscardBtn" class="secondary-button" value="discard" type="submit">破棄して移動</button>
+          <button id="leaveGuardCancelBtn" class="secondary-button" value="cancel" type="submit">キャンセル</button>
+          <button id="leaveGuardSaveBtn" class="primary-button" value="save" type="submit">保存して移動</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="jsonDialog">
+      <form method="dialog">
+        <header>
+          <h2>帳票JSON</h2>
+          <button class="icon-button" value="cancel" aria-label="閉じる">x</button>
+        </header>
+        <textarea id="jsonOutput" readonly rows="16"></textarea>
+      </form>
+    </dialog>
+
+    <dialog id="historyDialog">
+      <form method="dialog">
+        <header>
+          <h2>帳票履歴</h2>
+          <button class="icon-button" value="cancel" aria-label="閉じる">x</button>
+        </header>
+        <div class="history-filters">
+          <select id="historyTypeFilter" aria-label="帳票種類で絞り込み"></select>
+          <input id="historySearchInput" type="search" placeholder="番号・取引先で検索" />
+        </div>
+        <div id="historyList" class="history-list"></div>
+      </form>
+    </dialog>
+
+    <dialog id="settingsDialog">
+      <form method="dialog">
+        <header>
+          <h2>設定 / バックアップ</h2>
+          <button class="icon-button" value="cancel" aria-label="閉じる">x</button>
+        </header>
+        <div class="settings-grid">
+          <section class="settings-card">
+            <h3>アカウント</h3>
+            <label>表示名<input id="settingsAccountName" type="text" placeholder="管理者名" /></label>
+            <label>Email<input id="settingsAccountEmail" type="email" placeholder="admin@example.jp" /></label>
+            <button id="saveSettingsBtn" class="primary-button" type="button">設定を保存</button>
+          </section>
+          <section class="settings-card settings-card-wide">
+            <h3>自社情報</h3>
+            <div class="company-form">
+              <div class="company-logo-field">
+                <label>Logo<input id="companyLogoInput" type="file" accept="image/*" /></label>
+                <div id="companyLogoPreview" class="company-logo-preview" aria-label="Logo preview"></div>
+                <div class="company-logo-actions">
+                  <button id="clearCompanyLogoBtn" class="secondary-button" type="button">Logoを削除</button>
+                  <small id="companyLogoStatus">Logo未設定</small>
+                </div>
+              </div>
+              <label>名称<input id="companyNameInput" type="text" placeholder="会社名" /></label>
+              <label>登録番号<input id="companyRegistrationInput" type="text" placeholder="T1234567890123" /></label>
+              <label class="wide">地址<textarea id="companyAddressInput" rows="2"></textarea></label>
+              <label>電話<input id="companyPhoneInput" type="tel" /></label>
+              <label>聯絡人<input id="companyContactInput" type="text" /></label>
+              <label>Email<input id="companyEmailInput" type="email" /></label>
+              <button id="saveCompanyBtn" class="primary-button" type="button">自社情報を保存</button>
+            </div>
+            <div id="companyList" class="master-list compact-master-list"></div>
+          </section>
+          <section class="settings-card settings-card-wide">
+            <h3>印章設定</h3>
+            <div class="seal-settings-layout">
+              <div class="company-form">
+                <label>表示<select id="sealEnabledInput"><option value="true">帳票に表示</option><option value="false">表示しない</option></select></label>
+                <label>文字<input id="sealTextInput" type="text" minlength="2" maxlength="12" placeholder="承認済" /></label>
+                <label>生成樣式<select id="sealAppearanceInput"><option value="solid">実心赤地・白字</option><option value="outline">赤枠・透明地・赤字</option><option value="faded">赤色淡印</option></select></label>
+                <label>形状<select id="sealShapeInput"><option value="square">方形</option><option value="round">圓形</option><option value="oval">橢圓形</option><option value="rounded_square">角丸方形</option></select></label>
+                <label>レイアウト<select id="sealStyleInput"><option value="style_1">縦一列</option><option value="style_2">縦二列</option><option value="style_3">縦三列</option><option value="style_4">横一行</option><option value="style_5">横二行</option><option value="style_6">横三行</option><option value="style_7">二字中央</option><option value="style_8">三字中央</option><option value="style_9">自動格子</option></select></label>
+                <label>書体<select id="sealFontInput"><option value="gyoshotai">行書体</option><option value="kaishotai">楷書体</option><option value="kointai">古印体</option><option value="tenshotai">篆書体</option></select></label>
+                <label>枠線<select id="sealBorderInput"><option value="double">二重枠</option><option value="single">一重枠</option><option value="thick">太枠</option><option value="thin">細枠</option><option value="broken">かすれ枠</option></select></label>
+                <label>印影<select id="sealEffectInput"><option value="ink">朱肉</option><option value="clean">くっきり</option><option value="pressed">押印むら</option><option value="faded">薄め</option></select></label>
+                <label>印章色<select id="sealColorPresetInput"><option value="#d00000">赤 #d00000</option><option value="#9f1010">深紅 #9f1010</option><option value="#e34222">朱紅 #e34222</option><option value="custom">カスタム</option></select></label>
+                <label>色<input id="sealColorInput" type="text" placeholder="#d00000" /></label>
+                <label>文字色<input id="sealTextColorInput" type="text" placeholder="#ffffff" /></label>
+                <label>大小<select id="sealSizePresetInput"><option value="small">小</option><option value="medium">中</option><option value="large">大</option><option value="custom">カスタム</option></select></label>
+                <label>幅<input id="sealWidthInput" type="number" min="48" max="180" step="2" /></label>
+                <label>高さ<input id="sealHeightInput" type="number" min="48" max="180" step="2" /></label>
+                <label>圓角<select id="sealRadiusInput"><option value="0">直角</option><option value="6">微圓角</option><option value="14">圓角</option></select></label>
+                <label>透明度<input id="sealOpacityInput" type="number" min="0.6" max="1" step="0.05" /></label>
+                <label>回転<input id="sealRotationInput" type="number" min="-8" max="8" step="1" /></label>
+              </div>
+              <div class="seal-settings-preview" id="sealSettingsPreview" aria-label="印章プレビュー"></div>
+            </div>
+            <p>Inkantan と同じく、shape / style / font / rotation を印章生成パラメータとして扱います。帳票ではページ右上に配置します。</p>
+          </section>
+          <section class="settings-card">
+            <h3>社員・権限</h3>
+            <div class="staff-form">
+              <input id="staffNameInput" type="text" placeholder="社員名" />
+              <select id="staffRoleInput">
+                <option value="管理者">管理者</option>
+                <option value="編集者">編集者</option>
+                <option value="閲覧者">閲覧者</option>
+              </select>
+              <button id="inviteStaffBtn" class="secondary-button" type="button">招待</button>
+            </div>
+            <div id="staffList" class="staff-list"></div>
+          </section>
+          <section class="settings-card settings-card-wide">
+            <h3>同期バックアップ</h3>
+            <p>帳票・取引先・商品・テンプレート・設定を JSON として入出力できます。</p>
+            <div class="backup-actions">
+              <button id="exportBackupBtn" class="secondary-button" type="button">バックアップ出力</button>
+              <label class="import-button">バックアップ読込<input id="importBackupInput" type="file" accept="application/json" /></label>
+            </div>
+            <textarea id="backupOutput" readonly rows="6" placeholder="出力したバックアップ内容がここに表示されます。"></textarea>
+          </section>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="customerDialog">
+      <form method="dialog">
+        <header>
+          <h2>取引先管理</h2>
+          <button class="icon-button" value="cancel" aria-label="閉じる">x</button>
+        </header>
+        <div class="customer-manager">
+          <aside class="customer-list-pane">
+            <div class="customer-list-actions">
+              <input id="customerSearchInput" type="search" placeholder="会社名・担当者で検索" />
+              <button id="newCustomerBtn" class="secondary-button" type="button">新規</button>
+            </div>
+            <div id="customerMasterList" class="master-list customer-master-list"></div>
+          </aside>
+          <section class="customer-detail-pane">
+            <div class="customer-detail-head">
+              <div>
+                <p class="eyebrow">Customer profile</p>
+                <h3 id="customerDetailTitle">取引先を選択</h3>
+              </div>
+              <div class="section-actions">
+                <button id="applyCustomerBtn" class="secondary-button" type="button">単据に反映</button>
+                <button id="editCustomerBtn" class="secondary-button" type="button">編集</button>
+              </div>
+            </div>
+            <div id="customerDetailView" class="customer-detail-view"></div>
+            <div id="customerEditForm" class="customer-edit-form hidden">
+              <label>会社名称<input id="customerCompanyInput" type="text" /></label>
+              <label>会社地址<textarea id="customerAddressInput" rows="2"></textarea></label>
+              <label>会社電話<input id="customerPhoneInput" type="tel" /></label>
+              <label>Email<input id="customerEmailInput" type="email" /></label>
+              <label>FAX<input id="customerFaxInput" type="tel" /></label>
+              <label>聯絡人<input id="customerContactNameInput" type="text" /></label>
+              <label>聯絡人電話<input id="customerContactPhoneInput" type="tel" /></label>
+              <label>聯絡人Email<input id="customerContactEmailInput" type="email" /></label>
+              <label>部署 / 役職<input id="customerDepartmentInput" type="text" /></label>
+              <label class="wide">其他<textarea id="customerOtherInput" rows="3"></textarea></label>
+              <div class="customer-form-actions wide">
+                <button id="deleteCustomerBtn" class="secondary-button danger-button" type="button">削除</button>
+                <button id="cancelCustomerEditBtn" class="secondary-button" type="button">キャンセル</button>
+                <button id="saveCustomerDetailBtn" class="primary-button" type="button">保存</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="operationDialog">
+      <form method="dialog">
+        <header>
+          <h2>チーム操作履歴</h2>
+          <button class="icon-button" value="cancel" aria-label="閉じる">x</button>
+        </header>
+        <div class="operation-compose">
+          <select id="operationCategoryInput">
+            <option value="承認">承認</option>
+            <option value="確認依頼">確認依頼</option>
+            <option value="リマインド">リマインド</option>
+            <option value="変更">変更</option>
+            <option value="通知">通知</option>
+          </select>
+          <select id="operationPriorityInput">
+            <option value="重要">重要</option>
+            <option value="通常">通常</option>
+            <option value="低">低</option>
+          </select>
+          <select id="operationAssigneeInput"></select>
+          <input id="operationMemoInput" type="text" placeholder="承認・提醒・確認内容" />
+          <button id="addOperationBtn" class="primary-button" type="button">追加</button>
+        </div>
+        <div class="history-filters">
+          <select id="operationFilterCategory"><option value="">すべての类别</option></select>
+          <select id="operationFilterPriority"><option value="">すべての重要度</option></select>
+          <input id="operationSearchInput" type="search" placeholder="用户・内容・帳票番号で検索" />
+        </div>
+        <div id="operationList" class="history-list"></div>
+      </form>
+    </dialog>
+
+    <dialog id="itemDialog">
+      <form method="dialog">
+        <header>
+          <h2>商品・サービス管理</h2>
+          <button class="icon-button" value="cancel" aria-label="閉じる">x</button>
+        </header>
+        <div class="master-form">
+          <input id="itemNameInput" type="text" placeholder="商品・サービス名" />
+          <input id="itemModelInput" type="text" placeholder="商品番号" />
+          <input id="itemPriceInput" type="number" min="0" step="1" placeholder="単価" />
+          <button id="saveItemBtn" class="primary-button" type="button">保存</button>
+        </div>
+        <div id="itemMasterList" class="master-list"></div>
+      </form>
+    </dialog>
+
+    <dialog id="templateDialog">
+      <form method="dialog">
+        <header>
+          <h2>テンプレート管理</h2>
+          <button class="icon-button" value="cancel" aria-label="閉じる">x</button>
+        </header>
+        <div class="template-editor">
+          <input id="templateNameInput" type="text" placeholder="テンプレート名" />
+          <select id="templateStyleInput">
+            <option value="corporate">企業標準</option>
+            <option value="monochrome">日本帳票</option>
+            <option value="ledger">明細表</option>
+          </select>
+          <input id="templateAccentInput" type="color" value="#2f3744" aria-label="アクセント色" />
+          <button id="saveTemplateBtn" class="primary-button" type="button">追加</button>
+        </div>
+        <div id="templateList" class="master-list"></div>
+      </form>
+    </dialog>
+
+    <script src="./app.js?v=related-toggle-fix3"></script>
+  </body>
+</html>
