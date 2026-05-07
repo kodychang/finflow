@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Shoko Forms | 日本商業帳票作成</title>
-    <link rel="stylesheet" href="./styles.css?v=related-meta-align" />
+    <link rel="stylesheet" href="./styles.css?v=copy-menu-20260508" />
   </head>
   <body>
     <nav class="mobile-view-switcher" aria-label="モバイル画面切替">
@@ -36,13 +36,11 @@
             <div><strong>4</strong><span>請求</span><small>振込先と支払期限</small></div>
             <div><strong>5</strong><span>領収</span><small>入金後の証憑</small></div>
           </div>
-        </section>
-
-        <section class="side-panel conversion-panel">
-          <div class="side-panel-title">文書変換</div>
-          <div id="conversionStatus" class="conversion-status">変換可能な帳票を開いてください</div>
-          <select id="conversionTarget" aria-label="変換先帳票"></select>
-          <button id="convertDocumentBtn" class="secondary-button" type="button">変換して作成</button>
+          <div class="conversion-panel">
+            <div id="conversionStatus" class="conversion-status">変換可能な帳票を開いてください</div>
+            <select id="conversionTarget" aria-label="変換先帳票"></select>
+            <button id="convertDocumentBtn" class="secondary-button" type="button">変換して作成</button>
+          </div>
         </section>
 
         <section class="master-actions">
@@ -51,7 +49,7 @@
           <button id="openItemMasterBtn" class="master-button" type="button">商品・サービス管理</button>
           <button id="openOperationHistoryBtn" class="master-button" type="button">チーム操作履歴</button>
           <div class="side-panel-title recent-title">最近の帳票</div>
-          <div id="recentList" class="recent-list"></div>
+          <select id="recentList" class="recent-list" aria-label="最近の帳票"></select>
         </section>
 
         <section class="settings-entry">
@@ -65,8 +63,10 @@
             <p class="eyebrow">Commercial document studio</p>
             <h1 id="pageTitle">請求書作成</h1>
             <div class="quick-flow">
-              <button id="newDocumentBtn" class="icon-button" type="button" title="新規作成" aria-label="新規作成">+</button>
-              <button id="nextStepBtn" class="secondary-button" type="button">次工程へ</button>
+              <span class="top-flow-label">取引フロー</span>
+              <div id="topFlowTabs" class="top-flow-tabs" aria-label="取引フロー"></div>
+              <button id="newDocumentBtn" class="icon-button hidden" type="button" title="新規作成" aria-label="新規作成">+</button>
+              <button id="nextStepBtn" class="secondary-button hidden" type="button">次工程へ</button>
             </div>
           </div>
           <div class="toolbar template-toolbar" aria-label="テンプレートと表示">
@@ -74,11 +74,14 @@
             <div class="template-control" aria-label="帳票テンプレート">
               <select id="templateSelect" aria-label="帳票テンプレート"></select>
               <div id="templatePalette" class="template-palette" aria-label="帳票テンプレート"></div>
-              <button id="templateManageBtn" class="secondary-button" type="button">テンプレート管理</button>
             </div>
           </div>
           <div class="toolbar action-toolbar" aria-label="保存と出力">
-            <button id="copyJsonBtn" class="secondary-button" type="button">JSON出力</button>
+            <select id="copyJsonBtn" class="copy-code-menu" aria-label="コードコピー">
+              <option value="">コードコピー</option>
+              <option value="json">JSONコードをコピー</option>
+              <option value="html">HTMLコードをコピー</option>
+            </select>
             <button id="saveBtn" class="secondary-button" type="button">保存</button>
             <button id="printBtn" class="primary-button" type="button">印刷 / PDF</button>
           </div>
@@ -86,10 +89,6 @@
 
         <section class="editor-grid">
           <form id="documentForm" class="editor" autocomplete="off">
-            <label class="inline-check form-top-toggle">
-              <input id="showRelatedNumber" name="showRelatedNumber" type="checkbox" checked onclick="syncRelatedNumberVisibility(); setDirty(true)" onchange="syncRelatedNumberVisibility(); setDirty(true)" />
-              <span>関連番号を表示</span>
-            </label>
             <section class="form-section">
               <div class="section-heading">
                 <h2 id="basicSectionTitle">基本情報</h2>
@@ -112,6 +111,14 @@
                   <span id="dueDateLabel">支払期限 / 納期</span>
                   <input id="dueDate" name="dueDate" type="date" />
                 </label>
+                <label class="inline-check">
+                  <input id="showRelatedNumber" name="showRelatedNumber" type="checkbox" checked onclick="syncRelatedNumberVisibility(); setDirty(true)" onchange="syncRelatedNumberVisibility(); setDirty(true)" />
+                  <span>関連番号を表示</span>
+                </label>
+                <label>
+                  <span id="customRelatedNumberLabel">関連番号</span>
+                  <input id="customRelatedNumber" name="customRelatedNumber" type="text" placeholder="関連番号を入力" />
+                </label>
                 <label>
                   敬称
                   <select id="honorific" name="honorific">
@@ -127,7 +134,7 @@
               <div class="section-heading">
                 <h2 id="partySectionTitle">取引先</h2>
                 <div class="section-actions">
-                  <button id="loadCustomerBtn" class="text-button" type="button">サンプル読込</button>
+                  <button id="loadCustomerBtn" class="text-button" type="button">選択 / 管理</button>
                   <button id="saveCustomerBtn" class="text-button" type="button">マスタ保存</button>
                 </div>
               </div>
@@ -186,7 +193,7 @@
               <div class="section-heading">
                 <h2>明細</h2>
                 <div class="section-actions">
-                  <button id="addProductLineBtn" class="text-button" type="button">商品から追加</button>
+                  <button id="addProductLineBtn" class="text-button" type="button">選択 / 管理</button>
                   <button id="addLineBtn" class="text-button" type="button">行を追加</button>
                 </div>
               </div>
@@ -590,26 +597,6 @@
       </form>
     </dialog>
 
-    <dialog id="templateDialog">
-      <form method="dialog">
-        <header>
-          <h2>テンプレート管理</h2>
-          <button class="icon-button" value="cancel" aria-label="閉じる">x</button>
-        </header>
-        <div class="template-editor">
-          <input id="templateNameInput" type="text" placeholder="テンプレート名" />
-          <select id="templateStyleInput">
-            <option value="corporate">企業標準</option>
-            <option value="monochrome">日本帳票</option>
-            <option value="ledger">明細表</option>
-          </select>
-          <input id="templateAccentInput" type="color" value="#2f3744" aria-label="アクセント色" />
-          <button id="saveTemplateBtn" class="primary-button" type="button">追加</button>
-        </div>
-        <div id="templateList" class="master-list"></div>
-      </form>
-    </dialog>
-
-    <script src="./app.js?v=related-meta-align"></script>
+    <script src="./app.js?v=copy-menu-20260508"></script>
   </body>
 </html>

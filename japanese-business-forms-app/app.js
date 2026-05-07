@@ -637,6 +637,7 @@ function defaultDocument(type = state.docType) {
     sourceDocumentNumber: "",
     sourceDocumentType: "",
     relatedDocumentNumbers: {},
+    customRelatedNumber: "",
     showRelatedNumber: true,
     convertedDocumentIds: [],
     notices: [],
@@ -676,6 +677,7 @@ function getFormData() {
       ...(state.relatedDocumentNumbers || {}),
       ...(state.sourceDocumentType && state.sourceDocumentNumber ? { [state.sourceDocumentType]: state.sourceDocumentNumber } : {}),
     },
+    customRelatedNumber: els.customRelatedNumber?.value.trim() || "",
     showRelatedNumber: els.showRelatedNumber ? els.showRelatedNumber.checked : true,
     convertedDocumentIds: [...(state.convertedDocumentIds || [])],
     notices: [...(state.notices || [])],
@@ -728,6 +730,7 @@ function setFormData(doc) {
     "dueDate",
     "honorific",
     "showRelatedNumber",
+    "customRelatedNumber",
     "customerName",
     "customerAddress",
     "customerContact",
@@ -746,6 +749,7 @@ function setFormData(doc) {
   }
   if (els.taxMode) els.taxMode.value = doc.taxMode || "standard10";
   if (els.showRelatedNumber) els.showRelatedNumber.checked = doc.showRelatedNumber !== false;
+  if (els.customRelatedNumber) els.customRelatedNumber.value = doc.customRelatedNumber || "";
 
   renderLines();
   renderAll();
@@ -935,11 +939,9 @@ function relatedFlowDocuments(currentDoc = getFormData()) {
   return byType;
 }
 
-function renderFlowSidebar() {
-  if (!els.flowSteps) return;
-  const doc = getFormData();
+function flowStepEntries(doc = getFormData()) {
   const related = relatedFlowDocuments(doc);
-  els.flowSteps.innerHTML = FLOW_STEPS.map((step, index) => {
+  return FLOW_STEPS.map((step, index) => {
     const stepDoc =
       step.type === doc.docType || step.alternates?.includes(doc.docType)
         ? doc
@@ -954,6 +956,14 @@ function renderFlowSidebar() {
     const stepText = stepDoc?.docNumber
       ? `${stepDoc.docNumber}${refs.length ? ` / 関連: ${formatReferenceEntries(refs)}` : ""}`
       : issueText;
+    return { step, index, stepDoc, isCurrent, status, badgeClass, badgeText, stepText };
+  });
+}
+
+function renderFlowSidebar() {
+  const entries = flowStepEntries();
+  if (els.flowSteps) {
+    els.flowSteps.innerHTML = entries.map(({ step, index, stepDoc, isCurrent, status, badgeClass, badgeText, stepText }) => {
     return `
       <button class="flow-step ${isCurrent ? "active" : ""} ${stepDoc ? "is-done" : "is-pending"}" type="button" data-flow-type="${escapeHtml(stepDoc?.docType || step.type)}">
         <strong>${index + 1}</strong>
@@ -962,7 +972,17 @@ function renderFlowSidebar() {
         <em class="${badgeClass}">${badgeText}</em>
       </button>
     `;
-  }).join("");
+    }).join("");
+  }
+  if (els.topFlowTabs) {
+    els.topFlowTabs.innerHTML = entries.map(({ step, index, stepDoc, isCurrent, badgeClass, badgeText }) => `
+      <button class="top-flow-tab ${isCurrent ? "active" : ""} ${stepDoc ? "is-done" : "is-pending"}" type="button" data-flow-type="${escapeHtml(stepDoc?.docType || step.type)}">
+        <strong>${index + 1}</strong>
+        <span>${escapeHtml(step.label)}</span>
+        <em class="${badgeClass}">${badgeText}</em>
+      </button>
+    `).join("");
+  }
 }
 
 function renderLines() {
@@ -1153,8 +1173,10 @@ function renderPreview() {
 function syncRelatedNumberVisibility(doc = getFormData()) {
   if (!els.previewSourceRow || !els.previewSource) return;
   const refs = referenceEntries(doc);
+  const custom = String(doc.customRelatedNumber || "").trim();
+  const text = [refs.length ? formatReferenceEntries(refs) : "", custom].filter(Boolean).join(" / ");
   const shouldShow = Boolean(doc.showRelatedNumber);
-  els.previewSource.textContent = refs.length ? formatReferenceEntries(refs) : "関連番号なし";
+  els.previewSource.textContent = text || "関連番号なし";
   els.previewSourceRow.hidden = !shouldShow;
 }
 
@@ -1178,6 +1200,7 @@ function renderFormDefinition(definition, config) {
     previewTransactionDateLabel: definition.transactionLabel,
     previewDueDateLabel: definition.dueLabel,
     previewSourceLabel: "関連番号",
+    customRelatedNumberLabel: "関連番号",
     previewBankTitle: definition.secondaryLabel,
   };
 
@@ -1265,23 +1288,6 @@ function renderTemplateControls() {
       els.templatePalette.appendChild(button);
     });
   }
-}
-
-function renderTemplateList() {
-  if (!els.templateList) return;
-  els.templateList.innerHTML = "";
-  loadTemplates().forEach((template) => {
-    const row = document.createElement("div");
-    row.className = "template-list-item";
-    row.innerHTML = `
-      <span class="template-swatch" style="background:${escapeHtml(template.accent || "#2f3744")}"></span>
-      <strong>${escapeHtml(template.name)}</strong>
-      <small>${escapeHtml(template.style)}${template.builtin ? " / 標準" : ""}</small>
-      <button class="text-button" data-template-apply="${escapeHtml(template.id)}" type="button">適用</button>
-      ${template.builtin ? "" : `<button class="text-button danger" data-template-delete="${escapeHtml(template.id)}" type="button">削除</button>`}
-    `;
-    els.templateList.appendChild(row);
-  });
 }
 
 function convertedNotes(source, targetType) {
@@ -1387,34 +1393,45 @@ async function copyCurrentDocumentAs(targetType) {
 function renderRecent() {
   const docs = loadDocuments()
     .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
-    .slice(0, 3);
+    .slice(0, 20);
 
   els.recentList.innerHTML = "";
   if (!docs.length) {
-    els.recentList.innerHTML = `<div class="recent-item">保存済みなし<span>保存するとここに表示されます</span></div>`;
+    els.recentList.innerHTML = `<option value="">保存済みなし</option>`;
+    els.recentList.disabled = true;
     return;
   }
+  els.recentList.disabled = false;
+  els.recentList.innerHTML = `<option value="">最近の帳票を選択</option>`;
 
   docs.forEach((doc) => {
-    const button = document.createElement("button");
-    button.className = "recent-item";
-    button.type = "button";
+    const option = document.createElement("option");
+    option.value = doc.id;
     const source = documentReferenceText(doc);
-    button.innerHTML = `${escapeHtml(doc.docNumber)}<span>${escapeHtml(DOC_TYPES[doc.docType]?.title || "帳票")} / ${escapeHtml(doc.customerName || "取引先未入力")}${escapeHtml(source)}</span>`;
-    button.addEventListener("click", async () => {
-      if (await loadDocument(doc.id)) setMobileView("form");
-    });
-    els.recentList.appendChild(button);
+    option.textContent = `${doc.docNumber} ${DOC_TYPES[doc.docType]?.title || "帳票"} / ${doc.customerName || "取引先未入力"}${source}`;
+    els.recentList.appendChild(option);
   });
+}
 
-  if (loadDocuments().length > 3) {
-    const more = document.createElement("button");
-    more.className = "recent-more";
-    more.type = "button";
-    more.textContent = "もっと見る";
-    more.addEventListener("click", openHistoryDialog);
-    els.recentList.appendChild(more);
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fall through to textarea copy when browser focus/permission blocks Clipboard API.
+    }
   }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-1000px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const ok = document.execCommand("copy");
+  textarea.remove();
+  return ok;
 }
 
 async function openFlowDocument(type) {
@@ -1426,6 +1443,8 @@ async function openFlowDocument(type) {
     await loadDocument(target.id);
     return;
   }
+  const targetTitle = DOC_TYPES[type]?.title || "帳票";
+  if (!window.confirm(`${targetTitle}はまだ作成されていません。新しく作成しますか？`)) return;
   if (CONVERSION_RULES[doc.docType]?.includes(type)) {
     await copyCurrentDocumentAs(type);
     return;
@@ -1890,7 +1909,6 @@ function syncOpenDialogs() {
   if (els.historyDialog?.open) renderHistory();
   if (els.customerDialog?.open) renderCustomerMaster();
   if (els.itemDialog?.open) renderItemMaster();
-  if (els.templateDialog?.open) renderTemplateList();
   if (els.operationDialog?.open) {
     renderOperationAssignees();
     renderOperationHistory();
@@ -1921,6 +1939,17 @@ function setDirty(isDirty = true) {
   state.isDirty = isDirty;
   els.saveStatus.textContent = isDirty ? "未保存" : "保存済み";
   els.saveStatus.style.color = isDirty ? "var(--warn)" : "var(--accent)";
+}
+
+function showSaveFeedback() {
+  if (!els.saveBtn) return;
+  const original = els.saveBtn.textContent;
+  els.saveBtn.textContent = "保存済み";
+  els.saveBtn.disabled = true;
+  setTimeout(() => {
+    els.saveBtn.textContent = original;
+    els.saveBtn.disabled = false;
+  }, 1200);
 }
 
 function deleteCurrentDocumentRecord() {
@@ -2013,6 +2042,7 @@ function saveDocument() {
   });
   syncProjectSurfaces();
   setDirty(false);
+  showSaveFeedback();
 }
 
 function buildEmailHtml() {
@@ -2380,12 +2410,21 @@ function renderItemMaster() {
   const items = readStore(ITEM_KEY, []).map(normalizeItem);
   if (!els.itemMasterList) return;
   els.itemMasterList.innerHTML = "";
+  if (!items.length) {
+    els.itemMasterList.innerHTML = `<p class="empty-master">商品・サービスはまだ保存されていません。</p>`;
+    return;
+  }
   items.forEach((item) => {
-    const button = document.createElement("button");
-    button.className = "master-list-item";
-    button.type = "button";
-    button.innerHTML = `<strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.model || "番号未設定")} / ${yen(item.unitPrice)}</span>`;
-    button.addEventListener("click", () => {
+    const row = document.createElement("div");
+    row.className = "item-master-row";
+    row.innerHTML = `
+      <button class="master-list-item" type="button" data-item-apply="${escapeHtml(item.id)}">
+        <strong>${escapeHtml(item.name)}</strong>
+        <span>${escapeHtml(item.model || "番号未設定")} / ${yen(item.unitPrice)}</span>
+      </button>
+      <button class="text-button danger" type="button" data-item-delete="${escapeHtml(item.id)}">削除</button>
+    `;
+    row.querySelector("[data-item-apply]")?.addEventListener("click", () => {
       state.lines.push({
         id: crypto.randomUUID(),
         name: item.name,
@@ -2399,13 +2438,18 @@ function renderItemMaster() {
       renderPreview();
       setDirty(true);
     });
-    els.itemMasterList.appendChild(button);
+    row.querySelector("[data-item-delete]")?.addEventListener("click", () => {
+      writeStore(ITEM_KEY, items.filter((record) => record.id !== item.id));
+      renderItemMaster();
+    });
+    els.itemMasterList.appendChild(row);
   });
 }
 
 function bindElements() {
   for (const id of [
     "pageTitle",
+    "saveBtn",
     "saveStatus",
     "leaveGuardDialog",
     "leaveGuardTitle",
@@ -2416,6 +2460,7 @@ function bindElements() {
     "leaveGuardSaveBtn",
     "recentList",
     "flowSteps",
+    "topFlowTabs",
     "documentForm",
     "docTypeSelect",
     "basicSectionTitle",
@@ -2423,6 +2468,7 @@ function bindElements() {
     "issueDateLabel",
     "transactionDateLabel",
     "dueDateLabel",
+    "customRelatedNumberLabel",
     "partySectionTitle",
     "partyNameLabel",
     "partyAddressLabel",
@@ -2506,13 +2552,6 @@ function bindElements() {
     "printArea",
     "templateSelect",
     "templatePalette",
-    "templateManageBtn",
-    "templateDialog",
-    "templateNameInput",
-    "templateStyleInput",
-    "templateAccentInput",
-    "saveTemplateBtn",
-    "templateList",
     "jsonDialog",
     "jsonOutput",
     "historyDialog",
@@ -2723,19 +2762,8 @@ function bindEvents() {
   });
 
   document.getElementById("addProductLineBtn")?.addEventListener("click", () => {
-    const item = readStore(ITEM_KEY, []).map(normalizeItem)[0];
-    if (!item) return;
-    state.lines.push({
-      id: crypto.randomUUID(),
-      name: item.name,
-      model: item.model || "",
-      specification: item.specification || "",
-      quantity: 1,
-      unitPrice: item.unitPrice,
-    });
-    renderLines();
-    renderPreview();
-    setDirty(true);
+    renderItemMaster();
+    els.itemDialog.showModal();
   });
 
   document.getElementById("saveBtn").addEventListener("click", saveDocument);
@@ -2763,8 +2791,20 @@ function bindEvents() {
     await openFlowDocument(button.dataset.flowType);
     setMobileView("form");
   });
+  els.topFlowTabs?.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-flow-type]");
+    if (!button) return;
+    await openFlowDocument(button.dataset.flowType);
+    setMobileView("form");
+  });
   document.getElementById("exportHtmlBtn")?.addEventListener("click", exportEmailHtml);
   document.getElementById("openSettingsBtn")?.addEventListener("click", openSettingsDialog);
+  els.recentList?.addEventListener("change", async () => {
+    const id = els.recentList.value;
+    if (!id) return;
+    if (await loadDocument(id)) setMobileView("form");
+    els.recentList.value = "";
+  });
   els.historyTypeFilter?.addEventListener("change", renderHistory);
   els.historySearchInput?.addEventListener("input", renderHistory);
   els.saveSettingsBtn?.addEventListener("click", () => {
@@ -2925,66 +2965,9 @@ function bindEvents() {
     setDirty(true);
   });
 
-  els.templateManageBtn?.addEventListener("click", () => {
-    renderTemplateList();
-    els.templateDialog.showModal();
-  });
-
-  els.saveTemplateBtn?.addEventListener("click", () => {
-    const name = els.templateNameInput.value.trim();
-    if (!name) return;
-    const templates = readStore(TEMPLATE_KEY, []);
-    const record = {
-      id: `custom-${crypto.randomUUID()}`,
-      name,
-      style: els.templateStyleInput.value,
-      accent: els.templateAccentInput.value || "#2f3744",
-      builtin: false,
-    };
-    writeStore(TEMPLATE_KEY, [record, ...templates.filter((template) => template.name !== name)].slice(0, 20));
-    state.templateId = record.id;
-    els.templateNameInput.value = "";
-    syncProjectSurfaces();
-    renderPreview();
-    setDirty(true);
-  });
-
-  els.templateList?.addEventListener("click", (event) => {
-    const applyButton = event.target.closest("[data-template-apply]");
-    const deleteButton = event.target.closest("[data-template-delete]");
-    if (applyButton) {
-      state.templateId = applyButton.dataset.templateApply;
-      syncProjectSurfaces();
-      renderPreview();
-      setDirty(true);
-    }
-    if (deleteButton) {
-      const id = deleteButton.dataset.templateDelete;
-      writeStore(TEMPLATE_KEY, readStore(TEMPLATE_KEY, []).filter((template) => template.id !== id));
-      if (state.templateId === id) state.templateId = "monochrome";
-      syncProjectSurfaces();
-      renderPreview();
-      setDirty(true);
-    }
-  });
-
   document.getElementById("loadCustomerBtn").addEventListener("click", () => {
-    Object.assign(els.customerName, { value: SAMPLE_CUSTOMER.customerName });
-    Object.assign(els.customerAddress, { value: SAMPLE_CUSTOMER.customerAddress });
-    Object.assign(els.customerContact, { value: SAMPLE_CUSTOMER.customerContact });
-    saveCustomerRecord({
-      companyName: SAMPLE_CUSTOMER.customerName,
-      companyAddress: SAMPLE_CUSTOMER.customerAddress,
-      companyPhone: SAMPLE_CUSTOMER.customerPhone,
-      email: SAMPLE_CUSTOMER.customerEmail,
-      fax: SAMPLE_CUSTOMER.customerFax,
-      contactName: "佐藤",
-      contactPhone: SAMPLE_CUSTOMER.customerContactPhone,
-      department: "経理部",
-      other: "サンプル取引先",
-    });
-    renderPreview();
-    setDirty(true);
+    renderCustomerMaster();
+    els.customerDialog.showModal();
   });
 
   els.customerName?.addEventListener("input", () => {
@@ -3083,15 +3066,26 @@ function bindEvents() {
     });
   }
 
-  document.getElementById("copyJsonBtn").addEventListener("click", async () => {
-    const json = JSON.stringify(getFormData(), null, 2);
-    els.jsonOutput.value = json;
+  document.getElementById("copyJsonBtn").addEventListener("change", async (event) => {
+    const menu = event.currentTarget;
+    const action = menu.value;
+    if (!action) return;
+    const placeholder = menu.options[0];
+    const original = placeholder.textContent;
+    const content = action === "html" ? buildEmailHtml() : JSON.stringify(getFormData(), null, 2);
+    menu.disabled = true;
     try {
-      await navigator.clipboard.writeText(json);
+      const copied = await copyTextToClipboard(content);
+      if (!copied) throw new Error("Clipboard copy failed");
+      placeholder.textContent = "コピー済み";
     } catch {
-      // Clipboard permission is optional; the dialog still exposes the JSON.
+      placeholder.textContent = "コピー失敗";
     }
-    els.jsonDialog.showModal();
+    setTimeout(() => {
+      placeholder.textContent = original;
+      menu.value = "";
+      menu.disabled = false;
+    }, 1200);
   });
 }
 
