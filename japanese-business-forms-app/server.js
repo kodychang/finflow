@@ -137,7 +137,6 @@ function pdfShell({ title, html, accent }) {
       line-height: 1 !important;
       font-style: normal !important;
     }
-    .invoice-check { display: none !important; }
   </style>
 </head>
 <body>${html}</body>

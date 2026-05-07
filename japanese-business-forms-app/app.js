@@ -1146,7 +1146,6 @@ function renderPreview() {
   renderConversionPanel();
   renderCopyAsControl();
   renderTemplateControls();
-  renderInvoiceChecklist(doc, sum);
   renderFieldIssues(doc);
   renderFlowSidebar();
 }
@@ -1198,27 +1197,6 @@ function renderFormDefinition(definition, config) {
   updateSimplifiedPlaceholders();
 }
 
-function renderInvoiceChecklist(doc, sum) {
-  if (!els.invoiceChecklist) return;
-  const checks = [
-    ["自社名称", Boolean(doc.issuerName), "自社名称が未入力です。"],
-    ["登録番号", /^T\d{13}$/.test(doc.issuerRegistration), "登録番号は T + 13桁の数字で入力してください。"],
-    ["取引年月日", Boolean(doc.transactionDate), "取引年月日が未入力です。"],
-    ["取引内容", doc.lines.some((line) => line.name), "明細の取引内容が未入力です。"],
-    ["税率別金額", sum.taxable10 > 0 || sum.taxable8 > 0 || sum.taxable0 > 0, "税率別金額を計算できる明細がありません。"],
-    ["税率別消費税額", sum.tax10 > 0 || sum.tax8 > 0 || sum.taxable0 > 0, "税率別消費税額を確認してください。"],
-    ["交付先名称", Boolean(doc.customerName), "交付先名称が未入力です。"],
-  ];
-  els.invoiceChecklist.innerHTML = checks
-    .map(([label, ok]) => `<li class="${ok ? "ok" : "missing"}"><span>${ok ? "OK" : "未"}</span>${label}</li>`)
-    .join("");
-  if (els.invoiceIssues) {
-    const issues = checks.filter(([, ok]) => !ok).map(([, , message]) => message);
-    els.invoiceIssues.innerHTML = issues.map((message) => `<div>${escapeHtml(message)}</div>`).join("");
-    els.invoiceIssues.hidden = !issues.length;
-  }
-}
-
 function renderConversionPanel() {
   if (!els.conversionTarget || !els.convertDocumentBtn || !els.conversionStatus) return;
 
@@ -1264,14 +1242,29 @@ function applyTemplate() {
 function renderTemplateControls() {
   if (!els.templateSelect) return;
   const selected = els.templateSelect.value;
+  const templates = loadTemplates();
   els.templateSelect.innerHTML = "";
-  loadTemplates().forEach((template) => {
+  templates.forEach((template) => {
     const option = document.createElement("option");
     option.value = template.id;
     option.textContent = template.builtin ? template.name : `追加: ${template.name}`;
     els.templateSelect.appendChild(option);
   });
-  els.templateSelect.value = loadTemplates().some((template) => template.id === state.templateId) ? state.templateId : selected || "monochrome";
+  els.templateSelect.value = templates.some((template) => template.id === state.templateId) ? state.templateId : selected || "monochrome";
+  if (els.templatePalette) {
+    els.templatePalette.innerHTML = "";
+    templates.forEach((template) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "template-dot";
+      button.dataset.templateId = template.id;
+      button.style.setProperty("--dot-color", template.accent || "#2f3744");
+      button.title = template.name;
+      button.setAttribute("aria-label", template.name);
+      button.setAttribute("aria-pressed", String(template.id === els.templateSelect.value));
+      els.templatePalette.appendChild(button);
+    });
+  }
 }
 
 function renderTemplateList() {
@@ -1846,7 +1839,6 @@ function buildPdfPayload() {
   const doc = getFormData();
   renderPreview();
   const clone = els.printArea.cloneNode(true);
-  clone.querySelector(".invoice-check")?.remove();
   const sourceRow = clone.querySelector("#previewSourceRow");
   if (sourceRow) sourceRow.hidden = doc.showRelatedNumber === false || sourceRow.hidden;
   const filename = `${doc.docNumber || "document"}.pdf`;
@@ -2026,7 +2018,6 @@ function saveDocument() {
 function buildEmailHtml() {
   const doc = getFormData();
   const clone = els.printArea.cloneNode(true);
-  clone.querySelector(".invoice-check")?.remove();
   const title = `${doc.docNumber || ""} ${DOC_TYPES[doc.docType]?.title || "帳票"}`.trim();
   const accent = selectedTemplate().accent || "#2f3744";
   return `<!doctype html>
@@ -2514,6 +2505,7 @@ function bindElements() {
     "previewSpecifics",
     "printArea",
     "templateSelect",
+    "templatePalette",
     "templateManageBtn",
     "templateDialog",
     "templateNameInput",
@@ -2582,8 +2574,6 @@ function bindElements() {
     "conversionTarget",
     "convertDocumentBtn",
     "nextStepBtn",
-    "invoiceChecklist",
-    "invoiceIssues",
     "customerDialog",
     "customerSearchInput",
     "newCustomerBtn",
@@ -2923,6 +2913,14 @@ function bindEvents() {
   els.nextStepBtn?.addEventListener("click", () => copyCurrentDocumentAs(FLOW_NEXT[state.docType]));
   els.templateSelect?.addEventListener("change", () => {
     state.templateId = els.templateSelect.value;
+    renderPreview();
+    setDirty(true);
+  });
+  els.templatePalette?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-template-id]");
+    if (!button) return;
+    state.templateId = button.dataset.templateId;
+    if (els.templateSelect) els.templateSelect.value = state.templateId;
     renderPreview();
     setDirty(true);
   });

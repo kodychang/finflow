@@ -73,6 +73,7 @@
             <button id="exportHtmlBtn" class="secondary-button" type="button">HTMLメール</button>
             <div class="template-control" aria-label="帳票テンプレート">
               <select id="templateSelect" aria-label="帳票テンプレート"></select>
+              <div id="templatePalette" class="template-palette" aria-label="帳票テンプレート"></div>
               <button id="templateManageBtn" class="secondary-button" type="button">テンプレート管理</button>
             </div>
           </div>
@@ -345,12 +346,6 @@
                     <div><dt>非課税</dt><dd id="previewTaxable0">¥0</dd></div>
                     <div class="grand"><dt>合計</dt><dd id="previewTotal">¥0</dd></div>
                   </dl>
-                </section>
-                <section class="invoice-check">
-                  <h3>インボイス記載事項</h3>
-                  <ul id="invoiceChecklist"></ul>
-                  <div id="invoiceIssues" class="invoice-issues"></div>
-                  <p>※ 税額設定に基づき、帳票全体の税額を1回端数処理。</p>
                 </section>
               </div>
             </article>
