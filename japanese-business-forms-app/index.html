@@ -4,13 +4,13 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Shoko Forms | 日本商業帳票作成</title>
-    <link rel="stylesheet" href="./styles.css?v=related-toggle-fix3" />
+    <link rel="stylesheet" href="./styles.css?v=related-meta-align" />
   </head>
   <body>
     <nav class="mobile-view-switcher" aria-label="モバイル画面切替">
-      <button class="is-active" type="button" data-mobile-view="menu">メニュー</button>
-      <button type="button" data-mobile-view="form">入力</button>
-      <button type="button" data-mobile-view="preview">プレビュー</button>
+      <button class="is-active" type="button" data-mobile-view="menu"><strong>1</strong><span>フロー</span><small>選択</small></button>
+      <button type="button" data-mobile-view="form"><strong>2</strong><span>入力</span><small>編集</small></button>
+      <button type="button" data-mobile-view="preview"><strong>3</strong><span>確認</span><small>PDF</small></button>
     </nav>
     <div class="app-shell">
       <aside class="sidebar">
@@ -29,7 +29,6 @@
 
         <section class="flow-panel">
           <div class="side-panel-title">取引フロー</div>
-          <div id="currentFormHints" class="current-form-hints" aria-label="現在の帳票ヒント"></div>
           <div id="flowSteps" class="flow-steps" aria-label="操作流程">
             <div><strong>1</strong><span>見積</span><small>条件・金額を提示</small></div>
             <div><strong>2</strong><span>注文 / 発注</span><small>顧客注文と仕入発注</small></div>
@@ -51,10 +50,7 @@
           <button id="openCustomerMasterBtn" class="master-button" type="button">取引先管理</button>
           <button id="openItemMasterBtn" class="master-button" type="button">商品・サービス管理</button>
           <button id="openOperationHistoryBtn" class="master-button" type="button">チーム操作履歴</button>
-        </section>
-
-        <section class="side-panel">
-          <div class="side-panel-title">最近の帳票</div>
+          <div class="side-panel-title recent-title">最近の帳票</div>
           <div id="recentList" class="recent-list"></div>
         </section>
 
@@ -81,10 +77,6 @@
             </div>
           </div>
           <div class="toolbar action-toolbar" aria-label="保存と出力">
-            <div class="copy-as-control" aria-label="コピーとして作成">
-              <select id="copyAsTarget" aria-label="コピー先帳票"></select>
-              <button id="copyAsBtn" class="secondary-button" type="button">コピーとして作成</button>
-            </div>
             <button id="copyJsonBtn" class="secondary-button" type="button">JSON出力</button>
             <button id="saveBtn" class="secondary-button" type="button">保存</button>
             <button id="printBtn" class="primary-button" type="button">印刷 / PDF</button>
@@ -93,6 +85,10 @@
 
         <section class="editor-grid">
           <form id="documentForm" class="editor" autocomplete="off">
+            <label class="inline-check form-top-toggle">
+              <input id="showRelatedNumber" name="showRelatedNumber" type="checkbox" checked onclick="syncRelatedNumberVisibility(); setDirty(true)" onchange="syncRelatedNumberVisibility(); setDirty(true)" />
+              <span>関連番号を表示</span>
+            </label>
             <section class="form-section">
               <div class="section-heading">
                 <h2 id="basicSectionTitle">基本情報</h2>
@@ -122,10 +118,6 @@
                     <option value="様">様</option>
                     <option value="">なし</option>
                   </select>
-                </label>
-                <label class="inline-check wide">
-                  <input id="showRelatedNumber" name="showRelatedNumber" type="checkbox" checked onclick="syncRelatedNumberVisibility(); setDirty(true)" onchange="syncRelatedNumberVisibility(); setDirty(true)" />
-                  <span>関連番号を表示</span>
                 </label>
               </div>
             </section>
@@ -199,7 +191,7 @@
               </div>
               <div class="line-table-wrap">
                 <table class="line-table">
-                  <thead>
+                  <thead id="lineItemsHead">
                     <tr>
                       <th>品目</th>
                       <th>型番</th>
@@ -214,7 +206,7 @@
               </div>
             </section>
 
-            <section class="form-section">
+            <section id="taxSettingsSection" class="form-section">
               <div class="section-heading">
                 <h2>税額設定</h2>
               </div>
@@ -285,7 +277,7 @@
                     <div><dt id="previewIssueDateLabel">発行日</dt><dd id="previewIssueDate"></dd></div>
                     <div><dt id="previewTransactionDateLabel">取引日</dt><dd id="previewTransactionDate"></dd></div>
                     <div><dt id="previewDueDateLabel">期限</dt><dd id="previewDueDate"></dd></div>
-                    <div id="previewSourceRow"><dt id="previewSourceLabel">変換元</dt><dd id="previewSource"></dd></div>
+                    <div id="previewSourceRow" class="source-reference-row"><dt id="previewSourceLabel">関連番号</dt><dd id="previewSource"></dd></div>
                   </dl>
                 </header>
 
@@ -297,9 +289,9 @@
                   </div>
                   <div class="issuer-block">
                     <span id="invoiceBadge" class="invoice-badge">適格請求書対応</span>
+                    <p id="previewIssuerRegistration"></p>
                     <strong id="previewIssuerName"></strong>
                     <p id="previewIssuerAddress"></p>
-                    <p id="previewIssuerRegistration"></p>
                     <p id="previewIssuerContact"></p>
                     <div id="previewSeal" class="preview-seal-slot" aria-label="印章"></div>
                   </div>
@@ -318,8 +310,8 @@
                   </div>
                 </section>
 
-                <table class="preview-table">
-                  <thead>
+                <table id="previewLineTable" class="preview-table">
+                  <thead id="previewLineHead">
                     <tr>
                       <th>品目</th>
                       <th>型番 / 仕様</th>
@@ -366,6 +358,17 @@
         </section>
       </main>
     </div>
+
+    <nav class="mobile-action-bar" aria-label="モバイル操作">
+      <button class="for-menu secondary-button" type="button" data-mobile-action="form">入力へ</button>
+      <button class="for-menu primary-button" type="button" data-mobile-action="new">新規作成</button>
+      <button class="for-form secondary-button" type="button" data-mobile-action="menu">フロー</button>
+      <button class="for-form secondary-button" type="button" data-mobile-action="save">保存</button>
+      <button class="for-form primary-button" type="button" data-mobile-action="preview">確認へ</button>
+      <button class="for-preview secondary-button" type="button" data-mobile-action="form">入力へ戻る</button>
+      <button class="for-preview secondary-button" type="button" data-mobile-action="save">保存</button>
+      <button class="for-preview primary-button" type="button" data-mobile-action="pdf">PDF</button>
+    </nav>
 
     <dialog id="leaveGuardDialog" class="leave-guard-dialog">
       <form method="dialog" class="modal-card leave-guard-card">
@@ -612,6 +615,6 @@
       </form>
     </dialog>
 
-    <script src="./app.js?v=related-toggle-fix3"></script>
+    <script src="./app.js?v=related-meta-align"></script>
   </body>
 </html>

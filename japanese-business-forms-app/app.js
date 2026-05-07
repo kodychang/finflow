@@ -297,9 +297,11 @@ const FORM_DEFINITIONS = {
 };
 
 const BUILT_IN_TEMPLATES = [
-  { id: "corporate", name: "企業標準", style: "corporate", accent: "#0d6b68", builtin: true },
   { id: "monochrome", name: "日本帳票", style: "monochrome", accent: "#2f3744", builtin: true },
-  { id: "ledger", name: "明細表", style: "ledger", accent: "#dbe8f3", builtin: true },
+  { id: "corporate", name: "企業標準", style: "corporate", accent: "#0d6b68", builtin: true },
+  { id: "ledger", name: "明細表", style: "ledger", accent: "#5f7f99", builtin: true },
+  { id: "indigo", name: "藍色罫線", style: "indigo", accent: "#2f4f8f", builtin: true },
+  { id: "sepia", name: "薄茶罫線", style: "sepia", accent: "#8a633a", builtin: true },
 ];
 
 const SAMPLE_CUSTOMER = {
@@ -413,6 +415,10 @@ function selectedTemplate() {
 
 function formDefinition(type = state.docType) {
   return FORM_DEFINITIONS[type] || FORM_DEFINITIONS.invoice;
+}
+
+function showsPrices(type = state.docType) {
+  return !["order", "delivery"].includes(type);
 }
 
 function normalizeCustomer(customer = {}) {
@@ -576,9 +582,14 @@ function collectDocumentNumbers(doc = {}) {
 function referenceEntries(doc = {}, options = {}) {
   const numbers = collectDocumentNumbers(doc);
   const types = options.includeCurrent ? FLOW_STEPS.flatMap((step) => [step.type, ...(step.alternates || [])]) : REFERENCE_TYPES[doc.docType] || [];
-  const entries = types
+  let entries = types
     .filter((type) => type !== doc.docType && numbers[type])
     .map((type) => ({ type, title: DOC_TYPES[type]?.title || "帳票", number: numbers[type] }));
+  if (!entries.length) {
+    entries = Object.entries(numbers)
+      .filter(([type, number]) => type !== doc.docType && number)
+      .map(([type, number]) => ({ type, title: DOC_TYPES[type]?.title || "帳票", number }));
+  }
   if (!entries.length && doc.sourceDocumentType && doc.sourceDocumentNumber) {
     entries.push({
       type: doc.sourceDocumentType,
@@ -770,6 +781,123 @@ function documentIssueMessages(doc, sum = totals(doc)) {
   return documentIssueItems(doc, sum).map((issue) => issue.message);
 }
 
+function simplifiedFieldTitle(label) {
+  if (!label) return null;
+  const existing = label.querySelector(":scope > .input-title, :scope > span[id$='Label']");
+  if (existing) return existing;
+
+  const title = document.createElement("span");
+  title.className = "input-title";
+  const text = Array.from(label.childNodes)
+    .filter((node) => node.nodeType === Node.TEXT_NODE)
+    .map((node) => node.textContent.trim())
+    .filter(Boolean)
+    .join(" ");
+
+  Array.from(label.childNodes)
+    .filter((node) => node.nodeType === Node.TEXT_NODE)
+    .forEach((node) => node.remove());
+
+  const firstControl = label.querySelector(":scope > input, :scope > textarea, :scope > select");
+  if (firstControl) label.insertBefore(title, firstControl);
+  else label.prepend(title);
+  if (text) title.dataset.defaultLabel = text;
+  return title;
+}
+
+function labelTitleText(label) {
+  const title = label?.querySelector(":scope > .input-title, :scope > span[id$='Label']");
+  if (title?.dataset.defaultLabel) return title.dataset.defaultLabel;
+  const text = title?.textContent?.trim();
+  if (text) return text;
+  return Array.from(label?.childNodes || [])
+    .filter((node) => node.nodeType === Node.TEXT_NODE)
+    .map((node) => node.textContent.trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+function simplifyInputLabels(root = document) {
+  root.querySelectorAll("label").forEach((label) => {
+    const control = label.querySelector(":scope > input:not([type='checkbox']):not([type='file']):not([type='color']), :scope > textarea");
+    if (!control) return;
+    const title = simplifiedFieldTitle(label);
+    const text = labelTitleText(label) || control.getAttribute("aria-label") || control.name || control.id;
+    if (title && !title.dataset.defaultLabel) title.dataset.defaultLabel = text;
+    if (text) control.placeholder = text;
+    label.classList.add("simplified-field");
+  });
+}
+
+function updateSimplifiedPlaceholders(root = document) {
+  root.querySelectorAll("label.simplified-field").forEach((label) => {
+    const control = label.querySelector(":scope > input:not([type='checkbox']):not([type='file']):not([type='color']), :scope > textarea");
+    if (!control) return;
+    const title = label.querySelector(":scope > .input-title, :scope > span[id$='Label']");
+    const text = title?.dataset.defaultLabel || title?.textContent?.trim() || labelTitleText(label);
+    if (text) {
+      control.placeholder = text;
+      if (title) title.dataset.defaultLabel = text;
+    }
+  });
+  updateDateFieldPrefixes();
+}
+
+function updateDateFieldPrefixes() {
+  ["issueDate", "transactionDate", "dueDate"].forEach((fieldId) => {
+    const control = els[fieldId] || document.getElementById(fieldId);
+    const label = control?.closest("label");
+    if (!control || !label) return;
+    const title = label.querySelector(":scope > .input-title, :scope > span[id$='Label']");
+    const text = title?.dataset.defaultLabel || title?.textContent?.trim() || labelTitleText(label);
+    if (!text) return;
+    label.classList.add("date-prefixed-field");
+    label.dataset.datePrefix = text;
+    control.placeholder = `${text} YYYY/MM/DD`;
+    control.style.setProperty("--date-prefix-width", `${Math.max(58, text.length * 14 + 18)}px`);
+  });
+}
+
+function clearFieldIssueTitles(root = document) {
+  root.querySelectorAll("label.simplified-field").forEach((label) => {
+    const control = label.querySelector(":scope > input, :scope > textarea");
+    const title = label.querySelector(":scope > .input-title, :scope > span[id$='Label']");
+    label.classList.remove("has-field-issue");
+    if (title) title.textContent = "";
+    if (control) control.removeAttribute("aria-invalid");
+  });
+  document.querySelectorAll(".line-table th.has-field-issue").forEach((heading) => {
+    heading.textContent = heading.dataset.defaultLabel || heading.textContent;
+    heading.classList.remove("has-field-issue");
+  });
+}
+
+function showFieldIssue(fieldId, message) {
+  if (fieldId === "lineItems") {
+    const heading = document.querySelector(".line-table th:first-child");
+    if (heading) {
+      if (!heading.dataset.defaultLabel) heading.dataset.defaultLabel = heading.textContent.trim();
+      heading.textContent = message;
+      heading.classList.add("has-field-issue");
+    }
+    els.lineItems?.querySelectorAll("input").forEach((input) => input.setAttribute("aria-invalid", "true"));
+    return;
+  }
+
+  const control = els[fieldId] || document.getElementById(fieldId);
+  const label = control?.closest("label");
+  if (!control || !label) return;
+  const title = simplifiedFieldTitle(label);
+  label.classList.add("simplified-field", "has-field-issue");
+  if (title) title.textContent = message;
+  control.setAttribute("aria-invalid", "true");
+}
+
+function renderFieldIssues(doc = getFormData()) {
+  clearFieldIssueTitles();
+  documentIssueItems(doc).forEach((issue) => showFieldIssue(issue.field, issue.message));
+}
+
 function relatedFlowDocuments(currentDoc = getFormData()) {
   const docs = loadDocuments();
   const ids = new Set([currentDoc.id, currentDoc.sourceDocumentId, ...(currentDoc.convertedDocumentIds || [])].filter(Boolean));
@@ -808,40 +936,9 @@ function relatedFlowDocuments(currentDoc = getFormData()) {
 }
 
 function renderFlowSidebar() {
-  if (!els.flowSteps && !els.currentFormHints) return;
-  const doc = getFormData();
-  const sum = totals(doc);
-  const issues = documentIssueItems(doc, sum);
-  const visibleIssues = issues.filter((issue) => !state.dismissedFlowIssues.includes(issue.id));
-  const related = relatedFlowDocuments(doc);
-  const nextType = FLOW_NEXT[doc.docType];
-  const currentRefs = referenceEntries(doc);
-
-  if (els.currentFormHints) {
-    els.currentFormHints.innerHTML = `
-      <strong>${escapeHtml(DOC_TYPES[doc.docType]?.title || "帳票")}を編集中</strong>
-      <span>${escapeHtml(doc.docNumber || "番号未設定")}</span>
-      <small>${escapeHtml(doc.customerName || "取引先未入力")} / ${escapeHtml(yen(sum.total))}</small>
-      ${currentRefs.length ? `<small>関連: ${escapeHtml(formatReferenceEntries(currentRefs))}</small>` : ""}
-      <em class="${visibleIssues.length ? "has-issues" : "is-ok"}">${visibleIssues.length ? `${visibleIssues.length}件確認` : "確認項目OK"}</em>
-      ${nextType ? `<small>次工程: ${escapeHtml(DOC_TYPES[nextType].title)}</small>` : ""}
-      ${
-        visibleIssues.length
-          ? `<div class="flow-issue-list">${visibleIssues
-              .map(
-                (issue) => `<div class="flow-issue-item">
-                  <span>${escapeHtml(issue.message)}</span>
-                  <button type="button" data-flow-manage="${escapeHtml(issue.field)}">管理</button>
-                  <button type="button" data-flow-dismiss="${escapeHtml(issue.id)}">削除</button>
-                </div>`,
-              )
-              .join("")}</div>`
-          : ""
-      }
-    `;
-  }
-
   if (!els.flowSteps) return;
+  const doc = getFormData();
+  const related = relatedFlowDocuments(doc);
   els.flowSteps.innerHTML = FLOW_STEPS.map((step, index) => {
     const stepDoc =
       step.type === doc.docType || step.alternates?.includes(doc.docType)
@@ -870,14 +967,28 @@ function renderFlowSidebar() {
 
 function renderLines() {
   els.lineItems.innerHTML = "";
+  const hasPrices = showsPrices();
+  if (els.lineItemsHead) {
+    els.lineItemsHead.innerHTML = hasPrices
+      ? `<tr><th>品目</th><th>型番</th><th>仕様</th><th>数量</th><th>単価</th><th></th></tr>`
+      : `<tr><th>品目</th><th>型番</th><th>仕様</th><th>数量</th><th></th></tr>`;
+  }
   state.lines.forEach((line) => {
     const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td><input class="item-name" data-field="name" data-id="${line.id}" type="text" value="${escapeHtml(line.name)}" /></td>
-      <td><input class="item-model" data-field="model" data-id="${line.id}" type="text" value="${escapeHtml(line.model || "")}" placeholder="SM-GLASS-42" /></td>
-      <td><input class="item-spec" data-field="specification" data-id="${line.id}" type="text" value="${escapeHtml(line.specification || "")}" placeholder="42インチ / 色 / 付属品" /></td>
-      <td><input data-field="quantity" data-id="${line.id}" type="number" min="0" step="0.01" value="${line.quantity}" /></td>
-      <td><input data-field="unitPrice" data-id="${line.id}" type="number" min="0" step="1" value="${line.unitPrice}" /></td>
+    tr.innerHTML = hasPrices
+      ? `
+      <td><input class="item-name" data-field="name" data-id="${line.id}" type="text" value="${escapeHtml(line.name)}" placeholder="品目" /></td>
+      <td><input class="item-model" data-field="model" data-id="${line.id}" type="text" value="${escapeHtml(line.model || "")}" placeholder="型番" /></td>
+      <td><input class="item-spec" data-field="specification" data-id="${line.id}" type="text" value="${escapeHtml(line.specification || "")}" placeholder="仕様" /></td>
+      <td><input data-field="quantity" data-id="${line.id}" type="number" min="0" step="0.01" value="${line.quantity}" placeholder="数量" /></td>
+      <td><input data-field="unitPrice" data-id="${line.id}" type="number" min="0" step="1" value="${line.unitPrice}" placeholder="単価" /></td>
+      <td><button class="remove-line" data-remove="${line.id}" type="button" aria-label="行を削除">x</button></td>
+    `
+      : `
+      <td><input class="item-name" data-field="name" data-id="${line.id}" type="text" value="${escapeHtml(line.name)}" placeholder="品目" /></td>
+      <td><input class="item-model" data-field="model" data-id="${line.id}" type="text" value="${escapeHtml(line.model || "")}" placeholder="型番" /></td>
+      <td><input class="item-spec" data-field="specification" data-id="${line.id}" type="text" value="${escapeHtml(line.specification || "")}" placeholder="仕様" /></td>
+      <td><input data-field="quantity" data-id="${line.id}" type="number" min="0" step="0.01" value="${line.quantity}" placeholder="数量" /></td>
       <td><button class="remove-line" data-remove="${line.id}" type="button" aria-label="行を削除">x</button></td>
     `;
     els.lineItems.appendChild(tr);
@@ -932,8 +1043,12 @@ function renderPreview() {
   const config = DOC_TYPES[doc.docType] || DOC_TYPES.invoice;
   const definition = formDefinition(doc.docType);
   const sum = totals(doc);
+  const hasPrices = showsPrices(doc.docType);
 
   applyTemplate();
+  els.printArea?.classList.toggle("no-prices", !hasPrices);
+  els.documentForm?.classList.toggle("no-prices", !hasPrices);
+  if (els.taxSettingsSection) els.taxSettingsSection.hidden = !hasPrices;
   renderFormDefinition(definition, config);
   els.pageTitle.textContent = config.pageTitle;
   els.previewTitle.textContent = config.title;
@@ -964,16 +1079,16 @@ function renderPreview() {
   if (els.invoiceBadge) els.invoiceBadge.hidden = !doc.issuerRegistration;
   syncSealSurfaces();
   if (els.totalBanner) {
-    els.totalBanner.hidden = !["invoice", "receipt", "acceptance"].includes(doc.docType);
+    els.totalBanner.hidden = !hasPrices || !["invoice", "receipt", "acceptance"].includes(doc.docType);
   }
-  els.previewGrandTotal.textContent = yen(sum.total);
+  els.previewGrandTotal.textContent = hasPrices ? yen(sum.total) : "";
   if (els.previewBannerBank && els.previewBannerBankText) {
-    els.previewBannerBank.hidden = doc.docType !== "invoice";
+    els.previewBannerBank.hidden = !hasPrices || doc.docType !== "invoice";
     const bankText = doc.bankDetails || "-";
     const dueText = doc.dueDate ? `支払期限: ${formatDate(doc.dueDate)}` : "支払期限: -";
     els.previewBannerBankText.textContent = doc.docType === "invoice" ? `${bankText}\n${dueText}` : "";
   }
-  els.previewSubtotal.textContent = yen(sum.subtotal);
+  els.previewSubtotal.textContent = hasPrices ? yen(sum.subtotal) : "";
   if (els.previewTaxable8) els.previewTaxable8.textContent = yen(sum.taxable8);
   if (els.previewTaxable10) els.previewTaxable10.textContent = yen(sum.taxable10);
   if (els.previewTaxable0) els.previewTaxable0.textContent = yen(sum.taxable0);
@@ -984,7 +1099,7 @@ function renderPreview() {
   toggleTotalRow(els.previewTaxable8, doc.taxMode === "reduced8");
   toggleTotalRow(els.previewTax8, doc.taxMode === "reduced8");
   toggleTotalRow(els.previewTaxable0, doc.taxMode === "none");
-  els.previewTotal.textContent = yen(sum.total);
+  els.previewTotal.textContent = hasPrices ? yen(sum.total) : "";
   els.previewNotes.textContent = doc.notes || "-";
   els.previewBank.textContent = doc.bankDetails || "-";
   if (els.previewSpecificsTitle) els.previewSpecificsTitle.textContent = definition.specificsLabel || SPECIFIC_LABELS[doc.docType] || "帳票別メモ";
@@ -999,20 +1114,31 @@ function renderPreview() {
       .join("");
   }
 
+  if (els.previewLineHead) {
+    els.previewLineHead.innerHTML = hasPrices
+      ? `<tr><th>品目</th><th>型番 / 仕様</th><th>数量</th><th>単価</th><th>金額</th></tr>`
+      : `<tr><th>品目</th><th>型番 / 仕様</th><th>数量</th></tr>`;
+  }
   els.previewLines.innerHTML = "";
   doc.lines.forEach((line) => {
     const amount = Number(line.quantity || 0) * Number(line.unitPrice || 0);
     const detailItems = lineDetailParts(line);
     const detailMarkup = detailItems.length
-      ? `<span class="line-detail-stack">${detailItems.map((part) => `<span>${escapeHtml(part)}</span>`).join("")}</span>`
+      ? `<span class="line-detail-stack">${escapeHtml(detailItems.join(" | "))}</span>`
       : "-";
     const tr = document.createElement("tr");
-    tr.innerHTML = `
+    tr.innerHTML = hasPrices
+      ? `
       <td>${escapeHtml(line.name || "-")}</td>
       <td class="line-detail-cell">${detailMarkup}</td>
       <td>${Number(line.quantity || 0).toLocaleString("ja-JP")}</td>
       <td>${yen(line.unitPrice)}</td>
       <td>${yen(amount)}</td>
+    `
+      : `
+      <td>${escapeHtml(line.name || "-")}</td>
+      <td class="line-detail-cell">${detailMarkup}</td>
+      <td>${Number(line.quantity || 0).toLocaleString("ja-JP")}</td>
     `;
     els.previewLines.appendChild(tr);
   });
@@ -1021,14 +1147,15 @@ function renderPreview() {
   renderCopyAsControl();
   renderTemplateControls();
   renderInvoiceChecklist(doc, sum);
+  renderFieldIssues(doc);
   renderFlowSidebar();
 }
 
 function syncRelatedNumberVisibility(doc = getFormData()) {
   if (!els.previewSourceRow || !els.previewSource) return;
   const refs = referenceEntries(doc);
-  const shouldShow = Boolean(els.showRelatedNumber?.checked);
-  els.previewSource.textContent = refs.length ? formatReferenceEntries(refs) : "-";
+  const shouldShow = Boolean(doc.showRelatedNumber);
+  els.previewSource.textContent = refs.length ? formatReferenceEntries(refs) : "関連番号なし";
   els.previewSourceRow.hidden = !shouldShow;
 }
 
@@ -1056,7 +1183,10 @@ function renderFormDefinition(definition, config) {
   };
 
   Object.entries(labelMap).forEach(([id, value]) => {
-    if (els[id]) els[id].textContent = value;
+    if (els[id]) {
+      els[id].textContent = value;
+      els[id].dataset.defaultLabel = value;
+    }
   });
 
   if (els.customerName) els.customerName.placeholder = definition.partyName;
@@ -1065,6 +1195,7 @@ function renderFormDefinition(definition, config) {
   if (els.notes) els.notes.placeholder = definition.notesPlaceholder;
   if (els.bankDetails) els.bankDetails.placeholder = definition.secondaryPlaceholder;
   if (els.documentSpecifics) els.documentSpecifics.placeholder = definition.specificsPlaceholder;
+  updateSimplifiedPlaceholders();
 }
 
 function renderInvoiceChecklist(doc, sum) {
@@ -1115,18 +1246,7 @@ function renderConversionPanel() {
 }
 
 function renderCopyAsControl() {
-  if (!els.copyAsTarget || !els.copyAsBtn || !els.nextStepBtn) return;
-
-  const targets = COPY_TARGETS.filter((target) => target !== state.docType);
-  const selectedTarget = els.copyAsTarget.value;
-  els.copyAsTarget.innerHTML = "";
-  targets.forEach((target) => {
-    const option = document.createElement("option");
-    option.value = target;
-    option.textContent = DOC_TYPES[target].title;
-    els.copyAsTarget.appendChild(option);
-  });
-  if (targets.includes(selectedTarget)) els.copyAsTarget.value = selectedTarget;
+  if (!els.nextStepBtn) return;
 
   const nextType = FLOW_NEXT[state.docType];
   els.nextStepBtn.disabled = !nextType;
@@ -1768,6 +1888,7 @@ function renderAll() {
   renderNav();
   renderNotices();
   renderPreview();
+  renderFieldIssues();
   renderRecent();
   renderCompanyOptions();
   syncOpenDialogs();
@@ -1796,8 +1917,11 @@ function setMobileView(view = "form") {
   const nextView = ["menu", "form", "preview"].includes(view) ? view : "form";
   document.body.classList.remove("mobile-view-menu", "mobile-view-form", "mobile-view-preview");
   document.body.classList.add(`mobile-view-${nextView}`);
-  document.querySelectorAll("[data-mobile-view]").forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.mobileView === nextView);
+  document.body.dataset.mobileView = nextView;
+  document.querySelectorAll(".mobile-view-switcher [data-mobile-view]").forEach((button) => {
+    const isActive = button.dataset.mobileView === nextView;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-current", isActive ? "step" : "false");
   });
 }
 
@@ -1915,7 +2039,7 @@ function buildEmailHtml() {
     body { margin: 0; padding: 16px; background: #f1f4f6; color: #172026; font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif; }
     .mail-wrap { max-width: 760px; margin: 0 auto; background: #fff; }
     .document-preview { width: auto !important; min-height: 0 !important; margin: 0 !important; padding: 24px !important; box-shadow: none !important; --template-accent: ${accent}; }
-    .doc-topline { margin: -24px -24px 18px !important; }
+    .doc-topline { display: none !important; }
     table { width: 100%; border-collapse: collapse; }
     img, iframe { max-width: 100%; }
     @media (max-width: 640px) {
@@ -1924,7 +2048,6 @@ function buildEmailHtml() {
       .doc-header, .party-row, .summary-row { display: block !important; }
       .meta-grid, .issuer-block, .summary-table { margin-top: 16px !important; }
       .line-table { display: block; overflow-x: auto; white-space: nowrap; }
-      .doc-topline { margin: -16px -16px 16px !important; }
     }
   </style>
 </head>
@@ -2001,7 +2124,7 @@ async function exportEmailHtml() {
 
 async function exportPdf() {
   const payload = buildPdfPayload();
-  const endpoint = location.protocol === "file:" ? "http://localhost:4180/api/pdf-file" : "/api/pdf-file";
+  const endpoint = location.protocol === "file:" ? "http://localhost:4180/api/pdf-file" : `${location.origin}/api/pdf-file`;
   try {
     const response = await fetch(endpoint, {
       method: "POST",
@@ -2016,7 +2139,8 @@ async function exportPdf() {
     showPdfPreview(pdfFile, payload.html);
   } catch (error) {
     console.error("server pdf export failed", error);
-    printWithBrowserFallback("PDFサーバーに接続できないため、ブラウザ印刷でPDF保存を開きます。http://localhost:4180/ を起動してから再試行してください。");
+    const serverUrl = location.protocol === "file:" ? "http://localhost:4180/" : `${location.origin}/`;
+    printWithBrowserFallback(`PDFサーバーに接続できないため、ブラウザ印刷でPDF保存を開きます。\n${serverUrl} を起動してから再試行してください。`);
   }
 }
 
@@ -2301,7 +2425,6 @@ function bindElements() {
     "leaveGuardSaveBtn",
     "recentList",
     "flowSteps",
-    "currentFormHints",
     "documentForm",
     "docTypeSelect",
     "basicSectionTitle",
@@ -2337,6 +2460,7 @@ function bindElements() {
     "bankDetails",
     "documentSpecifics",
     "taxMode",
+    "taxSettingsSection",
     "noticeType",
     "noticeTitle",
     "noticeBody",
@@ -2344,6 +2468,7 @@ function bindElements() {
     "previewNoticeSection",
     "previewNotices",
     "lineItems",
+    "lineItemsHead",
     "previewTitle",
     "previewSubtitle",
     "previewNumber",
@@ -2374,6 +2499,7 @@ function bindElements() {
     "previewBannerBank",
     "previewBannerBankText",
     "previewLines",
+    "previewLineHead",
     "previewSubtotal",
     "previewTaxable8",
     "previewTaxable10",
@@ -2455,8 +2581,6 @@ function bindElements() {
     "conversionStatus",
     "conversionTarget",
     "convertDocumentBtn",
-    "copyAsTarget",
-    "copyAsBtn",
     "nextStepBtn",
     "invoiceChecklist",
     "invoiceIssues",
@@ -2493,8 +2617,30 @@ function bindElements() {
 }
 
 function bindEvents() {
-  document.querySelectorAll("[data-mobile-view]").forEach((button) => {
+  document.querySelectorAll(".mobile-view-switcher [data-mobile-view]").forEach((button) => {
     button.addEventListener("click", () => setMobileView(button.dataset.mobileView));
+  });
+
+  document.querySelectorAll("[data-mobile-action]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const action = button.dataset.mobileAction;
+      if (["menu", "form", "preview"].includes(action)) {
+        setMobileView(action);
+        return;
+      }
+      if (action === "save") {
+        saveDocument();
+        return;
+      }
+      if (action === "pdf") {
+        document.getElementById("printBtn")?.click();
+        return;
+      }
+      if (action === "new" && (await confirmLeaveCurrentDocument())) {
+        setFormData(defaultDocument(state.docType));
+        setMobileView("form");
+      }
+    });
   });
 
   window.addEventListener("beforeunload", (event) => {
@@ -2626,18 +2772,6 @@ function bindEvents() {
     if (!button) return;
     await openFlowDocument(button.dataset.flowType);
     setMobileView("form");
-  });
-  els.currentFormHints?.addEventListener("click", (event) => {
-    const manage = event.target.closest("[data-flow-manage]");
-    if (manage) {
-      manageFlowIssue(manage.dataset.flowManage);
-      return;
-    }
-    const dismiss = event.target.closest("[data-flow-dismiss]");
-    if (dismiss) {
-      state.dismissedFlowIssues = [...new Set([...state.dismissedFlowIssues, dismiss.dataset.flowDismiss])];
-      renderFlowSidebar();
-    }
   });
   document.getElementById("exportHtmlBtn")?.addEventListener("click", exportEmailHtml);
   document.getElementById("openSettingsBtn")?.addEventListener("click", openSettingsDialog);
@@ -2786,7 +2920,6 @@ function bindEvents() {
   els.exportBackupBtn?.addEventListener("click", exportBackup);
   els.importBackupInput?.addEventListener("change", (event) => importBackup(event.target.files?.[0]));
   els.convertDocumentBtn?.addEventListener("click", convertCurrentDocument);
-  els.copyAsBtn?.addEventListener("click", () => copyCurrentDocumentAs(els.copyAsTarget.value));
   els.nextStepBtn?.addEventListener("click", () => copyCurrentDocumentAs(FLOW_NEXT[state.docType]));
   els.templateSelect?.addEventListener("change", () => {
     state.templateId = els.templateSelect.value;
@@ -2968,6 +3101,7 @@ function init() {
   bindElements();
   seedItems();
   migrateItems();
+  simplifyInputLabels();
   bindEvents();
   setMobileView("menu");
   setFormData(defaultDocument("invoice"));
