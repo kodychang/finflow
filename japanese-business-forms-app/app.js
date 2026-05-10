@@ -58,11 +58,22 @@ const DOC_TYPES = {
 };
 
 const STORAGE_KEY = "shokoForms.documents.v1";
+const FORM_OBJECT_SCHEMA_VERSION = 2;
 const CUSTOMER_KEY = "shokoForms.customers.v1";
 const ITEM_KEY = "shokoForms.items.v1";
 const TEMPLATE_KEY = "shokoForms.templates.v1";
 const SETTINGS_KEY = "shokoForms.settings.v1";
 const OPERATION_KEY = "shokoForms.operations.v1";
+const NIIX_COMPANY_NAME = "NIIX株式会社";
+const GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile";
+
+const ARCHIVE_FORM_TYPES = [
+  { key: "estimate", types: ["estimate"], label: "見積" },
+  { key: "order", types: ["order", "purchaseOrder"], label: "注文/発注" },
+  { key: "delivery", types: ["delivery"], label: "納品" },
+  { key: "invoice", types: ["invoice"], label: "請求" },
+  { key: "receipt", types: ["receipt"], label: "領収" },
+];
 
 const DEFAULT_SEAL_SETTINGS = {
   enabled: true,
@@ -109,21 +120,6 @@ const SEAL_SIZE_PRESETS = {
   large: { width: 120, height: 120 },
 };
 
-const CONVERSION_RULES = {
-  estimate: ["order", "purchaseOrder", "invoice"],
-  order: ["delivery", "invoice"],
-  purchaseOrder: ["delivery", "invoice"],
-  delivery: ["invoice", "acceptance"],
-  invoice: ["receipt"],
-};
-
-const FLOW_NEXT = {
-  estimate: "order",
-  order: "delivery",
-  delivery: "invoice",
-  invoice: "receipt",
-};
-
 const FLOW_STEPS = [
   { type: "estimate", label: "見積", note: "条件・金額を提示" },
   { type: "order", label: "注文 / 発注", note: "顧客注文と仕入発注", alternates: ["purchaseOrder"] },
@@ -134,14 +130,9 @@ const FLOW_STEPS = [
 
 const COPY_TARGETS = ["estimate", "order", "purchaseOrder", "delivery", "invoice", "receipt", "acceptance"];
 
-const REFERENCE_TYPES = {
-  order: ["estimate"],
-  purchaseOrder: ["estimate"],
-  delivery: ["order", "purchaseOrder"],
-  invoice: ["delivery"],
-  receipt: ["invoice"],
-  acceptance: ["delivery"],
-};
+const REFERENCE_TYPES = Object.fromEntries(
+  Object.keys(DOC_TYPES).map((type) => [type, Object.keys(DOC_TYPES).filter((candidate) => candidate !== type)]),
+);
 
 const NOTICE_TEMPLATES = {
   priceChange: {
@@ -326,10 +317,13 @@ const SAMPLE_ISSUER = {
 const state = {
   docType: "invoice",
   currentId: crypto.randomUUID(),
+  projectId: "",
+  projectName: "",
   templateId: "monochrome",
   sourceDocumentId: "",
   sourceDocumentNumber: "",
   sourceDocumentType: "",
+  relatedFormIds: [],
   relatedDocumentNumbers: {},
   convertedDocumentIds: [],
   selectedCustomerId: "",
@@ -341,6 +335,12 @@ const state = {
   companyLogoMarkedForDeletion: false,
   dismissedFlowIssues: [],
   leaveGuardResolve: null,
+  selectedArchiveProjectId: "",
+  previewSnapshotTimer: null,
+  previewSnapshotUrl: "",
+  previewSnapshotToken: 0,
+  googleAccessToken: "",
+  googleTokenExpiresAt: 0,
 };
 
 const els = {};
@@ -382,14 +382,14 @@ function formatDate(value) {
 
 function loadDocuments() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]").map(normalizeFormObject);
   } catch {
     return [];
   }
 }
 
 function storeDocuments(documents) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(documents));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(documents.map(normalizeFormObject)));
 }
 
 function readStore(key, fallback) {
@@ -402,6 +402,22 @@ function readStore(key, fallback) {
 
 function writeStore(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
+}
+
+function automaticAccountId(email = "") {
+  const suffix = String(email || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
+  return `acct-${suffix || crypto.randomUUID().slice(0, 8)}-${Date.now().toString(36)}`;
+}
+
+function accountLabel(settings = loadSettings()) {
+  const provider = settings.accountProvider === "google" ? "Google" : settings.accountProvider === "email" ? "Email" : "未登録";
+  const name = settings.accountName || settings.accountEmail || "未登録";
+  const id = settings.accountId ? `ID: ${settings.accountId}` : "ID未発行";
+  return { provider, name, id };
+}
+
+function updateBackupStatus(message) {
+  if (els.backupOutput) els.backupOutput.value = message;
 }
 
 function loadTemplates() {
@@ -468,6 +484,19 @@ function saveCompanyRecord(company, { makeDefault = true } = {}) {
 function defaultCompany() {
   const companies = settingsCompanies();
   return companies.find((company) => company.isDefault) || companies[0] || null;
+}
+
+function ensureNiixCompany() {
+  const companies = settingsCompanies();
+  if (companies.some((company) => company.name === NIIX_COMPANY_NAME)) return;
+  saveCompanyRecord({
+    name: NIIX_COMPANY_NAME,
+    registration: "",
+    address: "東京都内 NIIX株式会社 管理拠点",
+    contact: "Archive Desk",
+    phone: "",
+    email: "",
+  }, { makeDefault: !companies.length });
 }
 
 function applyCompanyToIssuer(company) {
@@ -571,6 +600,32 @@ function nextDocNumber(type) {
   return `${DOC_TYPES[type]?.prefix || "DOC"}-${ymd}-${String(count).padStart(3, "0")}`;
 }
 
+function compactUnique(values = []) {
+  return [...new Set(values.filter(Boolean).map(String))];
+}
+
+function normalizeFormObject(doc = {}) {
+  const id = doc.id || doc.formObjectId || crypto.randomUUID();
+  const docType = DOC_TYPES[doc.docType] ? doc.docType : "invoice";
+  const relatedFormIds = compactUnique([
+    ...(doc.relatedFormIds || []),
+    doc.sourceDocumentId,
+    ...(doc.convertedDocumentIds || []),
+  ]).filter((relatedId) => relatedId !== id);
+  return {
+    ...doc,
+    id,
+    formObjectId: doc.formObjectId || id,
+    objectType: "form",
+    schemaVersion: FORM_OBJECT_SCHEMA_VERSION,
+    docType,
+    relatedFormIds,
+    relatedDocumentNumbers: { ...(doc.relatedDocumentNumbers || {}) },
+    convertedDocumentIds: compactUnique(doc.convertedDocumentIds || []),
+    updatedAt: doc.updatedAt || new Date().toISOString(),
+  };
+}
+
 function collectDocumentNumbers(doc = {}) {
   return {
     ...(doc.relatedDocumentNumbers || {}),
@@ -613,6 +668,8 @@ function defaultDocument(type = state.docType) {
   const definition = formDefinition(type);
   return {
     id: crypto.randomUUID(),
+    projectId: "",
+    projectName: "",
     docType: type,
     templateId: state.templateId || "monochrome",
     docNumber: nextDocNumber(type),
@@ -632,10 +689,11 @@ function defaultDocument(type = state.docType) {
     notes: definition.defaultNotes,
     bankDetails: "",
     documentSpecifics: definition.defaultSpecifics,
-    taxMode: "standard10",
+    taxRate: 8,
     sourceDocumentId: "",
     sourceDocumentNumber: "",
     sourceDocumentType: "",
+    relatedFormIds: [],
     relatedDocumentNumbers: {},
     customRelatedNumber: "",
     showRelatedNumber: true,
@@ -647,9 +705,38 @@ function defaultDocument(type = state.docType) {
   };
 }
 
+function taxRateFromMode(taxMode) {
+  if (taxMode === "standard10") return 10;
+  if (taxMode === "none") return 0;
+  return 8;
+}
+
+function taxModeFromRate(taxRate) {
+  if (taxRate <= 0) return "none";
+  if (taxRate === 10) return "standard10";
+  return "reduced8";
+}
+
+function normalizeTaxRate(value, fallback = 8) {
+  if (value === undefined || value === null || value === "") return fallback;
+  const rate = Number(value);
+  if (!Number.isFinite(rate)) return fallback;
+  return Math.max(0, rate);
+}
+
+function documentTaxRate(doc) {
+  if (doc.taxRate !== undefined && doc.taxRate !== null && doc.taxRate !== "") {
+    return normalizeTaxRate(doc.taxRate);
+  }
+  return taxRateFromMode(doc.taxMode);
+}
+
 function getFormData() {
+  const taxRate = normalizeTaxRate(els.taxRate?.value, 8);
   return {
     id: state.currentId,
+    projectId: state.projectId || "",
+    projectName: state.projectName || "",
     docType: state.docType,
     templateId: state.templateId,
     docNumber: els.docNumber.value.trim(),
@@ -669,10 +756,15 @@ function getFormData() {
     notes: els.notes.value.trim(),
     bankDetails: els.bankDetails.value.trim(),
     documentSpecifics: els.documentSpecifics?.value.trim() || "",
-    taxMode: els.taxMode?.value || "standard10",
+    taxRate,
+    taxMode: taxModeFromRate(taxRate),
     sourceDocumentId: state.sourceDocumentId || "",
     sourceDocumentNumber: state.sourceDocumentNumber || "",
     sourceDocumentType: state.sourceDocumentType || "",
+    formObjectId: state.currentId,
+    objectType: "form",
+    schemaVersion: FORM_OBJECT_SCHEMA_VERSION,
+    relatedFormIds: compactUnique(state.relatedFormIds || []).filter((id) => id !== state.currentId),
     relatedDocumentNumbers: {
       ...(state.relatedDocumentNumbers || {}),
       ...(state.sourceDocumentType && state.sourceDocumentNumber ? { [state.sourceDocumentType]: state.sourceDocumentNumber } : {}),
@@ -698,11 +790,14 @@ function getFormData() {
 function setFormData(doc) {
   const docType = DOC_TYPES[doc.docType] ? doc.docType : "invoice";
   state.currentId = doc.id;
+  state.projectId = doc.projectId || "";
+  state.projectName = doc.projectName || "";
   state.docType = docType;
   state.templateId = doc.templateId || state.templateId || "monochrome";
   state.sourceDocumentId = doc.sourceDocumentId || "";
   state.sourceDocumentNumber = doc.sourceDocumentNumber || "";
   state.sourceDocumentType = doc.sourceDocumentType || "";
+  state.relatedFormIds = compactUnique(doc.relatedFormIds || []).filter((id) => id !== doc.id);
   state.relatedDocumentNumbers = { ...(doc.relatedDocumentNumbers || {}) };
   state.convertedDocumentIds = Array.isArray(doc.convertedDocumentIds) ? doc.convertedDocumentIds : [];
   state.notices = Array.isArray(doc.notices) ? doc.notices : [];
@@ -743,11 +838,11 @@ function setFormData(doc) {
     "notes",
     "bankDetails",
     "documentSpecifics",
-    "taxMode",
+    "taxRate",
   ]) {
     if (els[key]) els[key].value = doc[key] || "";
   }
-  if (els.taxMode) els.taxMode.value = doc.taxMode || "standard10";
+  if (els.taxRate) els.taxRate.value = documentTaxRate(doc);
   if (els.showRelatedNumber) els.showRelatedNumber.checked = doc.showRelatedNumber !== false;
   if (els.customRelatedNumber) els.customRelatedNumber.value = doc.customRelatedNumber || "";
 
@@ -758,13 +853,13 @@ function setFormData(doc) {
 
 function totals(doc) {
   const subtotal = doc.lines.reduce((total, line) => total + Number(line.quantity || 0) * Number(line.unitPrice || 0), 0);
-  const taxMode = doc.taxMode || "standard10";
-  const taxable10 = taxMode === "standard10" ? subtotal : 0;
-  const taxable8 = taxMode === "reduced8" ? subtotal : 0;
-  const taxable0 = taxMode === "none" ? subtotal : 0;
-  const tax8 = Math.floor(taxable8 * 0.08);
-  const tax10 = Math.floor(taxable10 * 0.1);
-  return { subtotal, taxable8, taxable10, taxable0, tax8, tax10, total: subtotal + tax8 + tax10 };
+  const taxRate = documentTaxRate(doc);
+  const taxable10 = 0;
+  const taxable8 = taxRate > 0 ? subtotal : 0;
+  const taxable0 = taxRate > 0 ? 0 : subtotal;
+  const tax8 = Math.floor(taxable8 * (taxRate / 100));
+  const tax10 = 0;
+  return { subtotal, taxRate, taxable8, taxable10, taxable0, tax8, tax10, total: subtotal + tax8 };
 }
 
 function documentIssueItems(doc, sum = totals(doc)) {
@@ -844,21 +939,26 @@ function updateSimplifiedPlaceholders(root = document) {
       if (title) title.dataset.defaultLabel = text;
     }
   });
-  updateDateFieldPrefixes();
+  updatePrefixedFields();
 }
 
-function updateDateFieldPrefixes() {
-  ["issueDate", "transactionDate", "dueDate"].forEach((fieldId) => {
+function updatePrefixedFields() {
+  ["docNumber", "issueDate", "transactionDate", "dueDate", "customRelatedNumber"].forEach((fieldId) => {
     const control = els[fieldId] || document.getElementById(fieldId);
     const label = control?.closest("label");
     if (!control || !label) return;
     const title = label.querySelector(":scope > .input-title, :scope > span[id$='Label']");
     const text = title?.dataset.defaultLabel || title?.textContent?.trim() || labelTitleText(label);
     if (!text) return;
-    label.classList.add("date-prefixed-field");
-    label.dataset.datePrefix = text;
-    control.placeholder = `${text} YYYY/MM/DD`;
-    control.style.setProperty("--date-prefix-width", `${Math.max(58, text.length * 14 + 18)}px`);
+    const isDate = control.type === "date";
+    label.classList.toggle("date-prefixed-field", isDate);
+    label.classList.toggle("input-prefixed-field", !isDate);
+    label.dataset.fieldPrefix = text;
+    delete label.dataset.datePrefix;
+    control.placeholder = isDate ? `${text} YYYY/MM/DD` : text;
+    control.title = text;
+    control.setAttribute("aria-label", text);
+    control.style.setProperty("--field-prefix-width", `${Math.max(58, text.length * 14 + 18)}px`);
   });
 }
 
@@ -904,31 +1004,41 @@ function renderFieldIssues(doc = getFormData()) {
 
 function relatedFlowDocuments(currentDoc = getFormData()) {
   const docs = loadDocuments();
-  const ids = new Set([currentDoc.id, currentDoc.sourceDocumentId, ...(currentDoc.convertedDocumentIds || [])].filter(Boolean));
+  const ids = new Set([
+    currentDoc.id,
+    currentDoc.sourceDocumentId,
+    ...(currentDoc.convertedDocumentIds || []),
+    ...(currentDoc.relatedFormIds || []),
+  ].filter(Boolean));
   const numbers = new Set([currentDoc.docNumber, currentDoc.sourceDocumentNumber, ...Object.values(currentDoc.relatedDocumentNumbers || {})].filter(Boolean));
+  const projectIds = new Set([currentDoc.projectId].filter(Boolean));
   let changed = true;
   while (changed) {
     changed = false;
     docs.forEach((doc) => {
       const docNumbers = [doc.docNumber, doc.sourceDocumentNumber, ...Object.values(doc.relatedDocumentNumbers || {})].filter(Boolean);
+      const docIds = [doc.id, doc.sourceDocumentId, ...(doc.convertedDocumentIds || []), ...(doc.relatedFormIds || [])].filter(Boolean);
       const linked =
-        ids.has(doc.id) ||
-        ids.has(doc.sourceDocumentId) ||
-        (doc.convertedDocumentIds || []).some((id) => ids.has(id)) ||
-        docNumbers.some((number) => numbers.has(number));
+        docIds.some((id) => ids.has(id)) ||
+        docNumbers.some((number) => numbers.has(number)) ||
+        (doc.projectId && projectIds.has(doc.projectId));
       if (!linked) return;
-      const before = ids.size + numbers.size;
-      ids.add(doc.id);
-      if (doc.sourceDocumentId) ids.add(doc.sourceDocumentId);
-      (doc.convertedDocumentIds || []).forEach((id) => ids.add(id));
+      const before = ids.size + numbers.size + projectIds.size;
+      docIds.forEach((id) => ids.add(id));
       docNumbers.forEach((number) => numbers.add(number));
-      changed = ids.size + numbers.size !== before;
+      if (doc.projectId) projectIds.add(doc.projectId);
+      changed = ids.size + numbers.size + projectIds.size !== before;
     });
   }
 
   const byType = new Map();
   docs
-    .filter((doc) => ids.has(doc.id) || [doc.docNumber, doc.sourceDocumentNumber, ...Object.values(doc.relatedDocumentNumbers || {})].some((number) => numbers.has(number)))
+    .filter((doc) => {
+      const docIds = [doc.id, doc.sourceDocumentId, ...(doc.convertedDocumentIds || []), ...(doc.relatedFormIds || [])].filter(Boolean);
+      return docIds.some((id) => ids.has(id)) ||
+        [doc.docNumber, doc.sourceDocumentNumber, ...Object.values(doc.relatedDocumentNumbers || {})].some((number) => numbers.has(number)) ||
+        (doc.projectId && projectIds.has(doc.projectId));
+    })
     .forEach((doc) => {
       const current = byType.get(doc.docType);
       if (!current || String(doc.updatedAt || "").localeCompare(String(current.updatedAt || "")) > 0) {
@@ -939,9 +1049,337 @@ function relatedFlowDocuments(currentDoc = getFormData()) {
   return byType;
 }
 
+function archiveFormKey(type) {
+  return ARCHIVE_FORM_TYPES.find((entry) => entry.types.includes(type))?.key || type;
+}
+
+function docArchiveDate(doc = {}) {
+  return doc.transactionDate || doc.issueDate || doc.updatedAt?.slice(0, 10) || today();
+}
+
+function weekStart(value) {
+  const base = value ? new Date(`${value}T00:00:00`) : new Date();
+  const day = base.getDay();
+  const offset = day === 0 ? -6 : 1 - day;
+  base.setDate(base.getDate() + offset);
+  return base.toISOString().slice(0, 10);
+}
+
+function addDateDays(value, days) {
+  const date = new Date(`${value}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function archiveCompanyName(project) {
+  return project.companyName || NIIX_COMPANY_NAME;
+}
+
+function projectDisplayName(project) {
+  return project.projectName || project.primaryDoc?.projectName || project.primaryDoc?.customerName || `Project ${project.id.slice(0, 8)}`;
+}
+
+function buildArchiveProjects() {
+  const docs = loadDocuments();
+  const seen = new Set();
+  const projects = [];
+
+  docs.forEach((doc) => {
+    if (seen.has(doc.id)) return;
+    const related = relatedFlowDocuments(doc);
+    if (doc.projectId) {
+      docs.filter((item) => item.projectId === doc.projectId).forEach((item) => related.set(item.docType, item));
+    }
+    const projectDocs = [...related.values()].filter((item) => item?.id && !seen.has(item.id));
+    projectDocs.forEach((item) => seen.add(item.id));
+    const allDocs = projectDocs.length ? projectDocs : [doc];
+    const sorted = [...allDocs].sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+    const primaryDoc = sorted[0] || doc;
+    const projectId = primaryDoc.projectId || doc.projectId || `legacy-${allDocs.map((item) => item.id).sort()[0]}`;
+    const formMap = {};
+    allDocs.forEach((item) => {
+      const key = archiveFormKey(item.docType);
+      if (!formMap[key] || String(item.updatedAt || "").localeCompare(String(formMap[key].updatedAt || "")) > 0) {
+        formMap[key] = item;
+      }
+    });
+    const archiveDate = allDocs.map(docArchiveDate).sort().at(-1) || today();
+    const latestUpdatedAt = sorted[0]?.updatedAt || `${archiveDate}T00:00:00.000Z`;
+    projects.push({
+      id: projectId,
+      projectName: primaryDoc.projectName || "",
+      companyName: primaryDoc.issuerName || defaultCompany()?.name || NIIX_COMPANY_NAME,
+      customerName: primaryDoc.customerName || "",
+      date: archiveDate,
+      week: weekStart(archiveDate),
+      latestUpdatedAt,
+      primaryDoc,
+      docs: allDocs,
+      formMap,
+      completed: ARCHIVE_FORM_TYPES.filter((entry) => formMap[entry.key]).length,
+    });
+  });
+
+  return projects.sort((a, b) => {
+    const dateOrder = String(b.date).localeCompare(String(a.date));
+    if (dateOrder) return dateOrder;
+    return String(b.latestUpdatedAt || "").localeCompare(String(a.latestUpdatedAt || ""));
+  });
+}
+
+function archiveProjectById(id) {
+  return buildArchiveProjects().find((project) => project.id === id) || null;
+}
+
+function archiveSearchText(project) {
+  return [
+    project.id,
+    projectDisplayName(project),
+    archiveCompanyName(project),
+    project.customerName,
+    ...project.docs.flatMap((doc) => [doc.docNumber, DOC_TYPES[doc.docType]?.title, doc.customerName, doc.issuerName]),
+  ].join(" ").toLowerCase();
+}
+
+function filteredArchiveProjects() {
+  const query = (els.archiveSearchInput?.value || "").trim().toLowerCase();
+  return buildArchiveProjects().filter((project) => !query || archiveSearchText(project).includes(query));
+}
+
+function groupArchiveProjects(projects) {
+  return projects.reduce((groups, project) => {
+    const company = archiveCompanyName(project);
+    if (!groups[company]) groups[company] = {};
+    if (!groups[company][project.week]) groups[company][project.week] = [];
+    groups[company][project.week].push(project);
+    return groups;
+  }, {});
+}
+
+function renderArchiveStatusDots(project) {
+  return ARCHIVE_FORM_TYPES.map((entry) => {
+    const doc = project.formMap[entry.key];
+    const title = doc ? `${entry.label}: ${doc.docNumber}` : `${entry.label}: 未作成`;
+    return `<button class="archive-status-dot ${doc ? "is-on" : "is-missing"}" type="button" title="${escapeHtml(title)}" data-project-form="${escapeHtml(project.id)}" data-form-key="${escapeHtml(entry.key)}">${escapeHtml(entry.label)}</button>`;
+  }).join("");
+}
+
+function renderArchiveTimeline() {
+  if (!els.archiveTimeline) return;
+  const projects = filteredArchiveProjects();
+  const groups = groupArchiveProjects(projects);
+  els.archiveTimeline.innerHTML = "";
+  if (!projects.length) {
+    els.archiveTimeline.innerHTML = `<div class="empty-master">該当する项目档案はありません。</div>`;
+    renderArchiveDetail(null);
+    return;
+  }
+  if (!state.selectedArchiveProjectId || !projects.some((project) => project.id === state.selectedArchiveProjectId)) {
+    state.selectedArchiveProjectId = projects[0].id;
+  }
+
+  Object.entries(groups).forEach(([company, weeks]) => {
+    const section = document.createElement("section");
+    section.className = "archive-company-group";
+    Object.entries(weeks)
+      .sort(([a], [b]) => String(b).localeCompare(String(a)))
+      .forEach(([week, weekProjects]) => {
+        const weekNode = document.createElement("section");
+        weekNode.className = "archive-week-group";
+        weekNode.innerHTML = `
+          <div class="archive-week-label">
+            <strong>${escapeHtml(company)}</strong>
+            <span><b>${escapeHtml(formatDate(week))}</b><em>${escapeHtml(formatDate(addDateDays(week, 6)))} まで</em></span>
+          </div>
+          <div class="archive-week-projects"></div>
+        `;
+        const projectList = weekNode.querySelector(".archive-week-projects");
+        weekProjects
+          .sort((a, b) => {
+            const dateOrder = String(b.date).localeCompare(String(a.date));
+            if (dateOrder) return dateOrder;
+            return String(b.latestUpdatedAt || "").localeCompare(String(a.latestUpdatedAt || ""));
+          })
+          .forEach((project) => {
+          const button = document.createElement("div");
+          button.className = `archive-project-row ${project.id === state.selectedArchiveProjectId ? "active" : ""}`;
+          button.tabIndex = 0;
+          button.setAttribute("role", "button");
+          button.dataset.projectId = project.id;
+          button.innerHTML = `
+            <input type="checkbox" data-project-check="${escapeHtml(project.id)}" aria-label="项目を選択" />
+            <div class="archive-project-main">
+              <div class="archive-project-title">
+                <strong>${escapeHtml(projectDisplayName(project))}</strong>
+                <small>${project.completed}/5</small>
+              </div>
+              <span>${escapeHtml(project.customerName || "取引先未入力")} / ${escapeHtml(formatDate(project.date))}</span>
+              <div class="archive-status">${renderArchiveStatusDots(project)}</div>
+            </div>
+          `;
+          projectList.appendChild(button);
+        });
+        section.appendChild(weekNode);
+      });
+    els.archiveTimeline.appendChild(section);
+  });
+  renderArchiveDetail(archiveProjectById(state.selectedArchiveProjectId));
+}
+
+function renderArchiveDetail(project) {
+  if (!els.archiveDetail) return;
+  if (!project) {
+    els.archiveDetail.innerHTML = `<p class="empty-master">项目を選択してください。</p>`;
+    return;
+  }
+  els.archiveDetail.innerHTML = `
+    <div class="archive-detail-head">
+      <div>
+        <p class="eyebrow">${escapeHtml(archiveCompanyName(project))}</p>
+        <h3>${escapeHtml(projectDisplayName(project))}</h3>
+        <span>${escapeHtml(project.customerName || "取引先未入力")} / ${escapeHtml(formatDate(project.date))}</span>
+      </div>
+      <div class="archive-detail-actions">
+        <button class="secondary-button" type="button" data-export-project="${escapeHtml(project.id)}">ZIP</button>
+        <button class="secondary-button danger-button" type="button" data-delete-project="${escapeHtml(project.id)}">项目削除</button>
+      </div>
+    </div>
+    <div class="archive-form-list">
+      ${ARCHIVE_FORM_TYPES.map((entry) => {
+        const doc = project.formMap[entry.key];
+        return `
+          <div class="archive-form-row ${doc ? "is-complete" : "is-missing"}">
+            <button class="archive-form-open" type="button" data-project-form="${escapeHtml(project.id)}" data-form-key="${escapeHtml(entry.key)}">
+              <strong>${escapeHtml(entry.label)}</strong>
+              <span>${escapeHtml(doc ? `${doc.docNumber} / ${formatDate(doc.updatedAt?.slice(0, 10))}` : "未作成 - クリックして作成")}</span>
+            </button>
+            ${doc ? `<button class="secondary-button danger-button archive-form-delete" type="button" data-delete-form="${escapeHtml(doc.id)}">削除</button>` : ""}
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+async function openArchiveProjectForm(projectId, formKey) {
+  const project = archiveProjectById(projectId);
+  if (!project) return;
+  const entry = ARCHIVE_FORM_TYPES.find((item) => item.key === formKey);
+  if (!entry) return;
+  const existing = project.formMap[entry.key];
+  if (existing) {
+    if (await loadDocument(existing.id)) {
+      els.archiveDialog?.close();
+      setMobileView("form");
+    }
+    return;
+  }
+  if (!(await confirmLeaveCurrentDocument())) return;
+  const targetType = entry.types[0];
+  const source = project.primaryDoc || project.docs[0] || defaultDocument(targetType);
+  const next = buildConvertedDocument(source, targetType);
+  next.projectId = project.id.startsWith("legacy-") ? crypto.randomUUID() : project.id;
+  next.projectName = projectDisplayName(project);
+  next.docType = targetType;
+  next.docNumber = nextDocNumber(targetType);
+  next.issueDate = today();
+  next.transactionDate = today();
+  next.updatedAt = new Date().toISOString();
+  const docs = loadDocuments().map((doc) => project.docs.some((item) => item.id === doc.id) ? { ...doc, projectId: next.projectId, projectName: next.projectName } : doc);
+  upsertDocument(docs, next);
+  storeDocuments(docs);
+  setFormData(next);
+  els.archiveDialog?.close();
+  setMobileView("form");
+}
+
+function archiveProjectNameForCompany(companyName) {
+  return `${today()} ${companyName}`.trim();
+}
+
+function renderArchiveProjectCompanyOptions() {
+  if (!els.archiveProjectCompanySelect) return;
+  const customers = loadCustomers();
+  els.archiveProjectCompanySelect.innerHTML = `<option value="">既存会社を選択</option>${customers.map((customer) => `<option value="${escapeHtml(customer.id)}">${escapeHtml(customer.companyName || "会社名未入力")}</option>`).join("")}`;
+  updateArchiveProjectNamePreview();
+}
+
+function selectedArchiveProjectCompany() {
+  const typedName = els.archiveProjectCompanyNameInput?.value.trim() || "";
+  if (typedName) {
+    return normalizeCustomer({
+      companyName: typedName,
+      companyAddress: els.archiveProjectCompanyAddressInput?.value.trim() || "",
+      contactName: els.archiveProjectCompanyContactInput?.value.trim() || "",
+    });
+  }
+  const selectedId = els.archiveProjectCompanySelect?.value || "";
+  return loadCustomers().find((customer) => customer.id === selectedId) || null;
+}
+
+function updateArchiveProjectNamePreview() {
+  if (!els.archiveProjectNamePreview) return;
+  const company = selectedArchiveProjectCompany();
+  els.archiveProjectNamePreview.textContent = company?.companyName ? archiveProjectNameForCompany(company.companyName) : "-";
+}
+
+function openArchiveProjectDialog() {
+  renderArchiveProjectCompanyOptions();
+  if (els.archiveProjectCompanyNameInput) els.archiveProjectCompanyNameInput.value = "";
+  if (els.archiveProjectCompanyAddressInput) els.archiveProjectCompanyAddressInput.value = "";
+  if (els.archiveProjectCompanyContactInput) els.archiveProjectCompanyContactInput.value = "";
+  updateArchiveProjectNamePreview();
+  els.archiveProjectDialog?.showModal();
+}
+
+function createArchiveProject() {
+  const company = selectedArchiveProjectCompany();
+  if (!company?.companyName) {
+    window.alert("交易会社を選択、または新会社名を入力してください。");
+    return;
+  }
+  const savedCompany = saveCustomerRecord(company, { silent: true });
+  const projectId = crypto.randomUUID();
+  const doc = defaultDocument("estimate");
+  doc.projectId = projectId;
+  doc.projectName = archiveProjectNameForCompany(savedCompany.companyName);
+  doc.customerName = savedCompany.companyName;
+  doc.customerAddress = savedCompany.companyAddress;
+  doc.customerContact = customerDisplayContact(savedCompany) === "-" ? "" : customerDisplayContact(savedCompany);
+  doc.issuerName = NIIX_COMPANY_NAME;
+  setFormData(doc);
+  els.archiveProjectDialog?.close();
+  els.archiveDialog?.close();
+  setMobileView("form");
+}
+
+function deleteArchiveProject(projectId) {
+  const project = archiveProjectById(projectId);
+  if (!project) return;
+  const label = `项目 ${projectDisplayName(project)}`;
+  if (!confirmRepeatedDelete(label)) return;
+  const ids = new Set(project.docs.map((doc) => doc.id));
+  storeDocuments(loadDocuments().filter((doc) => !ids.has(doc.id)));
+  logOperation({ category: "変更", priority: "重要", assignee: loadSettings().accountName || "自分", memo: `${label} を削除` });
+  state.selectedArchiveProjectId = "";
+  if (ids.has(state.currentId)) setFormData(defaultDocument("invoice"));
+  syncProjectSurfaces();
+}
+
+function deleteArchiveForm(docId) {
+  const doc = loadDocuments().find((item) => item.id === docId);
+  if (!doc) return;
+  const label = `${DOC_TYPES[doc.docType]?.title || "帳票"} ${doc.docNumber || ""}`.trim();
+  if (!confirmRepeatedDelete(label)) return;
+  storeDocuments(loadDocuments().filter((item) => item.id !== docId));
+  logOperation({ category: "変更", priority: "重要", assignee: loadSettings().accountName || "自分", memo: `${label} を削除`, docNumber: doc.docNumber });
+  if (state.currentId === docId) setFormData(defaultDocument("invoice"));
+  syncProjectSurfaces();
+}
+
 function flowStepEntries(doc = getFormData()) {
   const related = relatedFlowDocuments(doc);
-  return FLOW_STEPS.map((step, index) => {
+  return FLOW_STEPS.map((step) => {
     const stepDoc =
       step.type === doc.docType || step.alternates?.includes(doc.docType)
         ? doc
@@ -949,24 +1387,22 @@ function flowStepEntries(doc = getFormData()) {
     const stepIssues = stepDoc ? documentIssueMessages(stepDoc) : [];
     const isCurrent = stepDoc?.id === doc.id || step.type === doc.docType || step.alternates?.includes(doc.docType);
     const status = isCurrent ? "現在" : stepDoc ? "作成済" : "未作成";
-    const issueText = stepDoc ? (stepIssues[0] || "確認項目OK") : step.note;
     const badgeClass = stepIssues.length ? "has-issues" : stepDoc ? "is-ok" : "can-create";
     const badgeText = stepDoc ? (stepIssues.length ? `${stepIssues.length}件` : "OK") : "作成";
     const refs = stepDoc ? referenceEntries(stepDoc) : [];
     const stepText = stepDoc?.docNumber
       ? `${stepDoc.docNumber}${refs.length ? ` / 関連: ${formatReferenceEntries(refs)}` : ""}`
-      : issueText;
-    return { step, index, stepDoc, isCurrent, status, badgeClass, badgeText, stepText };
+      : "未作成";
+    return { step, stepDoc, isCurrent, status, badgeClass, badgeText, stepText };
   });
 }
 
 function renderFlowSidebar() {
   const entries = flowStepEntries();
   if (els.flowSteps) {
-    els.flowSteps.innerHTML = entries.map(({ step, index, stepDoc, isCurrent, status, badgeClass, badgeText, stepText }) => {
+    els.flowSteps.innerHTML = entries.map(({ step, stepDoc, isCurrent, status, badgeClass, badgeText, stepText }) => {
     return `
       <button class="flow-step ${isCurrent ? "active" : ""} ${stepDoc ? "is-done" : "is-pending"}" type="button" data-flow-type="${escapeHtml(stepDoc?.docType || step.type)}">
-        <strong>${index + 1}</strong>
         <span>${escapeHtml(step.label)}<b>${escapeHtml(status)}</b></span>
         <small>${escapeHtml(stepText)}</small>
         <em class="${badgeClass}">${badgeText}</em>
@@ -975,9 +1411,8 @@ function renderFlowSidebar() {
     }).join("");
   }
   if (els.topFlowTabs) {
-    els.topFlowTabs.innerHTML = entries.map(({ step, index, stepDoc, isCurrent, badgeClass, badgeText }) => `
+    els.topFlowTabs.innerHTML = entries.map(({ step, stepDoc, isCurrent, badgeClass, badgeText }) => `
       <button class="top-flow-tab ${isCurrent ? "active" : ""} ${stepDoc ? "is-done" : "is-pending"}" type="button" data-flow-type="${escapeHtml(stepDoc?.docType || step.type)}">
-        <strong>${index + 1}</strong>
         <span>${escapeHtml(step.label)}</span>
         <em class="${badgeClass}">${badgeText}</em>
       </button>
@@ -1047,6 +1482,12 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
+function confirmRepeatedDelete(label = "対象") {
+  const target = String(label || "対象").trim();
+  if (!window.confirm(`${target} を削除します。この操作は元に戻せません。続行しますか？`)) return false;
+  return window.confirm(`最終確認: ${target} を本当に削除しますか？`);
+}
+
 function lineDetailParts(line) {
   return [line.model, ...String(line.specification || "").split("/")]
     .map((part) => part.trim())
@@ -1056,6 +1497,10 @@ function lineDetailParts(line) {
 function toggleTotalRow(element, visible) {
   const row = element?.closest("div");
   if (row) row.hidden = !visible;
+}
+
+function formatTaxRate(rate) {
+  return Number.isInteger(rate) ? String(rate) : String(Number(rate.toFixed(2))).replace(/\.?0+$/, "");
 }
 
 function renderPreview() {
@@ -1068,7 +1513,7 @@ function renderPreview() {
   applyTemplate();
   els.printArea?.classList.toggle("no-prices", !hasPrices);
   els.documentForm?.classList.toggle("no-prices", !hasPrices);
-  if (els.taxSettingsSection) els.taxSettingsSection.hidden = !hasPrices;
+  if (els.taxRate) els.taxRate.closest("label").hidden = !hasPrices;
   renderFormDefinition(definition, config);
   els.pageTitle.textContent = config.pageTitle;
   els.previewTitle.textContent = config.title;
@@ -1096,6 +1541,7 @@ function renderPreview() {
     els.previewLogo.innerHTML = "";
     els.previewLogo.hidden = true;
   }
+  els.printArea?.classList.toggle("has-logo", Boolean(state.issuerLogo));
   if (els.invoiceBadge) els.invoiceBadge.hidden = !doc.issuerRegistration;
   syncSealSurfaces();
   if (els.totalBanner) {
@@ -1114,11 +1560,14 @@ function renderPreview() {
   if (els.previewTaxable0) els.previewTaxable0.textContent = yen(sum.taxable0);
   els.previewTax8.textContent = yen(sum.tax8);
   els.previewTax10.textContent = yen(sum.tax10);
-  toggleTotalRow(els.previewTaxable10, doc.taxMode === "standard10");
-  toggleTotalRow(els.previewTax10, doc.taxMode === "standard10");
-  toggleTotalRow(els.previewTaxable8, doc.taxMode === "reduced8");
-  toggleTotalRow(els.previewTax8, doc.taxMode === "reduced8");
-  toggleTotalRow(els.previewTaxable0, doc.taxMode === "none");
+  const taxRateLabel = formatTaxRate(sum.taxRate);
+  if (els.previewTaxableRateLabel) els.previewTaxableRateLabel.textContent = `${taxRateLabel}%対象`;
+  if (els.previewTaxRateLabel) els.previewTaxRateLabel.textContent = `消費税 ${taxRateLabel}%`;
+  toggleTotalRow(els.previewTaxable10, false);
+  toggleTotalRow(els.previewTax10, false);
+  toggleTotalRow(els.previewTaxable8, sum.taxRate > 0);
+  toggleTotalRow(els.previewTax8, sum.taxRate > 0);
+  toggleTotalRow(els.previewTaxable0, sum.taxRate <= 0);
   els.previewTotal.textContent = hasPrices ? yen(sum.total) : "";
   els.previewNotes.textContent = doc.notes || "-";
   els.previewBank.textContent = doc.bankDetails || "-";
@@ -1168,6 +1617,74 @@ function renderPreview() {
   renderTemplateControls();
   renderFieldIssues(doc);
   renderFlowSidebar();
+  schedulePreviewSnapshot();
+}
+
+function shouldRasterizePreview() {
+  return Boolean(window.matchMedia?.("(max-width: 1920px)").matches);
+}
+
+function syncPreviewRasterMode(active) {
+  document.body.classList.toggle("preview-raster-mode", active);
+  if (els.previewPngFrame) {
+    els.previewPngFrame.hidden = !active;
+    els.previewPngFrame.classList.toggle("is-rendering", active && !els.previewPngImage?.src);
+  }
+}
+
+function waitForImageLoad(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = resolve;
+    image.onerror = reject;
+    image.src = url;
+  });
+}
+
+async function renderPreviewPng() {
+  if (!els.previewPngFrame || !els.previewPngImage || !els.printArea) return;
+  const active = shouldRasterizePreview();
+  if (!active) {
+    syncPreviewRasterMode(false);
+    if (state.previewSnapshotUrl) URL.revokeObjectURL(state.previewSnapshotUrl);
+    state.previewSnapshotUrl = "";
+    els.previewPngImage.removeAttribute("src");
+    return;
+  }
+  if (document.body.dataset.mobileView && document.body.dataset.mobileView !== "preview") return;
+
+  const token = ++state.previewSnapshotToken;
+  els.previewPngFrame.classList.add("is-rendering");
+  try {
+    const response = await fetch("/api/preview-png", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(buildDocumentRenderPayload()),
+    });
+    if (!response.ok) throw new Error(await response.text() || "PNGプレビュー生成に失敗しました。");
+    const pngUrl = URL.createObjectURL(await response.blob());
+    await waitForImageLoad(pngUrl);
+    if (token !== state.previewSnapshotToken) {
+      URL.revokeObjectURL(pngUrl);
+      return;
+    }
+    if (state.previewSnapshotUrl) URL.revokeObjectURL(state.previewSnapshotUrl);
+    state.previewSnapshotUrl = pngUrl;
+    els.previewPngImage.src = pngUrl;
+    syncPreviewRasterMode(true);
+  } catch (error) {
+    console.warn("preview png render failed", error);
+    if (!els.previewPngImage.src) syncPreviewRasterMode(false);
+  } finally {
+    if (token === state.previewSnapshotToken) {
+      els.previewPngFrame.classList.remove("is-rendering");
+    }
+  }
+}
+
+function schedulePreviewSnapshot() {
+  window.clearTimeout(state.previewSnapshotTimer);
+  state.previewSnapshotTimer = window.setTimeout(renderPreviewPng, 120);
 }
 
 function syncRelatedNumberVisibility(doc = getFormData()) {
@@ -1248,10 +1765,9 @@ function renderConversionPanel() {
 
 function renderCopyAsControl() {
   if (!els.nextStepBtn) return;
-
-  const nextType = FLOW_NEXT[state.docType];
-  els.nextStepBtn.disabled = !nextType;
-  els.nextStepBtn.textContent = nextType ? `次工程へ: ${DOC_TYPES[nextType].title}` : "次工程なし";
+  els.nextStepBtn.classList.add("hidden");
+  els.nextStepBtn.disabled = true;
+  els.nextStepBtn.textContent = "関連帳票";
 }
 
 function applyTemplate() {
@@ -1259,7 +1775,7 @@ function applyTemplate() {
   const template = selectedTemplate();
   els.printArea.dataset.template = template.style;
   els.printArea.style.setProperty("--template-accent", template.accent || "#2f3744");
-  if (els.previewLogo) els.previewLogo.style.background = template.accent || "#2f3744";
+  if (els.previewLogo) els.previewLogo.style.background = "transparent";
 }
 
 function renderTemplateControls() {
@@ -1308,9 +1824,15 @@ function buildConvertedDocument(source, targetType) {
     ...(source.sourceDocumentType && source.sourceDocumentNumber ? { [source.sourceDocumentType]: source.sourceDocumentNumber } : {}),
     [source.docType]: source.docNumber,
   };
+  const newId = crypto.randomUUID();
   return {
     ...source,
-    id: crypto.randomUUID(),
+    id: newId,
+    formObjectId: newId,
+    objectType: "form",
+    schemaVersion: FORM_OBJECT_SCHEMA_VERSION,
+    projectId: source.projectId || "",
+    projectName: source.projectName || "",
     docType: targetType,
     docNumber: nextDocNumber(targetType),
     issueDate: today(),
@@ -1321,6 +1843,7 @@ function buildConvertedDocument(source, targetType) {
     sourceDocumentId: source.id,
     sourceDocumentNumber: source.docNumber,
     sourceDocumentType: source.docType,
+    relatedFormIds: compactUnique([source.id, source.sourceDocumentId, ...(source.relatedFormIds || []), ...(source.convertedDocumentIds || [])]),
     relatedDocumentNumbers,
     convertedDocumentIds: [],
     lines: source.lines.map((line) => ({
@@ -1346,9 +1869,10 @@ function defaultSpecifics(source, targetType) {
 }
 
 function upsertDocument(docs, doc) {
-  const index = docs.findIndex((item) => item.id === doc.id);
-  if (index >= 0) docs[index] = doc;
-  else docs.push(doc);
+  const normalized = normalizeFormObject(doc);
+  const index = docs.findIndex((item) => item.id === normalized.id);
+  if (index >= 0) docs[index] = normalized;
+  else docs.push(normalized);
 }
 
 async function convertCurrentDocument() {
@@ -1360,6 +1884,7 @@ async function convertCurrentDocument() {
   const converted = buildConvertedDocument(source, targetType);
   const linkedSource = {
     ...source,
+    relatedFormIds: compactUnique([...(source.relatedFormIds || []), converted.id]),
     convertedDocumentIds: [...new Set([...(source.convertedDocumentIds || []), converted.id])],
     updatedAt: new Date().toISOString(),
   };
@@ -1379,6 +1904,7 @@ async function copyCurrentDocumentAs(targetType) {
   const converted = buildConvertedDocument(source, targetType);
   const linkedSource = {
     ...source,
+    relatedFormIds: compactUnique([...(source.relatedFormIds || []), converted.id]),
     convertedDocumentIds: [...new Set([...(source.convertedDocumentIds || []), converted.id])],
     updatedAt: new Date().toISOString(),
   };
@@ -1445,11 +1971,7 @@ async function openFlowDocument(type) {
   }
   const targetTitle = DOC_TYPES[type]?.title || "帳票";
   if (!window.confirm(`${targetTitle}はまだ作成されていません。新しく作成しますか？`)) return;
-  if (CONVERSION_RULES[doc.docType]?.includes(type)) {
-    await copyCurrentDocumentAs(type);
-    return;
-  }
-  await switchDocType(type);
+  await copyCurrentDocumentAs(type);
 }
 
 function manageFlowIssue(fieldId) {
@@ -1515,8 +2037,12 @@ function openHistoryDialog() {
 
 function loadSettings() {
   return readStore(SETTINGS_KEY, {
+    accountId: "",
+    accountProvider: "",
     accountName: "",
     accountEmail: "",
+    googleClientId: "",
+    googleDriveFileId: "",
     staff: [],
     companies: [],
     seal: DEFAULT_SEAL_SETTINGS,
@@ -1624,8 +2150,13 @@ function buildSealMarkup(settings = currentSealSettings(), options = {}) {
 
 function renderSettings() {
   const settings = loadSettings();
+  if (els.accountStatus) {
+    const label = accountLabel(settings);
+    els.accountStatus.innerHTML = `<strong>${escapeHtml(label.provider)} / ${escapeHtml(label.name)}</strong><span>${escapeHtml(label.id)}</span>`;
+  }
   if (els.settingsAccountName) els.settingsAccountName.value = settings.accountName || "";
   if (els.settingsAccountEmail) els.settingsAccountEmail.value = settings.accountEmail || "";
+  if (els.settingsGoogleClientId) els.settingsGoogleClientId.value = settings.googleClientId || "";
   renderCompanySettings();
   renderSealSettings();
   renderStaffSettings();
@@ -1835,8 +2366,10 @@ function companyFromSettingsForm(existing = {}) {
   });
 }
 
-function exportBackup() {
-  const payload = {
+function buildBackupPayload() {
+  return {
+    app: "shoko-forms",
+    version: 2,
     exportedAt: new Date().toISOString(),
     documents: loadDocuments(),
     customers: loadCustomers(),
@@ -1844,19 +2377,182 @@ function exportBackup() {
     templates: readStore(TEMPLATE_KEY, []),
     settings: loadSettings(),
   };
-  const json = JSON.stringify(payload, null, 2);
-  els.backupOutput.value = json;
-  const blob = new Blob([json], { type: "application/json" });
+}
+
+function downloadBlob(blob, filename) {
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = `shoko-forms-backup-${today()}.json`;
+  link.download = filename;
   link.click();
   URL.revokeObjectURL(link.href);
 }
 
-function buildPdfPayload() {
-  const doc = getFormData();
-  renderPreview();
+function exportBackup() {
+  const payload = buildBackupPayload();
+  const json = JSON.stringify(payload, null, 2);
+  els.backupOutput.value = json;
+  const blob = new Blob([json], { type: "application/json" });
+  downloadBlob(blob, `shoko-forms-backup-${today()}.json`);
+}
+
+function crc32(bytes) {
+  let crc = -1;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let i = 0; i < 8; i += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  return (crc ^ -1) >>> 0;
+}
+
+function dosDateTime(date = new Date()) {
+  const time = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
+  const day = date.getDate();
+  const month = date.getMonth() + 1;
+  const year = Math.max(1980, date.getFullYear()) - 1980;
+  return { time, date: (year << 9) | (month << 5) | day };
+}
+
+function u16(value) {
+  return [value & 255, (value >>> 8) & 255];
+}
+
+function u32(value) {
+  return [value & 255, (value >>> 8) & 255, (value >>> 16) & 255, (value >>> 24) & 255];
+}
+
+function fileContentBytes(content) {
+  if (content instanceof Uint8Array) return content;
+  if (content instanceof ArrayBuffer) return new Uint8Array(content);
+  return new TextEncoder().encode(String(content ?? ""));
+}
+
+function makeZip(files) {
+  const encoder = new TextEncoder();
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+  const stamp = dosDateTime();
+
+  files.forEach((file) => {
+    const nameBytes = encoder.encode(file.name);
+    const contentBytes = fileContentBytes(file.content);
+    const checksum = crc32(contentBytes);
+    const localHeader = new Uint8Array([
+      ...u32(0x04034b50), ...u16(20), ...u16(2048), ...u16(0), ...u16(stamp.time), ...u16(stamp.date),
+      ...u32(checksum), ...u32(contentBytes.length), ...u32(contentBytes.length), ...u16(nameBytes.length), ...u16(0),
+    ]);
+    localParts.push(localHeader, nameBytes, contentBytes);
+    const centralHeader = new Uint8Array([
+      ...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(2048), ...u16(0), ...u16(stamp.time), ...u16(stamp.date),
+      ...u32(checksum), ...u32(contentBytes.length), ...u32(contentBytes.length), ...u16(nameBytes.length), ...u16(0), ...u16(0),
+      ...u16(0), ...u16(0), ...u32(0), ...u32(offset),
+    ]);
+    centralParts.push(centralHeader, nameBytes);
+    offset += localHeader.length + nameBytes.length + contentBytes.length;
+  });
+
+  const centralSize = centralParts.reduce((total, part) => total + part.length, 0);
+  const end = new Uint8Array([
+    ...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(files.length), ...u16(files.length), ...u32(centralSize), ...u32(offset), ...u16(0),
+  ]);
+  return new Blob([...localParts, ...centralParts, end], { type: "application/zip" });
+}
+
+function exportBackupZip({ download = true } = {}) {
+  const payload = buildBackupPayload();
+  const json = JSON.stringify(payload, null, 2);
+  const zip = makeZip([
+    { name: "backup.json", content: json },
+    { name: "manifest.json", content: JSON.stringify({ app: payload.app, version: payload.version, exportedAt: payload.exportedAt }, null, 2) },
+  ]);
+  els.backupOutput.value = json;
+  if (download) downloadBlob(zip, `shoko-forms-backup-${today()}.zip`);
+  return zip;
+}
+
+function safeFilename(value) {
+  return String(value || "project").replace(/[\\/:*?"<>|]+/g, "_").replace(/\s+/g, "_").slice(0, 80);
+}
+
+function buildArchivePdfPayload(doc, overrides = {}) {
+  const currentDoc = getFormData();
+  const wasDirty = state.isDirty;
+
+  try {
+    setFormData(doc);
+    renderPreview();
+    return {
+      ...buildDocumentRenderPayload(getFormData()),
+      ...overrides,
+    };
+  } finally {
+    setFormData(currentDoc);
+    renderPreview();
+    setDirty(wasDirty);
+  }
+}
+
+async function archivePdfFile(doc, base = "") {
+  const title = `${doc.docNumber || ""} ${DOC_TYPES[doc.docType]?.title || "帳票"}`.trim();
+  const filename = `${safeFilename(doc.docNumber || doc.id)}-${safeFilename(DOC_TYPES[doc.docType]?.title || doc.docType)}.pdf`;
+  const endpoint = location.protocol === "file:" ? "http://localhost:4180/api/pdf-file" : `${location.origin}/api/pdf-file`;
+  const payload = buildArchivePdfPayload(doc, { title, filename });
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(await response.text() || "PDF生成に失敗しました。");
+  const pdfFile = await response.json();
+  const pdfResponse = await fetch(pdfFile.downloadUrl || pdfFile.inlineUrl);
+  if (!pdfResponse.ok) throw new Error("生成済みPDFを取得できませんでした。");
+  return {
+    name: `${base}${filename}`,
+    content: await pdfResponse.arrayBuffer(),
+  };
+}
+
+async function archiveProjectPdfFiles(project) {
+  const base = `${safeFilename(projectDisplayName(project))}/`;
+  const files = [];
+  for (const doc of project.docs) {
+    files.push(await archivePdfFile(doc, base));
+  }
+  files.push({
+    name: `${base}project-index.json`,
+    content: JSON.stringify({
+      projectId: project.id,
+      projectName: projectDisplayName(project),
+      companyName: archiveCompanyName(project),
+      customerName: project.customerName,
+      date: project.date,
+      forms: ARCHIVE_FORM_TYPES.map((entry) => ({
+        type: entry.label,
+        docNumber: project.formMap[entry.key]?.docNumber || "",
+        completed: Boolean(project.formMap[entry.key]),
+      })),
+    }, null, 2),
+  });
+  return files;
+}
+
+async function downloadArchiveProjects(projects) {
+  if (!projects.length) return;
+  const files = [];
+  for (const project of projects) {
+    files.push(...await archiveProjectPdfFiles(project));
+  }
+  const zip = makeZip(files);
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(zip);
+  link.download = projects.length === 1
+    ? `${safeFilename(projectDisplayName(projects[0]))}.zip`
+    : `niix-project-archive-${today()}.zip`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function buildDocumentRenderPayload(doc = getFormData()) {
   const clone = els.printArea.cloneNode(true);
   const sourceRow = clone.querySelector("#previewSourceRow");
   if (sourceRow) sourceRow.hidden = doc.showRelatedNumber === false || sourceRow.hidden;
@@ -1869,26 +2565,313 @@ function buildPdfPayload() {
   };
 }
 
-function importBackup(file) {
-  if (!file) return;
-  const reader = new FileReader();
-  reader.addEventListener("load", () => {
-    try {
-      const payload = JSON.parse(String(reader.result || "{}"));
-      if (Array.isArray(payload.documents)) storeDocuments(payload.documents);
-      if (Array.isArray(payload.customers)) storeCustomers(payload.customers);
-      if (Array.isArray(payload.items)) writeStore(ITEM_KEY, payload.items);
-      if (Array.isArray(payload.templates)) writeStore(TEMPLATE_KEY, payload.templates);
-      if (payload.settings) storeSettings(payload.settings);
-      renderAll();
-      renderSettings();
-      syncProjectSurfaces();
-      els.backupOutput.value = "バックアップを読み込みました。";
-    } catch {
-      els.backupOutput.value = "バックアップJSONを読み込めませんでした。";
+function buildPdfPayload() {
+  renderPreview();
+  return buildDocumentRenderPayload();
+}
+
+function pickArray(source = {}, names = []) {
+  for (const name of names) {
+    const value = source[name];
+    if (Array.isArray(value)) return value;
+    if (value && typeof value === "object") {
+      const nested = Object.values(value).find(Array.isArray);
+      if (nested) return nested;
     }
+  }
+  return null;
+}
+
+function normalizeBackupPayload(raw = {}) {
+  const source = raw.data && typeof raw.data === "object" ? { ...raw, ...raw.data } : raw;
+  const documents = pickArray(source, ["documents", "docs", "forms", "records", "archives", "archiveDocuments"]);
+  const customers = pickArray(source, ["customers", "clients", "partners", "customerMaster"]);
+  const items = pickArray(source, ["items", "products", "services", "itemMaster"]);
+  const templates = pickArray(source, ["templates", "layouts"]);
+  const settings = source.settings || source.preferences || source.config || null;
+  if (!documents && !customers && !items && !templates && !settings && (source.docType || source.docNumber)) {
+    return { documents: [source] };
+  }
+  return { documents, customers, items, templates, settings };
+}
+
+function mergeById(existing = [], incoming = []) {
+  const byKey = new Map();
+  existing.forEach((item) => byKey.set(item.id || item.docNumber || item.companyName || item.name || crypto.randomUUID(), item));
+  incoming.forEach((item) => {
+    const key = item.id || item.docNumber || item.companyName || item.name || crypto.randomUUID();
+    byKey.set(key, { ...byKey.get(key), ...item });
   });
-  reader.readAsText(file);
+  return [...byKey.values()];
+}
+
+function applyBackupPayload(rawPayload) {
+  const payload = normalizeBackupPayload(rawPayload);
+  let changed = 0;
+  if (Array.isArray(payload.documents)) {
+    storeDocuments(mergeById(loadDocuments(), payload.documents));
+    changed += payload.documents.length;
+  }
+  if (Array.isArray(payload.customers)) {
+    storeCustomers(mergeById(loadCustomers(), payload.customers.map(normalizeCustomer)));
+    changed += payload.customers.length;
+  }
+  if (Array.isArray(payload.items)) {
+    writeStore(ITEM_KEY, mergeById(readStore(ITEM_KEY, []), payload.items.map(normalizeItem)));
+    changed += payload.items.length;
+  }
+  if (Array.isArray(payload.templates)) {
+    writeStore(TEMPLATE_KEY, mergeById(readStore(TEMPLATE_KEY, []), payload.templates));
+    changed += payload.templates.length;
+  }
+  if (payload.settings && typeof payload.settings === "object") {
+    const current = loadSettings();
+    storeSettings({
+      ...current,
+      ...payload.settings,
+      companies: mergeById(current.companies || [], (payload.settings.companies || []).map(normalizeCompany)),
+      staff: mergeById(current.staff || [], payload.settings.staff || []),
+      seal: normalizeSealSettings({ ...current.seal, ...payload.settings.seal }),
+    });
+    changed += 1;
+  }
+  renderAll();
+  renderSettings();
+  syncProjectSurfaces();
+  return changed;
+}
+
+async function inflateZipContent(bytes, compression) {
+  if (compression === 0) return bytes;
+  if (compression === 8 && "DecompressionStream" in window) {
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+  throw new Error("Unsupported ZIP compression.");
+}
+
+async function readZipJsonPayloads(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const decoder = new TextDecoder();
+  const payloads = [];
+  const u16At = (offset) => bytes[offset] | (bytes[offset + 1] << 8);
+  const u32At = (offset) => (bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24)) >>> 0;
+  const entries = [];
+  for (let offset = Math.max(0, bytes.length - 22); offset >= Math.max(0, bytes.length - 66000); offset -= 1) {
+    if (u32At(offset) !== 0x06054b50) continue;
+    let centralOffset = u32At(offset + 16);
+    const count = u16At(offset + 10);
+    for (let index = 0; index < count && centralOffset + 46 <= bytes.length; index += 1) {
+      if (u32At(centralOffset) !== 0x02014b50) break;
+      const nameLength = u16At(centralOffset + 28);
+      const extraLength = u16At(centralOffset + 30);
+      const commentLength = u16At(centralOffset + 32);
+      const name = decoder.decode(bytes.slice(centralOffset + 46, centralOffset + 46 + nameLength));
+      entries.push({
+        name,
+        compression: u16At(centralOffset + 10),
+        compressedSize: u32At(centralOffset + 20),
+        localOffset: u32At(centralOffset + 42),
+      });
+      centralOffset += 46 + nameLength + extraLength + commentLength;
+    }
+    break;
+  }
+  if (!entries.length) {
+    let offset = 0;
+    while (offset + 30 <= bytes.length && u32At(offset) === 0x04034b50) {
+      const nameLength = u16At(offset + 26);
+      const extraLength = u16At(offset + 28);
+      const compressedSize = u32At(offset + 18);
+      const nameStart = offset + 30;
+      const name = decoder.decode(bytes.slice(nameStart, nameStart + nameLength));
+      entries.push({ name, compression: u16At(offset + 8), compressedSize, localOffset: offset });
+      offset = nameStart + nameLength + extraLength + compressedSize;
+    }
+  }
+  for (const entry of entries) {
+    if (!entry.name.toLowerCase().endsWith(".json")) continue;
+    if (u32At(entry.localOffset) !== 0x04034b50) continue;
+    const nameLength = u16At(entry.localOffset + 26);
+    const extraLength = u16At(entry.localOffset + 28);
+    const contentStart = entry.localOffset + 30 + nameLength + extraLength;
+    const contentEnd = contentStart + entry.compressedSize;
+    if (contentEnd > bytes.length) continue;
+    try {
+      const content = await inflateZipContent(bytes.slice(contentStart, contentEnd), entry.compression);
+      payloads.push(JSON.parse(decoder.decode(content)));
+    } catch {
+      // Ignore unrelated JSON fragments in loose backup archives.
+    }
+  }
+  return payloads;
+}
+
+async function importBackup(file) {
+  if (!file) return;
+  try {
+    const isZip = file.type.includes("zip") || file.name.toLowerCase().endsWith(".zip");
+    const payloads = isZip ? await readZipJsonPayloads(file) : [JSON.parse(await file.text())];
+    if (!payloads.length) throw new Error("No JSON payloads found.");
+    let changed = 0;
+    payloads.sort((a, b) => (a.documents || a.docs || a.forms ? -1 : 1) - (b.documents || b.docs || b.forms ? -1 : 1));
+    payloads.forEach((payload) => {
+      changed += applyBackupPayload(payload);
+    });
+    updateBackupStatus(`バックアップを読み込みました。${changed} 件のデータ候補を取り込みました。`);
+  } catch (error) {
+    updateBackupStatus(`バックアップを読み込めませんでした。${error.message || "形式を確認してください。"}`);
+  } finally {
+    if (els.importBackupInput) els.importBackupInput.value = "";
+  }
+}
+
+function saveAccountSettings(partial = {}) {
+  const settings = loadSettings();
+  storeSettings({
+    ...settings,
+    ...partial,
+    googleClientId: els.settingsGoogleClientId?.value.trim() || settings.googleClientId || "",
+  });
+  renderSettings();
+}
+
+function registerEmailAccount() {
+  const email = els.settingsAccountEmail?.value.trim() || "";
+  if (!email) {
+    updateBackupStatus("Emailを入力してから登録してください。");
+    return;
+  }
+  saveAccountSettings({
+    accountId: loadSettings().accountId || automaticAccountId(email),
+    accountProvider: "email",
+    accountName: els.settingsAccountName?.value.trim() || email.split("@")[0],
+    accountEmail: email,
+  });
+  logOperation({ category: "保存", priority: "通常", assignee: email, memo: "Emailアカウントを登録" });
+  updateBackupStatus("Emailアカウントを登録しました。");
+}
+
+function loadGoogleIdentityScript() {
+  if (window.google?.accounts?.oauth2) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector("script[data-google-identity]");
+    if (existing) {
+      existing.addEventListener("load", resolve, { once: true });
+      existing.addEventListener("error", reject, { once: true });
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.dataset.googleIdentity = "true";
+    script.addEventListener("load", resolve, { once: true });
+    script.addEventListener("error", () => reject(new Error("Google Identity Servicesを読み込めませんでした。")), { once: true });
+    document.head.appendChild(script);
+  });
+}
+
+async function requestGoogleAccessToken() {
+  const settings = loadSettings();
+  const clientId = els.settingsGoogleClientId?.value.trim() || settings.googleClientId || "";
+  if (!clientId) throw new Error("Google Client IDを設定してください。");
+  if (state.googleAccessToken && Date.now() < state.googleTokenExpiresAt - 60000) return state.googleAccessToken;
+  await loadGoogleIdentityScript();
+  return new Promise((resolve, reject) => {
+    const tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: GOOGLE_DRIVE_SCOPE,
+      prompt: "",
+      callback: async (response) => {
+        if (response.error) {
+          reject(new Error(response.error_description || response.error));
+          return;
+        }
+        state.googleAccessToken = response.access_token;
+        state.googleTokenExpiresAt = Date.now() + Number(response.expires_in || 3600) * 1000;
+        storeSettings({ ...settings, googleClientId: clientId });
+        resolve(response.access_token);
+      },
+      error_callback: () => reject(new Error("Google認証がキャンセルされました。")),
+    });
+    tokenClient.requestAccessToken({ prompt: state.googleAccessToken ? "" : "consent" });
+  });
+}
+
+async function googleLogin() {
+  try {
+    const token = await requestGoogleAccessToken();
+    const response = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error(await response.text() || "Googleユーザー情報を取得できませんでした。");
+    const profile = await response.json();
+    saveAccountSettings({
+      accountId: profile.sub ? `google-${profile.sub}` : loadSettings().accountId || automaticAccountId(profile.email),
+      accountProvider: "google",
+      accountName: profile.name || profile.email || els.settingsAccountName?.value.trim() || "",
+      accountEmail: profile.email || els.settingsAccountEmail?.value.trim() || "",
+    });
+    logOperation({ category: "保存", priority: "通常", assignee: profile.email || "", memo: "Googleアカウントでログイン" });
+    updateBackupStatus("Googleアカウントでログインしました。Driveバックアップを利用できます。");
+  } catch (error) {
+    updateBackupStatus(error.message || "Googleログインに失敗しました。");
+  }
+}
+
+async function uploadBackupToDrive() {
+  try {
+    const token = await requestGoogleAccessToken();
+    const zip = exportBackupZip({ download: false });
+    const filename = `shoko-forms-backup-${today()}-${Date.now().toString(36)}.zip`;
+    const metadata = {
+      name: filename,
+      mimeType: "application/zip",
+      appProperties: { app: "shoko-forms", accountId: loadSettings().accountId || "" },
+    };
+    const boundary = `shoko_${crypto.randomUUID()}`;
+    const body = new Blob([
+      `--${boundary}\r\ncontent-type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`,
+      `--${boundary}\r\ncontent-type: application/zip\r\n\r\n`,
+      zip,
+      `\r\n--${boundary}--`,
+    ], { type: `multipart/related; boundary=${boundary}` });
+    const response = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body,
+    });
+    if (!response.ok) throw new Error(await response.text() || "Drive保存に失敗しました。");
+    const file = await response.json();
+    storeSettings({ ...loadSettings(), googleDriveFileId: file.id });
+    updateBackupStatus(`Google Driveに保存しました。\n${file.name}\n${file.webViewLink || ""}`);
+  } catch (error) {
+    updateBackupStatus(error.message || "Google Drive保存に失敗しました。");
+  }
+}
+
+async function restoreLatestBackupFromDrive() {
+  try {
+    const token = await requestGoogleAccessToken();
+    const query = encodeURIComponent("name contains 'shoko-forms-backup' and trashed = false");
+    const listResponse = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&orderBy=modifiedTime desc&pageSize=10&fields=files(id,name,mimeType,modifiedTime)`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (!listResponse.ok) throw new Error(await listResponse.text() || "Driveバックアップ一覧を取得できませんでした。");
+    const files = (await listResponse.json()).files || [];
+    const file = files.find((item) => item.name?.toLowerCase().endsWith(".zip") || item.name?.toLowerCase().endsWith(".json"));
+    if (!file) throw new Error("Driveに shoko-forms-backup のバックアップが見つかりません。");
+    const fileResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?alt=media`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (!fileResponse.ok) throw new Error(await fileResponse.text() || "Driveバックアップを取得できませんでした。");
+    const blob = await fileResponse.blob();
+    await importBackup(new File([blob], file.name, { type: file.mimeType || blob.type }));
+    updateBackupStatus(`Google Driveから最新バックアップを読み込みました。\n${file.name}\n${file.modifiedTime || ""}`);
+  } catch (error) {
+    updateBackupStatus(error.message || "Google Drive読込に失敗しました。");
+  }
 }
 
 function renderNav() {
@@ -1913,6 +2896,7 @@ function syncOpenDialogs() {
     renderOperationAssignees();
     renderOperationHistory();
   }
+  if (els.archiveDialog?.open) renderArchiveTimeline();
 }
 
 function syncProjectSurfaces() {
@@ -1933,6 +2917,7 @@ function setMobileView(view = "form") {
     button.classList.toggle("is-active", isActive);
     button.setAttribute("aria-current", isActive ? "step" : "false");
   });
+  schedulePreviewSnapshot();
 }
 
 function setDirty(isDirty = true) {
@@ -1954,6 +2939,8 @@ function showSaveFeedback() {
 
 function deleteCurrentDocumentRecord() {
   const doc = getFormData();
+  const label = `${DOC_TYPES[doc.docType]?.title || "帳票"} ${doc.docNumber || ""}`.trim();
+  if (!confirmRepeatedDelete(label || "現在の帳票")) return;
   const docs = loadDocuments();
   const nextDocs = docs.filter((item) => {
     if (item.id === doc.id) return false;
@@ -2025,11 +3012,15 @@ function resolveLeaveGuard(action) {
 }
 
 function saveDocument() {
-  const doc = getFormData();
+  const doc = normalizeFormObject({
+    ...getFormData(),
+    projectId: state.projectId || crypto.randomUUID(),
+    projectName: state.projectName || els.customerName.value.trim() || `NIIX Project ${today().replaceAll("-", "")}`,
+  });
+  state.projectId = doc.projectId;
+  state.projectName = doc.projectName;
   const docs = loadDocuments();
-  const index = docs.findIndex((item) => item.id === doc.id);
-  if (index >= 0) docs[index] = doc;
-  else docs.push(doc);
+  upsertDocument(docs, doc);
   storeDocuments(docs);
   upsertIssuerFromDocument(doc);
   upsertCustomerFromDocument(doc);
@@ -2143,26 +3134,34 @@ async function exportEmailHtml() {
   dialog.showModal();
 }
 
-async function exportPdf() {
+async function createPdfFile() {
   const payload = buildPdfPayload();
   const endpoint = location.protocol === "file:" ? "http://localhost:4180/api/pdf-file" : `${location.origin}/api/pdf-file`;
-  try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-      const message = await response.text();
-      throw new Error(message || "PDF出力に失敗しました。");
-    }
-    const pdfFile = await response.json();
-    showPdfPreview(pdfFile, payload.html);
-  } catch (error) {
-    console.error("server pdf export failed", error);
-    const serverUrl = location.protocol === "file:" ? "http://localhost:4180/" : `${location.origin}/`;
-    printWithBrowserFallback(`PDFサーバーに接続できないため、ブラウザ印刷でPDF保存を開きます。\n${serverUrl} を起動してから再試行してください。`);
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || "PDF出力に失敗しました。");
   }
+  return response.json();
+}
+
+async function exportPdf() {
+  const pdfFile = await createPdfFile();
+  showPdfPreview(pdfFile, buildPdfPayload().html);
+}
+
+async function downloadPdfDirect() {
+  const pdfFile = await createPdfFile();
+  triggerPdfDownload(pdfFile.downloadUrl || pdfFile.inlineUrl, pdfFile.filename || "document.pdf");
+}
+
+async function printPdfDirect() {
+  const pdfFile = await createPdfFile();
+  triggerPdfPrint(pdfFile.inlineUrl || pdfFile.downloadUrl);
 }
 
 function printWithBrowserFallback(message = "") {
@@ -2179,6 +3178,36 @@ function triggerPdfDownload(url, filename = "document.pdf") {
   document.body.appendChild(link);
   link.click();
   link.remove();
+}
+
+function triggerPdfPrint(url) {
+  if (!url) {
+    printWithBrowserFallback("PDF印刷URLを取得できませんでした。ブラウザ印刷を開きます。");
+    return;
+  }
+  let frame = document.getElementById("hiddenPdfPrintFrame");
+  if (!frame) {
+    frame = document.createElement("iframe");
+    frame.id = "hiddenPdfPrintFrame";
+    frame.className = "hidden-print-frame";
+    frame.title = "PDF印刷";
+    document.body.appendChild(frame);
+  }
+  const fallbackTimer = window.setTimeout(() => {
+    window.open(url, "_blank", "noopener");
+  }, 2200);
+  frame.onload = () => {
+    try {
+      window.clearTimeout(fallbackTimer);
+      frame.contentWindow.focus();
+      frame.contentWindow.print();
+    } catch (error) {
+      window.clearTimeout(fallbackTimer);
+      const opened = window.open(url, "_blank", "noopener");
+      if (!opened) window.location.href = url;
+    }
+  };
+  frame.src = url;
 }
 
 function openPdfPrintUrl(printUrl) {
@@ -2269,6 +3298,13 @@ async function switchDocType(type) {
   }
   const next = defaultDocument(type);
   setFormData(next);
+}
+
+function documentFromUrl() {
+  const params = new URLSearchParams(location.search);
+  const id = params.get("form") || params.get("doc") || params.get("id");
+  if (!id) return null;
+  return loadDocuments().find((doc) => doc.id === id || doc.formObjectId === id || doc.docNumber === id) || null;
 }
 
 function renderCustomerMaster() {
@@ -2439,6 +3475,7 @@ function renderItemMaster() {
       setDirty(true);
     });
     row.querySelector("[data-item-delete]")?.addEventListener("click", () => {
+      if (!confirmRepeatedDelete(`商品・サービス ${item.name || ""}`.trim())) return;
       writeStore(ITEM_KEY, items.filter((record) => record.id !== item.id));
       renderItemMaster();
     });
@@ -2496,8 +3533,7 @@ function bindElements() {
     "notes",
     "bankDetails",
     "documentSpecifics",
-    "taxMode",
-    "taxSettingsSection",
+    "taxRate",
     "noticeType",
     "noticeTitle",
     "noticeBody",
@@ -2543,6 +3579,8 @@ function bindElements() {
     "previewTaxable0",
     "previewTax8",
     "previewTax10",
+    "previewTaxableRateLabel",
+    "previewTaxRateLabel",
     "previewTotal",
     "previewNotes",
     "previewBankTitle",
@@ -2550,8 +3588,11 @@ function bindElements() {
     "previewSpecificsTitle",
     "previewSpecifics",
     "printArea",
+    "previewPngFrame",
+    "previewPngImage",
     "templateSelect",
     "templatePalette",
+    "downloadPdfBtn",
     "jsonDialog",
     "jsonOutput",
     "historyDialog",
@@ -2559,9 +3600,13 @@ function bindElements() {
     "historySearchInput",
     "historyList",
     "settingsDialog",
+    "accountStatus",
     "settingsAccountName",
     "settingsAccountEmail",
+    "settingsGoogleClientId",
     "saveSettingsBtn",
+    "registerEmailAccountBtn",
+    "googleLoginBtn",
     "sealEnabledInput",
     "sealTextInput",
     "sealAppearanceInput",
@@ -2606,7 +3651,24 @@ function bindElements() {
     "operationFilterPriority",
     "operationSearchInput",
     "operationList",
+    "archiveDialog",
+    "archiveProjectDialog",
+    "createFormObjectBtn",
+    "archiveSearchInput",
+    "newArchiveProjectBtn",
+    "archiveProjectCompanySelect",
+    "archiveProjectCompanyNameInput",
+    "archiveProjectCompanyAddressInput",
+    "archiveProjectCompanyContactInput",
+    "archiveProjectNamePreview",
+    "confirmCreateArchiveProjectBtn",
+    "exportSelectedProjectsBtn",
+    "archiveTimeline",
+    "archiveDetail",
     "exportBackupBtn",
+    "exportBackupZipBtn",
+    "backupToDriveBtn",
+    "restoreFromDriveBtn",
     "importBackupInput",
     "backupOutput",
     "conversionStatus",
@@ -2665,6 +3727,10 @@ function bindEvents() {
         document.getElementById("printBtn")?.click();
         return;
       }
+      if (action === "download-pdf") {
+        document.getElementById("downloadPdfBtn")?.click();
+        return;
+      }
       if (action === "new" && (await confirmLeaveCurrentDocument())) {
         setFormData(defaultDocument(state.docType));
         setMobileView("form");
@@ -2677,6 +3743,7 @@ function bindEvents() {
     event.preventDefault();
     event.returnValue = "";
   });
+  window.addEventListener("resize", schedulePreviewSnapshot);
 
   els.leaveGuardDialog?.addEventListener("close", () => {
     resolveLeaveGuard(els.leaveGuardDialog.returnValue || "cancel");
@@ -2712,6 +3779,7 @@ function bindEvents() {
   els.lineItems.addEventListener("click", (event) => {
     const button = event.target.closest("[data-remove]");
     if (!button) return;
+    if (!confirmRepeatedDelete("明細行")) return;
     state.lines = state.lines.filter((line) => line.id !== button.dataset.remove);
     if (!state.lines.length) {
       state.lines.push({ id: crypto.randomUUID(), name: "", model: "", specification: "", quantity: 1, unitPrice: 0 });
@@ -2748,6 +3816,7 @@ function bindEvents() {
   els.noticeList?.addEventListener("click", (event) => {
     const button = event.target.closest("[data-remove-notice]");
     if (!button) return;
+    if (!confirmRepeatedDelete("通知")) return;
     state.notices = state.notices.filter((notice) => notice.id !== button.dataset.removeNotice);
     renderNotices();
     renderPreview();
@@ -2767,13 +3836,28 @@ function bindEvents() {
   });
 
   document.getElementById("saveBtn").addEventListener("click", saveDocument);
+  els.downloadPdfBtn?.addEventListener("click", async () => {
+    const button = els.downloadPdfBtn;
+    const original = button.textContent;
+    button.disabled = true;
+    button.textContent = "PDF生成中";
+    try {
+      await downloadPdfDirect();
+    } catch (error) {
+      console.error("pdf download failed", error);
+      window.alert(error.message || "PDFダウンロードに失敗しました。");
+    } finally {
+      button.disabled = false;
+      button.textContent = original;
+    }
+  });
   document.getElementById("printBtn").addEventListener("click", async () => {
     const button = document.getElementById("printBtn");
     const original = button.textContent;
     button.disabled = true;
-    button.textContent = location.protocol === "file:" ? "印刷画面を開く" : "PDF生成中";
+    button.textContent = "PDF生成中";
     try {
-      await exportPdf();
+      await printPdfDirect();
     } catch (error) {
       console.error("pdf button failed", error);
       printWithBrowserFallback(error.message || "PDF出力に失敗したため、ブラウザ印刷を開きます。");
@@ -2797,7 +3881,6 @@ function bindEvents() {
     await openFlowDocument(button.dataset.flowType);
     setMobileView("form");
   });
-  document.getElementById("exportHtmlBtn")?.addEventListener("click", exportEmailHtml);
   document.getElementById("openSettingsBtn")?.addEventListener("click", openSettingsDialog);
   els.recentList?.addEventListener("change", async () => {
     const id = els.recentList.value;
@@ -2813,9 +3896,12 @@ function bindEvents() {
       ...settings,
       accountName: els.settingsAccountName.value.trim(),
       accountEmail: els.settingsAccountEmail.value.trim(),
+      googleClientId: els.settingsGoogleClientId.value.trim(),
     });
     renderSettings();
   });
+  els.registerEmailAccountBtn?.addEventListener("click", registerEmailAccount);
+  els.googleLoginBtn?.addEventListener("click", googleLogin);
   [
     "sealEnabledInput",
     "sealTextInput",
@@ -2885,6 +3971,7 @@ function bindEvents() {
     reader.readAsDataURL(file);
   });
   els.clearCompanyLogoBtn?.addEventListener("click", () => {
+    if (!confirmRepeatedDelete("Logo")) return;
     state.pendingCompanyLogo = "";
     state.companyLogoMarkedForDeletion = true;
     state.issuerLogo = "";
@@ -2927,12 +4014,99 @@ function bindEvents() {
     }
     const button = event.target.closest("[data-remove-staff]");
     if (!button) return;
+    if (!confirmRepeatedDelete("社員アカウント")) return;
     const settings = loadSettings();
     storeSettings({ ...settings, staff: (settings.staff || []).filter((member) => member.id !== button.dataset.removeStaff) });
     renderSettings();
     syncProjectSurfaces();
   });
   document.getElementById("openOperationHistoryBtn")?.addEventListener("click", openOperationDialog);
+  document.getElementById("openArchiveManagerBtn")?.addEventListener("click", () => {
+    renderArchiveTimeline();
+    els.archiveDialog?.showModal();
+  });
+  els.createFormObjectBtn?.addEventListener("click", openArchiveProjectDialog);
+  els.archiveSearchInput?.addEventListener("input", renderArchiveTimeline);
+  els.newArchiveProjectBtn?.addEventListener("click", openArchiveProjectDialog);
+  els.confirmCreateArchiveProjectBtn?.addEventListener("click", createArchiveProject);
+  els.archiveProjectCompanySelect?.addEventListener("change", () => {
+    if (els.archiveProjectCompanySelect.value) {
+      els.archiveProjectCompanyNameInput.value = "";
+      els.archiveProjectCompanyAddressInput.value = "";
+      els.archiveProjectCompanyContactInput.value = "";
+    }
+    updateArchiveProjectNamePreview();
+  });
+  [els.archiveProjectCompanyNameInput, els.archiveProjectCompanyAddressInput, els.archiveProjectCompanyContactInput].forEach((input) => {
+    input?.addEventListener("input", () => {
+      if (els.archiveProjectCompanyNameInput.value.trim()) els.archiveProjectCompanySelect.value = "";
+      updateArchiveProjectNamePreview();
+    });
+  });
+  els.exportSelectedProjectsBtn?.addEventListener("click", async () => {
+    const ids = [...els.archiveTimeline.querySelectorAll("[data-project-check]:checked")].map((input) => input.dataset.projectCheck);
+    const button = els.exportSelectedProjectsBtn;
+    const original = button.textContent;
+    button.disabled = true;
+    button.textContent = "PDF生成中";
+    try {
+      await downloadArchiveProjects(buildArchiveProjects().filter((project) => ids.includes(project.id)));
+    } catch (error) {
+      window.alert(error.message || "PDF ZIP生成に失敗しました。");
+    } finally {
+      button.disabled = false;
+      button.textContent = original;
+    }
+  });
+  els.archiveTimeline?.addEventListener("click", async (event) => {
+    const formButton = event.target.closest("[data-project-form]");
+    if (formButton) {
+      event.stopPropagation();
+      await openArchiveProjectForm(formButton.dataset.projectForm, formButton.dataset.formKey);
+      return;
+    }
+    const checkbox = event.target.closest("[data-project-check]");
+    if (checkbox) {
+      event.stopPropagation();
+      return;
+    }
+    const button = event.target.closest("[data-project-id]");
+    if (!button) return;
+    state.selectedArchiveProjectId = button.dataset.projectId;
+    renderArchiveTimeline();
+  });
+  els.archiveDetail?.addEventListener("click", async (event) => {
+    const deleteProjectButton = event.target.closest("[data-delete-project]");
+    if (deleteProjectButton) {
+      deleteArchiveProject(deleteProjectButton.dataset.deleteProject);
+      return;
+    }
+    const deleteFormButton = event.target.closest("[data-delete-form]");
+    if (deleteFormButton) {
+      deleteArchiveForm(deleteFormButton.dataset.deleteForm);
+      return;
+    }
+    const exportButton = event.target.closest("[data-export-project]");
+    if (exportButton) {
+      const project = archiveProjectById(exportButton.dataset.exportProject);
+      if (!project) return;
+      const original = exportButton.textContent;
+      exportButton.disabled = true;
+      exportButton.textContent = "PDF生成中";
+      try {
+        await downloadArchiveProjects([project]);
+      } catch (error) {
+        window.alert(error.message || "PDF ZIP生成に失敗しました。");
+      } finally {
+        exportButton.disabled = false;
+        exportButton.textContent = original;
+      }
+      return;
+    }
+    const formButton = event.target.closest("[data-project-form]");
+    if (!formButton) return;
+    await openArchiveProjectForm(formButton.dataset.projectForm, formButton.dataset.formKey);
+  });
   els.operationFilterCategory?.addEventListener("change", renderOperationHistory);
   els.operationFilterPriority?.addEventListener("change", renderOperationHistory);
   els.operationSearchInput?.addEventListener("input", renderOperationHistory);
@@ -2948,9 +4122,12 @@ function bindEvents() {
     syncProjectSurfaces();
   });
   els.exportBackupBtn?.addEventListener("click", exportBackup);
+  els.exportBackupZipBtn?.addEventListener("click", () => exportBackupZip());
+  els.backupToDriveBtn?.addEventListener("click", uploadBackupToDrive);
+  els.restoreFromDriveBtn?.addEventListener("click", restoreLatestBackupFromDrive);
   els.importBackupInput?.addEventListener("change", (event) => importBackup(event.target.files?.[0]));
   els.convertDocumentBtn?.addEventListener("click", convertCurrentDocument);
-  els.nextStepBtn?.addEventListener("click", () => copyCurrentDocumentAs(FLOW_NEXT[state.docType]));
+  els.nextStepBtn?.addEventListener("click", () => copyCurrentDocumentAs(els.conversionTarget?.value));
   els.templateSelect?.addEventListener("change", () => {
     state.templateId = els.templateSelect.value;
     renderPreview();
@@ -3029,6 +4206,7 @@ function bindEvents() {
   els.deleteCustomerBtn?.addEventListener("click", () => {
     const customer = selectedCustomer();
     if (!customer) return;
+    if (!confirmRepeatedDelete(`取引先 ${customer.companyName || ""}`.trim())) return;
     storeCustomers(loadCustomers().filter((item) => item.id !== customer.id));
     state.selectedCustomerId = "";
     syncProjectSurfaces();
@@ -3093,10 +4271,11 @@ function init() {
   bindElements();
   seedItems();
   migrateItems();
+  ensureNiixCompany();
   simplifyInputLabels();
   bindEvents();
   setMobileView("menu");
-  setFormData(defaultDocument("invoice"));
+  setFormData(documentFromUrl() || defaultDocument("invoice"));
   acceptInviteFromUrl();
 }
 

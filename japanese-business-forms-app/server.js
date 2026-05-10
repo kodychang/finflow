@@ -5,7 +5,8 @@ const os = require("node:os");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
-const PORT = Number(process.env.PORT || 4180);
+const PORT = 4180;
+const PREVIEW_ORIGIN = `http://localhost:${PORT}`;
 const ROOT = __dirname;
 const PDF_CACHE_TTL = 24 * 60 * 60 * 1000;
 const PDF_CACHE_DIR = path.join(ROOT, ".pdf-cache");
@@ -18,6 +19,7 @@ const MIME = {
   ".js": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml",
+  ".png": "image/png",
   ".ttf": "font/ttf",
 };
 
@@ -30,6 +32,11 @@ function send(res, status, body, type = "text/plain; charset=utf-8") {
     "cache-control": "no-store",
   });
   res.end(body);
+}
+
+function logGenerationError(label, error) {
+  console.error(`[${label}] ${error?.message || error}`);
+  if (error?.details) console.error(error.details);
 }
 
 function readRequestBody(req) {
@@ -78,28 +85,71 @@ function pdfShell({ title, html, accent }) {
   <style>${css}</style>
   <style>
     @page { size: A4; margin: 0; }
-    html, body { width: 210mm; min-height: 297mm; margin: 0; background: #fff; }
+    html, body {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0;
+      overflow-x: hidden;
+      background: #fff;
+    }
     body { font-family: Inter, "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", Meiryo, sans-serif; }
     @font-face { font-family: "Noto Serif JP"; src: url("${fontUrl("noto-serif-jp-700.ttf")}") format("truetype"); font-weight: 700; font-style: normal; }
     @font-face { font-family: "Noto Serif JP"; src: url("${fontUrl("noto-serif-jp-900.ttf")}") format("truetype"); font-weight: 900; font-style: normal; }
     @font-face { font-family: "Shippori Mincho"; src: url("${fontUrl("shippori-mincho-700.ttf")}") format("truetype"); font-weight: 700; font-style: normal; }
     @font-face { font-family: "Yuji Syuku"; src: url("${fontUrl("yuji-syuku-400.ttf")}") format("truetype"); font-weight: 400; font-style: normal; }
     .document-preview, .document-preview.zoom-100 {
+      box-sizing: border-box !important;
       width: 210mm !important;
+      max-width: 210mm !important;
       min-height: 297mm;
+      height: auto !important;
       margin: 0 !important;
       padding: 0 !important;
-      overflow: hidden !important;
+      overflow-x: hidden !important;
+      overflow-y: visible !important;
       box-shadow: none !important;
       --template-accent: ${accent || "#2f3744"};
     }
     .document-safe-area {
-      max-width: 186mm !important;
-      min-height: 269mm !important;
-      padding: 14mm 12mm !important;
-      overflow: hidden !important;
+      box-sizing: border-box !important;
+      width: 210mm !important;
+      max-width: 210mm !important;
+      min-height: 297mm !important;
+      height: auto !important;
+      padding: 14mm !important;
+      overflow-x: hidden !important;
+      overflow-y: visible !important;
     }
-    .doc-topline { margin: -14mm -12mm 24px !important; }
+    .doc-topline { margin: -14mm -14mm 24px !important; }
+    .preview-table {
+      width: 100% !important;
+      max-width: 100% !important;
+    }
+    .doc-header {
+      display: flex !important;
+      align-items: flex-start !important;
+      flex-direction: row !important;
+      justify-content: space-between !important;
+    }
+    .party-row {
+      display: grid !important;
+      grid-template-columns: minmax(0, 55fr) minmax(0, 45fr) !important;
+    }
+    .summary-row {
+      display: flex !important;
+      align-items: flex-start !important;
+      flex-direction: row !important;
+      justify-content: space-between !important;
+    }
+    .doc-header,
+    .party-row,
+    .total-banner,
+    .summary-row,
+    .totals .grand,
+    .preview-table tr {
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+    }
     .inkantan-seal {
       background-image: none !important;
       box-shadow: none !important;
@@ -143,7 +193,7 @@ function pdfShell({ title, html, accent }) {
 </html>`;
 }
 
-function renderPdfBuffer(payload) {
+function renderPdfWithWeasyPrint(payload) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shoko-pdf-"));
   const htmlPath = path.join(tmpDir, "document.html");
   const pdfPath = path.join(tmpDir, "document.pdf");
@@ -175,6 +225,119 @@ function renderPdfBuffer(payload) {
         fs.rm(tmpDir, { recursive: true, force: true }, () => {});
         if (error) {
           reject(new Error("PDF file was not created."));
+          return;
+        }
+        resolve(data);
+      });
+    });
+  });
+}
+
+function renderPdfWithChrome(payload) {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shoko-pdf-"));
+  const htmlPath = path.join(tmpDir, "document.html");
+  const pdfPath = path.join(tmpDir, "document.pdf");
+  fs.writeFileSync(htmlPath, pdfShell(payload), "utf8");
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(chromeExecutable(), [
+      "--headless=new",
+      "--disable-gpu",
+      "--disable-extensions",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--allow-file-access-from-files",
+      "--run-all-compositor-stages-before-draw",
+      "--window-size=1280,1800",
+      "--print-to-pdf-no-header",
+      `--print-to-pdf=${pdfPath}`,
+      pathToFileURL(htmlPath).href,
+    ], { cwd: ROOT });
+    let stderr = "";
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("close", (code) => {
+      if (code !== 0) {
+        fs.rm(tmpDir, { recursive: true, force: true }, () => {});
+        reject(new Error(`Chrome PDF generation failed.\n${stderr || "Chrome was not available."}`));
+        return;
+      }
+      fs.readFile(pdfPath, (error, data) => {
+        fs.rm(tmpDir, { recursive: true, force: true }, () => {});
+        if (error || !data?.length) {
+          reject(new Error("Chrome PDF file was not created."));
+          return;
+        }
+        resolve(data);
+      });
+    });
+  });
+}
+
+async function renderPdfBuffer(payload) {
+  try {
+    return await renderPdfWithChrome(payload);
+  } catch (chromeError) {
+    try {
+      return await renderPdfWithWeasyPrint(payload);
+    } catch (weasyError) {
+      const error = new Error("PDF generation failed. Please check that Chrome or WeasyPrint can run on this machine.");
+      error.details = [
+        chromeError?.message,
+        weasyError?.message,
+      ].filter(Boolean).join("\n\n");
+      throw error;
+    }
+  }
+}
+
+function chromeExecutable() {
+  const candidates = [
+    process.env.CHROME_PATH,
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+  ].filter(Boolean);
+  return candidates.find((candidate) => fs.existsSync(candidate)) || "google-chrome";
+}
+
+function renderPngBuffer(payload) {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shoko-png-"));
+  const htmlPath = path.join(tmpDir, "document.html");
+  const pngPath = path.join(tmpDir, "document.png");
+  fs.writeFileSync(htmlPath, pdfShell(payload), "utf8");
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(chromeExecutable(), [
+      "--headless=new",
+      "--disable-gpu",
+      "--disable-extensions",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--allow-file-access-from-files",
+      "--hide-scrollbars",
+      "--run-all-compositor-stages-before-draw",
+      "--force-device-scale-factor=1",
+      "--window-size=794,1123",
+      "--virtual-time-budget=1000",
+      `--screenshot=${pngPath}`,
+      pathToFileURL(htmlPath).href,
+    ], { cwd: ROOT });
+    let stderr = "";
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("close", (code) => {
+      if (code !== 0) {
+        fs.rm(tmpDir, { recursive: true, force: true }, () => {});
+        reject(new Error(`PNG preview generation failed.\n${stderr || "Chrome was not available."}`));
+        return;
+      }
+      fs.readFile(pngPath, (error, data) => {
+        fs.rm(tmpDir, { recursive: true, force: true }, () => {});
+        if (error) {
+          reject(new Error("PNG preview file was not created."));
           return;
         }
         resolve(data);
@@ -314,13 +477,12 @@ async function createCachedPdf(payload, req, res) {
       pdfCache.delete(id);
       fs.rm(path.dirname(filePath), { recursive: true, force: true }, () => {});
     }, PDF_CACHE_TTL).unref?.();
-    const baseUrl = `http://${req.headers.host}`;
     send(res, 200, JSON.stringify({
       id,
       filename,
-      downloadUrl: `${baseUrl}/api/pdf-file/${id}/${encodeURIComponent(filename)}`,
-      inlineUrl: `${baseUrl}/api/pdf-file/${id}/${encodeURIComponent(filename)}?inline=1`,
-      printUrl: `${baseUrl}/api/pdf-print/${id}/${encodeURIComponent(filename)}`,
+      downloadUrl: `${PREVIEW_ORIGIN}/api/pdf-file/${id}/${encodeURIComponent(filename)}`,
+      inlineUrl: `${PREVIEW_ORIGIN}/api/pdf-file/${id}/${encodeURIComponent(filename)}?inline=1`,
+      printUrl: `${PREVIEW_ORIGIN}/api/pdf-print/${id}/${encodeURIComponent(filename)}`,
     }), "application/json; charset=utf-8");
   } catch (error) {
     send(res, 500, error.message || "PDF generation failed.");
@@ -331,6 +493,31 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   if (req.method === "OPTIONS") {
     send(res, 204, "");
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/preview-png") {
+    try {
+      const body = await readRequestBody(req);
+      const payload = JSON.parse(body || "{}");
+      if (!payload.html) {
+        send(res, 400, "Missing HTML payload.");
+        return;
+      }
+      const data = await renderPngBuffer(payload);
+      res.writeHead(200, {
+        "access-control-allow-origin": "*",
+        "access-control-allow-methods": "GET,POST,OPTIONS",
+        "access-control-allow-headers": "content-type",
+        "content-type": "image/png",
+        "content-length": data.length,
+        "cache-control": "no-store",
+      });
+      res.end(data);
+    } catch (error) {
+      logGenerationError("preview-png", error);
+      send(res, 500, error.message || "PNG preview generation failed.");
+    }
     return;
   }
 
@@ -351,6 +538,7 @@ const server = http.createServer(async (req, res) => {
         await renderPdf(payload, res);
       }
     } catch (error) {
+      logGenerationError("pdf", error);
       send(res, 400, error.message || "Invalid PDF request.");
     }
     return;
@@ -400,5 +588,5 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Shoko Forms running at http://localhost:${PORT}`);
+  console.log(`Shoko Forms running at ${PREVIEW_ORIGIN}`);
 });

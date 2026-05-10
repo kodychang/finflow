@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Shoko Forms | 日本商業帳票作成</title>
-    <link rel="stylesheet" href="./styles.css?v=copy-menu-20260508" />
+    <link rel="stylesheet" href="./styles.css?v=responsive-png-20260508" />
   </head>
   <body>
     <nav class="mobile-view-switcher" aria-label="モバイル画面切替">
@@ -22,24 +22,22 @@
           </div>
         </div>
 
-        <section class="nav-select-panel">
+        <section class="nav-select-panel" hidden>
           <div class="side-panel-title">帳票種類</div>
           <select id="docTypeSelect" aria-label="帳票種類"></select>
         </section>
 
         <section class="flow-panel">
-          <div class="side-panel-title">取引フロー</div>
-          <div id="flowSteps" class="flow-steps" aria-label="操作流程">
-            <div><strong>1</strong><span>見積</span><small>条件・金額を提示</small></div>
-            <div><strong>2</strong><span>注文 / 発注</span><small>顧客注文と仕入発注</small></div>
-            <div><strong>3</strong><span>納品</span><small>出荷・納品記録</small></div>
-            <div><strong>4</strong><span>請求</span><small>振込先と支払期限</small></div>
-            <div><strong>5</strong><span>領収</span><small>入金後の証憑</small></div>
+          <div class="side-panel-title object-panel-title">
+            <span>帳票オブジェクト</span>
+            <button id="createFormObjectBtn" class="side-mini-button" type="button">+ 新規</button>
           </div>
-          <div class="conversion-panel">
-            <div id="conversionStatus" class="conversion-status">変換可能な帳票を開いてください</div>
-            <select id="conversionTarget" aria-label="変換先帳票"></select>
-            <button id="convertDocumentBtn" class="secondary-button" type="button">変換して作成</button>
+          <div id="flowSteps" class="flow-steps" aria-label="関連帳票">
+            <div><span>見積</span></div>
+            <div><span>注文 / 発注</span></div>
+            <div><span>納品</span></div>
+            <div><span>請求</span></div>
+            <div><span>領収</span></div>
           </div>
         </section>
 
@@ -47,6 +45,7 @@
           <div class="side-panel-title">マスタ管理</div>
           <button id="openCustomerMasterBtn" class="master-button" type="button">取引先管理</button>
           <button id="openItemMasterBtn" class="master-button" type="button">商品・サービス管理</button>
+          <button id="openArchiveManagerBtn" class="master-button" type="button">档案管理 / 一档五表</button>
           <button id="openOperationHistoryBtn" class="master-button" type="button">チーム操作履歴</button>
           <div class="side-panel-title recent-title">最近の帳票</div>
           <select id="recentList" class="recent-list" aria-label="最近の帳票"></select>
@@ -63,14 +62,13 @@
             <p class="eyebrow">Commercial document studio</p>
             <h1 id="pageTitle">請求書作成</h1>
             <div class="quick-flow">
-              <span class="top-flow-label">取引フロー</span>
-              <div id="topFlowTabs" class="top-flow-tabs" aria-label="取引フロー"></div>
+              <span class="top-flow-label">関連帳票</span>
+              <div id="topFlowTabs" class="top-flow-tabs" aria-label="関連帳票"></div>
               <button id="newDocumentBtn" class="icon-button hidden" type="button" title="新規作成" aria-label="新規作成">+</button>
               <button id="nextStepBtn" class="secondary-button hidden" type="button">次工程へ</button>
             </div>
           </div>
           <div class="toolbar template-toolbar" aria-label="テンプレートと表示">
-            <button id="exportHtmlBtn" class="secondary-button" type="button">HTMLメール</button>
             <div class="template-control" aria-label="帳票テンプレート">
               <select id="templateSelect" aria-label="帳票テンプレート"></select>
               <div id="templatePalette" class="template-palette" aria-label="帳票テンプレート"></div>
@@ -83,7 +81,8 @@
               <option value="html">HTMLコードをコピー</option>
             </select>
             <button id="saveBtn" class="secondary-button" type="button">保存</button>
-            <button id="printBtn" class="primary-button" type="button">印刷 / PDF</button>
+            <button id="downloadPdfBtn" class="secondary-button" type="button">PDFダウンロード</button>
+            <button id="printBtn" class="primary-button" type="button">印刷</button>
           </div>
         </header>
 
@@ -126,6 +125,10 @@
                     <option value="様">様</option>
                     <option value="">なし</option>
                   </select>
+                </label>
+                <label>
+                  税率 (%)
+                  <input id="taxRate" name="taxRate" type="number" min="0" step="0.1" inputmode="decimal" value="8" />
                 </label>
               </div>
             </section>
@@ -214,22 +217,6 @@
               </div>
             </section>
 
-            <section id="taxSettingsSection" class="form-section">
-              <div class="section-heading">
-                <h2>税額設定</h2>
-              </div>
-              <div class="field-grid two tax-setting-grid">
-                <label>
-                  税額
-                  <select id="taxMode" name="taxMode">
-                    <option value="standard10">合計に10%を加算</option>
-                    <option value="reduced8">合計に8%を加算</option>
-                    <option value="none">税額なし</option>
-                  </select>
-                </label>
-              </div>
-            </section>
-
             <section class="form-section">
               <div class="field-grid">
                 <label>
@@ -268,6 +255,9 @@
           </form>
 
           <section class="preview-column">
+            <div id="previewPngFrame" class="preview-png-frame" hidden>
+              <img id="previewPngImage" alt="帳票プレビュー PNG" />
+            </div>
             <article id="printArea" class="document-preview" aria-label="帳票プレビュー">
               <div class="document-safe-area">
                 <div class="doc-topline"></div>
@@ -348,8 +338,8 @@
                     <div><dt>小計</dt><dd id="previewSubtotal">¥0</dd></div>
                     <div><dt>10%対象</dt><dd id="previewTaxable10">¥0</dd></div>
                     <div><dt>消費税 10%</dt><dd id="previewTax10">¥0</dd></div>
-                    <div><dt>8%対象</dt><dd id="previewTaxable8">¥0</dd></div>
-                    <div><dt>消費税 8%</dt><dd id="previewTax8">¥0</dd></div>
+                    <div><dt id="previewTaxableRateLabel">8%対象</dt><dd id="previewTaxable8">¥0</dd></div>
+                    <div><dt id="previewTaxRateLabel">消費税 8%</dt><dd id="previewTax8">¥0</dd></div>
                     <div><dt>非課税</dt><dd id="previewTaxable0">¥0</dd></div>
                     <div class="grand"><dt>合計</dt><dd id="previewTotal">¥0</dd></div>
                   </dl>
@@ -369,7 +359,8 @@
       <button class="for-form primary-button" type="button" data-mobile-action="preview">確認へ</button>
       <button class="for-preview secondary-button" type="button" data-mobile-action="form">入力へ戻る</button>
       <button class="for-preview secondary-button" type="button" data-mobile-action="save">保存</button>
-      <button class="for-preview primary-button" type="button" data-mobile-action="pdf">PDF</button>
+      <button class="for-preview secondary-button" type="button" data-mobile-action="download-pdf">PDF保存</button>
+      <button class="for-preview primary-button" type="button" data-mobile-action="pdf">印刷</button>
     </nav>
 
     <dialog id="leaveGuardDialog" class="leave-guard-dialog">
@@ -424,9 +415,15 @@
         <div class="settings-grid">
           <section class="settings-card">
             <h3>アカウント</h3>
+            <div id="accountStatus" class="account-status">未登録</div>
             <label>表示名<input id="settingsAccountName" type="text" placeholder="管理者名" /></label>
             <label>Email<input id="settingsAccountEmail" type="email" placeholder="admin@example.jp" /></label>
-            <button id="saveSettingsBtn" class="primary-button" type="button">設定を保存</button>
+            <label>Google Client ID<input id="settingsGoogleClientId" type="text" placeholder="Google OAuth Client ID" /></label>
+            <div class="account-actions">
+              <button id="registerEmailAccountBtn" class="secondary-button" type="button">Email登録</button>
+              <button id="googleLoginBtn" class="secondary-button" type="button">Googleログイン</button>
+              <button id="saveSettingsBtn" class="primary-button" type="button">設定を保存</button>
+            </div>
           </section>
           <section class="settings-card settings-card-wide">
             <h3>自社情報</h3>
@@ -490,10 +487,13 @@
           </section>
           <section class="settings-card settings-card-wide">
             <h3>同期バックアップ</h3>
-            <p>帳票・取引先・商品・テンプレート・設定を JSON として入出力できます。</p>
+            <p>帳票・取引先・商品・テンプレート・設定を JSON / ZIP として入出力し、Google Drive に保存できます。</p>
             <div class="backup-actions">
-              <button id="exportBackupBtn" class="secondary-button" type="button">バックアップ出力</button>
-              <label class="import-button">バックアップ読込<input id="importBackupInput" type="file" accept="application/json" /></label>
+              <button id="exportBackupBtn" class="secondary-button" type="button">JSON出力</button>
+              <button id="exportBackupZipBtn" class="secondary-button" type="button">ZIP出力</button>
+              <button id="backupToDriveBtn" class="secondary-button" type="button">Drive保存</button>
+              <button id="restoreFromDriveBtn" class="secondary-button" type="button">Drive最新読込</button>
+              <label class="import-button">バックアップ読込<input id="importBackupInput" type="file" accept="application/json,application/zip,.json,.zip" /></label>
             </div>
             <textarea id="backupOutput" readonly rows="6" placeholder="出力したバックアップ内容がここに表示されます。"></textarea>
           </section>
@@ -581,6 +581,68 @@
       </form>
     </dialog>
 
+    <dialog id="archiveDialog" class="archive-dialog">
+      <form method="dialog" class="archive-form">
+        <header>
+          <div>
+            <p class="eyebrow">NIIX project archive</p>
+            <h2>档案管理 / 一档五表</h2>
+          </div>
+          <button class="icon-button" value="cancel" aria-label="閉じる">x</button>
+        </header>
+        <div class="archive-tools">
+          <input id="archiveSearchInput" type="search" placeholder="项目・会社・帳票番号で検索" />
+          <button id="newArchiveProjectBtn" class="secondary-button" type="button">新規项目</button>
+          <button id="exportSelectedProjectsBtn" class="primary-button" type="button">選択 / 管理</button>
+        </div>
+        <div class="archive-layout">
+          <section>
+            <div id="archiveTimeline" class="archive-timeline"></div>
+          </section>
+          <aside id="archiveDetail" class="archive-detail"></aside>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="archiveProjectDialog" class="archive-project-dialog">
+      <form method="dialog" class="archive-project-form">
+        <header>
+          <div>
+            <p class="eyebrow">New NIIX project</p>
+            <h2>交易公司を選択</h2>
+          </div>
+          <button class="icon-button" value="cancel" aria-label="閉じる">x</button>
+        </header>
+        <section class="archive-project-company">
+          <label>
+            既存の交易会社
+            <select id="archiveProjectCompanySelect" aria-label="既存の交易会社"></select>
+          </label>
+          <div class="archive-project-divider">または新規追加</div>
+          <label>
+            新会社名
+            <input id="archiveProjectCompanyNameInput" type="text" placeholder="会社名" />
+          </label>
+          <label>
+            住所
+            <textarea id="archiveProjectCompanyAddressInput" rows="2" placeholder="会社住所"></textarea>
+          </label>
+          <label>
+            担当者
+            <input id="archiveProjectCompanyContactInput" type="text" placeholder="担当者" />
+          </label>
+          <div class="archive-project-preview">
+            <span>项目名</span>
+            <strong id="archiveProjectNamePreview">-</strong>
+          </div>
+        </section>
+        <div class="dialog-actions">
+          <button class="secondary-button" value="cancel" type="submit">キャンセル</button>
+          <button id="confirmCreateArchiveProjectBtn" class="primary-button" type="button">项目を作成</button>
+        </div>
+      </form>
+    </dialog>
+
     <dialog id="itemDialog">
       <form method="dialog">
         <header>
@@ -597,6 +659,6 @@
       </form>
     </dialog>
 
-    <script src="./app.js?v=copy-menu-20260508"></script>
+    <script src="./app.js?v=responsive-png-20260508"></script>
   </body>
 </html>

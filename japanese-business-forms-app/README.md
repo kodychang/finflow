@@ -1,22 +1,26 @@
 # Shoko Forms
 
-日本商業帳票作成 Web App の新規プロトタイプです。日本の商取引でよく使う帳票を、取引フローに沿って作成、管理、変換、印刷できます。
+日本商業帳票作成 Web App の新規プロトタイプです。日本の商取引でよく使う帳票を、独立した帳票オブジェクトとして作成、管理、変換、印刷できます。
 
 ## 機能
 
 - 帳票タイプ切替: 見積書、注文書、発注書、納品書、請求書、領収書、受領書
-- 見積書 → 注文書 / 発注書 → 納品書 → 請求書 → 領収書 の文書変換
+- 見積書、注文書 / 発注書、納品書、請求書、領収書の相互変換
+- 各帳票を独立した `formObject` として保存し、請求書・納品書も導線順に依存せず直接検索 / 参照
+- URL クエリ `?form=<帳票ID>` / `?doc=<帳票番号>` による保存済み帳票の直接表示
 - 取引先、自社情報、インボイス登録番号の入力
 - 取引先管理
 - 商品・サービス項目管理
 - 明細行の追加、削除、数量、単価の入力
-- 帳票全体の税額設定: 10% / 8% / 税額なし
+- 帳票全体の税率設定: 基本情報内の百分率入力、初期値 8%
 - 適格請求書の主要記載事項チェック
 - 税率別の対象金額、消費税額、非課税額の表示
 - A4 帳票プレビュー
-- `localStorage` 保存と最近の帳票リスト
+- ブラウザ内データベース (`localStorage`) 保存と最近の帳票リスト
+- Email 登録による自動アカウント ID 発行
+- Google アカウントログインと Google Drive バックアップ保存 / 最新バックアップ読込
 - ローカルサーバー経由の PDF 生成、PDF プレビュー、印刷画面
-- 帳票 JSON 出力
+- 帳票 JSON / ZIP バックアップ出力、JSON / ZIP バックアップ読込
 
 ## PDF 生成の標準実装
 
@@ -25,8 +29,8 @@
 - フロントエンド: `app.js` の `buildPdfPayload()`、`exportPdf()`、`printWithBrowserFallback()`、`submitPdfForm()`
 - サーバー: `server.js` の `/api/pdf-file`、`/api/pdf`、`/api/pdf-print`、`pdfShell()`、`renderPdfBuffer()`
 - PDF レンダリング: WeasyPrint を使い、`styles.css` と `fonts/` の帳票・印章用スタイルをサーバー側で読み込む
-- 正しい動作: ブラウザが `http://localhost:<port>/` から開かれている場合は `/api/pdf-file` で PDF を生成し、生成できない場合だけブラウザ印刷へフォールバックする
-- 禁止事項: `localhost:4180` など固定ポートをフロントエンドにハードコードしない
+- 正しい動作: プロジェクト全体のプレビュー URL は `http://localhost:4180` のみを使い、PDF 生成リンクも同じ URL 配下に統一する
+- 禁止事項: 1つの作業中に `4181`、`4183` など別ポートのプレビューリンクを追加で立てない
 
 ## インボイス制度対応範囲
 
@@ -51,12 +55,14 @@ node server.js
 
 Open `http://localhost:4180`.
 
-別ポートで起動する場合:
+## Google アカウント / Drive バックアップ
 
-```bash
-PORT=4181 node server.js
-```
+設定画面の `Google Client ID` に Google Cloud Console で作成した OAuth 2.0 Web Client ID を入力します。承認済み JavaScript 生成元には、利用するローカル URL 例 `http://localhost:4180` を追加してください。
+
+Drive バックアップは Google Identity Services で `drive.file` スコープを取得し、`shoko-forms-backup-*.zip` を Google Drive に保存します。復元は Drive 上の同名バックアップから更新日時が新しい ZIP / JSON を読み込みます。
+
+バックアップ読込は旧形式との互換性を優先し、`documents` / `docs` / `forms`、`customers` / `clients`、`items` / `products` など複数のキー名を許容します。ZIP 内は JSON ファイルを探して取り込み、既存データとは ID・帳票番号・会社名・名称をキーにマージします。
 
 ## 设计说明
 
-这是一个零依赖静态 Web App，适合先确认产品体验。后续生产化建议迁移到 Next.js + TypeScript，并追加账号、客户主数据、帐票编号规则、电子帐簿保存法相关审计记录、服务器端 PDF 生成和数据库持久化。
+这是一个零依赖静态 Web App，适合先确认产品体验。当前账号与 Google Drive 同步是浏览器端实现，生产化建议迁移到 Next.js + TypeScript，并追加服务器端 OAuth 回调、数据库账号表、团队权限、客户主数据、帐票编号规则、电子帐簿保存法相关审计记录、服务器端 PDF 生成和数据库持久化。
