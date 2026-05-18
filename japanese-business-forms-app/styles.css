@@ -855,6 +855,66 @@ textarea[aria-invalid="true"] {
   border-color: #b3261e;
 }
 
+.smart-picker-anchor {
+  position: relative;
+  display: block;
+}
+
+.smart-company-list {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid #cfd8df;
+  background: #fff;
+  box-shadow: 0 14px 32px rgba(26, 32, 38, 0.14);
+}
+
+.smart-company-option {
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  border-bottom: 1px solid #edf0f2;
+  border-radius: 0;
+  background: #fff;
+  color: var(--ink);
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.smart-company-option:hover,
+.smart-company-option:focus {
+  background: color-mix(in srgb, var(--accent) 12%, #fff);
+  outline: 0;
+}
+
+.smart-company-option strong,
+.smart-company-option span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smart-company-option strong {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.smart-company-option span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.smart-company-option.is-create strong {
+  color: var(--accent);
+}
+
 .line-table-wrap {
   overflow-x: auto;
 }
@@ -1654,9 +1714,9 @@ body.preview-raster-mode .preview-column > .document-preview {
 }
 
 .doc-header h2 {
-  font-family: var(--document-font);
-  font-size: 22px;
-  font-weight: 700;
+  font-family: var(--ui-font);
+  font-size: 17.6px;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
@@ -3634,6 +3694,7 @@ dialog header {
     border-top: 1px solid var(--line);
     background: rgba(247, 249, 251, 0.98);
     box-shadow: 0 -5px 16px rgba(26, 39, 52, 0.08);
+    touch-action: pan-y;
   }
 
   .mobile-action-bar button {
@@ -3647,6 +3708,7 @@ dialog header {
     font-size: 0;
     line-height: 1;
     text-align: center;
+    touch-action: pan-y;
   }
 
   .mobile-action-bar button::before {
@@ -4888,6 +4950,130 @@ body.native-app .document-preview {
   --template-total-bg: #f6f7f3;
 }
 
+/* Built-in colored table templates. */
+.document-preview[data-template="oceanTable"] {
+  --paper: #fbfdff;
+  --template-line: #1d4ed8;
+  --template-soft-line: #bfdbfe;
+  --template-table-head: #dbeafe;
+  --template-total-bg: #eff6ff;
+  --template-muted: #475569;
+}
+
+.document-preview[data-template="mintTable"] {
+  --paper: #fbfffd;
+  --template-line: #0f766e;
+  --template-soft-line: #99f6e4;
+  --template-table-head: #ccfbf1;
+  --template-total-bg: #f0fdfa;
+  --template-muted: #475569;
+}
+
+.document-preview[data-template="roseTable"] {
+  --paper: #fffafb;
+  --template-line: #be123c;
+  --template-soft-line: #fecdd3;
+  --template-table-head: #ffe4e6;
+  --template-total-bg: #fff1f2;
+  --template-muted: #57534e;
+}
+
+.document-preview[data-template="amberTable"] {
+  --paper: #fffdf7;
+  --template-line: #b45309;
+  --template-soft-line: #fde68a;
+  --template-table-head: #fef3c7;
+  --template-total-bg: #fffbeb;
+  --template-muted: #5f574c;
+}
+
+.document-preview[data-template="graphiteTable"] {
+  --paper: #ffffff;
+  --template-line: #334155;
+  --template-soft-line: #cbd5e1;
+  --template-table-head: #e2e8f0;
+  --template-total-bg: #f1f5f9;
+  --template-muted: #64748b;
+}
+
+.document-preview[data-template="oceanTable"] .doc-header,
+.document-preview[data-template="mintTable"] .doc-header,
+.document-preview[data-template="roseTable"] .doc-header,
+.document-preview[data-template="amberTable"] .doc-header,
+.document-preview[data-template="graphiteTable"] .doc-header {
+  border-bottom-color: var(--template-line);
+}
+
+.document-preview[data-template="oceanTable"] .party-name,
+.document-preview[data-template="mintTable"] .party-name,
+.document-preview[data-template="roseTable"] .party-name,
+.document-preview[data-template="amberTable"] .party-name,
+.document-preview[data-template="graphiteTable"] .party-name {
+  border-bottom-color: var(--template-line);
+}
+
+.document-preview[data-template="oceanTable"] .invoice-badge,
+.document-preview[data-template="mintTable"] .invoice-badge,
+.document-preview[data-template="roseTable"] .invoice-badge,
+.document-preview[data-template="amberTable"] .invoice-badge,
+.document-preview[data-template="graphiteTable"] .invoice-badge {
+  color: var(--template-line);
+  border-color: var(--template-soft-line);
+  background: var(--template-total-bg);
+}
+
+.document-preview[data-template="oceanTable"] .total-banner,
+.document-preview[data-template="mintTable"] .total-banner,
+.document-preview[data-template="roseTable"] .total-banner,
+.document-preview[data-template="amberTable"] .total-banner,
+.document-preview[data-template="graphiteTable"] .total-banner,
+.document-preview[data-template="oceanTable"] .preview-table thead,
+.document-preview[data-template="mintTable"] .preview-table thead,
+.document-preview[data-template="roseTable"] .preview-table thead,
+.document-preview[data-template="amberTable"] .preview-table thead,
+.document-preview[data-template="graphiteTable"] .preview-table thead {
+  background: var(--template-table-head);
+}
+
+.document-preview[data-template="oceanTable"] .total-banner,
+.document-preview[data-template="mintTable"] .total-banner,
+.document-preview[data-template="roseTable"] .total-banner,
+.document-preview[data-template="amberTable"] .total-banner,
+.document-preview[data-template="graphiteTable"] .total-banner,
+.document-preview[data-template="oceanTable"] .total-bank-row,
+.document-preview[data-template="mintTable"] .total-bank-row,
+.document-preview[data-template="roseTable"] .total-bank-row,
+.document-preview[data-template="amberTable"] .total-bank-row,
+.document-preview[data-template="graphiteTable"] .total-bank-row,
+.document-preview[data-template="oceanTable"] .totals .grand,
+.document-preview[data-template="mintTable"] .totals .grand,
+.document-preview[data-template="roseTable"] .totals .grand,
+.document-preview[data-template="amberTable"] .totals .grand,
+.document-preview[data-template="graphiteTable"] .totals .grand {
+  border-color: var(--template-line);
+}
+
+.document-preview[data-template="oceanTable"] .preview-table,
+.document-preview[data-template="mintTable"] .preview-table,
+.document-preview[data-template="roseTable"] .preview-table,
+.document-preview[data-template="amberTable"] .preview-table,
+.document-preview[data-template="graphiteTable"] .preview-table {
+  border-top: 2px solid var(--template-line);
+}
+
+.document-preview[data-template="oceanTable"] .preview-table th,
+.document-preview[data-template="oceanTable"] .preview-table td,
+.document-preview[data-template="mintTable"] .preview-table th,
+.document-preview[data-template="mintTable"] .preview-table td,
+.document-preview[data-template="roseTable"] .preview-table th,
+.document-preview[data-template="roseTable"] .preview-table td,
+.document-preview[data-template="amberTable"] .preview-table th,
+.document-preview[data-template="amberTable"] .preview-table td,
+.document-preview[data-template="graphiteTable"] .preview-table th,
+.document-preview[data-template="graphiteTable"] .preview-table td {
+  border-bottom-color: var(--template-soft-line);
+}
+
 .invoice-badge,
 .attached-file-read-state,
 .top-flow-tab.active,
@@ -5478,6 +5664,47 @@ body.native-app .mobile-action-bar button {
 .document-preview .total-amount-cell strong,
 .document-preview .totals .grand {
   font-weight: 900;
+}
+
+.document-preview .doc-header h2 {
+  font-family: var(--ui-font);
+  font-size: 17.6px;
+  font-weight: 600;
+}
+
+.topbar h1,
+.section-heading h2,
+.settings-card h3,
+.customer-detail-head h3,
+dialog header h2,
+dialog header h3,
+.archive-form > header h2,
+.archive-project-form > header h2,
+.order-record-preview h2 {
+  font-family: var(--ui-font) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
+}
+
+.topbar h1 {
+  font-size: 22px !important;
+  line-height: 1.18;
+}
+
+.section-heading h2,
+.settings-card h3,
+.customer-detail-head h3 {
+  font-size: 15px !important;
+  line-height: 1.25;
+}
+
+dialog header h2,
+dialog header h3,
+.archive-form > header h2,
+.archive-project-form > header h2,
+.order-record-preview h2 {
+  font-size: 18px !important;
+  line-height: 1.22;
 }
 
 @media (max-width: 760px) {
@@ -6918,8 +7145,18 @@ body.native-app .mobile-action-bar button {
   .topbar,
   .editor,
   .preview-actions,
-  .preview-png-frame {
+  .preview-png-frame,
+  .pdf-dialog,
+  dialog {
     display: none !important;
+  }
+
+  body:has(#pdfPrintHost:not(:empty)) .app-shell {
+    display: none !important;
+  }
+
+  #pdfPrintHost:not(:empty) {
+    display: block !important;
   }
 
   .app-shell,
@@ -7003,6 +7240,77 @@ body.native-app .mobile-action-bar button {
     page-break-inside: avoid;
   }
 
+}
+
+#pdfPrintHost {
+  display: none;
+}
+
+.pdf-page-list {
+  display: grid;
+  gap: 16px;
+  width: 210mm;
+  margin: 0 auto;
+  transform-origin: top left;
+}
+
+.pdf-page {
+  position: relative;
+  width: 210mm;
+  height: 297mm;
+  overflow: hidden;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+
+.pdf-page-slice {
+  width: 210mm;
+  height: 297mm;
+  overflow: hidden;
+}
+
+.pdf-page-number {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 5mm;
+  z-index: 80;
+  color: #000;
+  font-family: var(--ui-font);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  pointer-events: none;
+}
+
+@media print {
+  #pdfPrintHost {
+    width: 210mm;
+    margin: 0;
+  }
+
+  #pdfPrintHost .document-preview {
+    box-shadow: none !important;
+    margin: 0 !important;
+  }
+
+  #pdfPrintHost .pdf-page-list {
+    display: block;
+    gap: 0;
+    margin: 0;
+  }
+
+  #pdfPrintHost .pdf-page {
+    box-shadow: none;
+    page-break-after: always;
+    break-after: page;
+  }
+
+  #pdfPrintHost .pdf-page:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
 }
 
 .pdf-preview-sheet {
@@ -7111,6 +7419,22 @@ body.mobile-view-preview .pdf-preview-sheet .document-preview {
   margin: 0 !important;
   box-shadow: var(--shadow) !important;
   transform: scale(var(--pdf-preview-scale)) !important;
+  transform-origin: top left !important;
+}
+
+body .pdf-preview-sheet .pdf-page-list,
+body.native-app.mobile-view-preview .pdf-preview-sheet .pdf-page-list,
+body.mobile-view-preview .pdf-preview-sheet .pdf-page-list {
+  transform: scale(var(--pdf-preview-scale)) !important;
+  transform-origin: top left !important;
+}
+
+body .pdf-preview-sheet .pdf-page-slice .document-preview,
+body.native-app.mobile-view-preview .pdf-preview-sheet .pdf-page-slice .document-preview,
+body.mobile-view-preview .pdf-preview-sheet .pdf-page-slice .document-preview {
+  min-height: auto !important;
+  box-shadow: none !important;
+  transform: translateY(var(--pdf-page-offset, 0)) !important;
   transform-origin: top left !important;
 }
 
@@ -7401,6 +7725,46 @@ dialog.dialog-page :is(#itemNameInput, #itemModelInput) {
 #documentForm .line-table :is(th, td),
 #documentForm .line-table :is(.item-name, .item-model, .item-spec) {
   min-width: 0 !important;
+}
+
+/* Flat form surface: remove white cells and use a single black baseline per unit. */
+#documentForm .form-section,
+dialog.dialog-page .form-section,
+body.native-app #documentForm .form-section,
+body.mobile-view-form #documentForm .form-section {
+  border: 0 !important;
+  background: transparent !important;
+}
+
+#documentForm :where(.field-grid > label, .line-table td),
+dialog.dialog-page :where(label, .master-form > *, .company-form > *, .customer-edit-form > *, .archive-project-company > *),
+body.native-app #documentForm :where(.field-grid > label, .line-table td),
+body.mobile-view-form #documentForm :where(.field-grid > label, .line-table td) {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+#documentForm :where(input, select, textarea),
+#documentForm .line-table :where(input, select, textarea),
+dialog.dialog-page :where(input, select, textarea),
+body.native-app #documentForm :where(input, select, textarea),
+body.mobile-view-form #documentForm :where(input, select, textarea) {
+  border: 0 !important;
+  border-bottom: 1px solid #000 !important;
+  border-radius: 0 !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+
+#documentForm :where(input, select, textarea):focus,
+#documentForm .line-table :where(input, select, textarea):focus,
+dialog.dialog-page :where(input, select, textarea):focus,
+body.native-app #documentForm :where(input, select, textarea):focus,
+body.mobile-view-form #documentForm :where(input, select, textarea):focus {
+  outline: 0 !important;
+  border-bottom-color: #000 !important;
 }
 
 @media (max-width: 760px) {
@@ -7863,5 +8227,199 @@ dialog.dialog-page :is(#itemNameInput, #itemModelInput) {
     bottom: calc(8px + env(safe-area-inset-bottom) + var(--mobile-viewport-bottom, 0px)) !important;
     transform: none !important;
     will-change: auto !important;
+  }
+}
+
+/* Final mobile form style: match the flat right-side reference. */
+#documentForm .form-section,
+body.native-app #documentForm .form-section,
+body.mobile-view-form #documentForm .form-section,
+dialog.dialog-page .form-section {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+#documentForm .field-grid,
+body.native-app #documentForm .field-grid,
+body.mobile-view-form #documentForm .field-grid,
+dialog.dialog-page .field-grid {
+  gap: 18px 28px !important;
+}
+
+#documentForm :where(label.simplified-field, .field-grid > label),
+body.native-app #documentForm :where(label.simplified-field, .field-grid > label),
+body.mobile-view-form #documentForm :where(label.simplified-field, .field-grid > label),
+dialog.dialog-page :where(label.simplified-field, .field-grid > label, .company-form > label, .customer-edit-form > label, .archive-project-company > label) {
+  gap: 7px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+#documentForm label.simplified-field > :where(.input-title, span[id$="Label"]),
+body.native-app #documentForm label.simplified-field > :where(.input-title, span[id$="Label"]),
+body.mobile-view-form #documentForm label.simplified-field > :where(.input-title, span[id$="Label"]),
+dialog.dialog-page label.simplified-field > :where(.input-title, span[id$="Label"]) {
+  display: block !important;
+  min-height: 0 !important;
+  color: #7d848b !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+  line-height: 1.2 !important;
+}
+
+#documentForm label.date-prefixed-field::before,
+#documentForm label.input-prefixed-field::before,
+#documentForm label.textarea-prefixed-field::before,
+#documentForm label.date-prefixed-field::after,
+#documentForm label.input-prefixed-field::after,
+#documentForm label.textarea-prefixed-field::after,
+body.native-app #documentForm label.date-prefixed-field::before,
+body.native-app #documentForm label.input-prefixed-field::before,
+body.native-app #documentForm label.textarea-prefixed-field::before,
+body.native-app #documentForm label.date-prefixed-field::after,
+body.native-app #documentForm label.input-prefixed-field::after,
+body.native-app #documentForm label.textarea-prefixed-field::after,
+body.mobile-view-form #documentForm label.date-prefixed-field::before,
+body.mobile-view-form #documentForm label.input-prefixed-field::before,
+body.mobile-view-form #documentForm label.textarea-prefixed-field::before,
+body.mobile-view-form #documentForm label.date-prefixed-field::after,
+body.mobile-view-form #documentForm label.input-prefixed-field::after,
+body.mobile-view-form #documentForm label.textarea-prefixed-field::after {
+  display: none !important;
+  content: none !important;
+}
+
+#documentForm :where(input, textarea, select),
+#documentForm .line-table :where(input, textarea, select),
+body.native-app #documentForm :where(input, textarea, select),
+body.mobile-view-form #documentForm :where(input, textarea, select),
+dialog.dialog-page :where(input, textarea, select) {
+  min-height: 50px !important;
+  padding: 11px 12px !important;
+  border: 1px solid rgba(14, 18, 22, 0.07) !important;
+  border-radius: 7px !important;
+  background-color: rgba(255, 255, 255, 0.18) !important;
+  box-shadow: none !important;
+  color: #111315 !important;
+}
+
+#documentForm :where(input[type="date"], #honorific, select:not(#relatedNumberPicker)),
+body.native-app #documentForm :where(input[type="date"], #honorific, select:not(#relatedNumberPicker)),
+body.mobile-view-form #documentForm :where(input[type="date"], #honorific, select:not(#relatedNumberPicker)) {
+  min-height: 44px !important;
+  padding: 8px 18px !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  background-color: #eef0f2 !important;
+  text-align: center !important;
+}
+
+#documentForm :where(#docNumber, #relatedNumberPicker, #relatedNumberMode, #taxRate, input[type="text"], input[type="number"], input[type="email"], input[type="tel"], textarea),
+body.native-app #documentForm :where(#docNumber, #relatedNumberPicker, #relatedNumberMode, #taxRate, input[type="text"], input[type="number"], input[type="email"], input[type="tel"], textarea),
+body.mobile-view-form #documentForm :where(#docNumber, #relatedNumberPicker, #relatedNumberMode, #taxRate, input[type="text"], input[type="number"], input[type="email"], input[type="tel"], textarea) {
+  border: 1px solid rgba(14, 18, 22, 0.075) !important;
+  border-radius: 7px !important;
+  background-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+#documentForm :where(input, textarea, select):focus,
+#documentForm .line-table :where(input, textarea, select):focus,
+body.native-app #documentForm :where(input, textarea, select):focus,
+body.mobile-view-form #documentForm :where(input, textarea, select):focus,
+dialog.dialog-page :where(input, textarea, select):focus {
+  outline: 2px solid rgba(14, 18, 22, 0.08) !important;
+  border-color: rgba(14, 18, 22, 0.16) !important;
+}
+
+.topbar h1,
+body.native-app .topbar h1,
+body.mobile-title-hidden.mobile-view-form .topbar h1,
+body.mobile-title-hidden.mobile-view-preview .topbar h1,
+.section-heading h2,
+body.native-app .section-heading h2,
+body.mobile-view-form .section-heading h2,
+.settings-card h3,
+.customer-detail-head h3,
+dialog header h2,
+dialog header h3,
+.archive-form > header h2,
+.archive-project-form > header h2,
+.order-record-preview h2 {
+  font-family: var(--ui-font) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
+}
+
+.topbar h1,
+body.native-app .topbar h1,
+body.mobile-title-hidden.mobile-view-form .topbar h1,
+body.mobile-title-hidden.mobile-view-preview .topbar h1 {
+  font-size: 22px !important;
+  line-height: 1.18 !important;
+}
+
+.section-heading h2,
+body.native-app .section-heading h2,
+body.mobile-view-form .section-heading h2,
+.settings-card h3,
+.customer-detail-head h3 {
+  font-size: 15px !important;
+  line-height: 1.25 !important;
+}
+
+dialog header h2,
+dialog header h3,
+.archive-form > header h2,
+.archive-project-form > header h2,
+.order-record-preview h2 {
+  font-size: 18px !important;
+  line-height: 1.22 !important;
+}
+
+/* Compact menu layout: keeps document choices visible without large empty card bottoms. */
+.sidebar,
+body.native-app .sidebar {
+  gap: 16px !important;
+}
+
+.doc-type-options {
+  gap: 10px !important;
+}
+
+.doc-type-option {
+  display: flex !important;
+  min-height: 62px !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  gap: 3px !important;
+  padding: 10px 12px !important;
+}
+
+.doc-type-option strong {
+  font-size: 14px !important;
+  line-height: 1.2 !important;
+}
+
+.doc-type-option span {
+  font-size: 11px !important;
+  line-height: 1.25 !important;
+  white-space: normal !important;
+}
+
+@media (max-width: 720px) {
+  .sidebar,
+  body.native-app .sidebar {
+    gap: 12px !important;
+    padding-top: 10px !important;
+  }
+
+  .doc-type-option {
+    min-height: 54px !important;
+    padding: 8px 10px !important;
   }
 }

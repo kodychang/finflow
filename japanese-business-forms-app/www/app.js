@@ -72,15 +72,21 @@ const ITEM_KEY = "shokoForms.items.v1";
 const TEMPLATE_KEY = "shokoForms.templates.v1";
 const SETTINGS_KEY = "shokoForms.settings.v1";
 const OPERATION_KEY = "shokoForms.operations.v1";
+const LOCAL_BACKUP_KEY = "shokoForms.localBackup.v1";
 const NIIX_COMPANY_NAME = "NIIX株式会社";
 const GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile";
 
-const ARCHIVE_FORM_TYPES = [
+const CUSTOMER_PROJECT_FORM_TYPES = [
   { key: "estimate", types: ["estimate"], label: "見積" },
-  { key: "order", types: ["order", "purchaseOrder"], label: "注文/発注" },
+  { key: "order", types: ["order"], label: "受注" },
   { key: "delivery", types: ["delivery"], label: "納品" },
   { key: "invoice", types: ["invoice"], label: "請求" },
   { key: "receipt", types: ["receipt"], label: "領収" },
+];
+
+const VENDOR_PROJECT_FORM_TYPES = [
+  { key: "purchaseOrder", types: ["purchaseOrder"], label: "発注" },
+  { key: "acceptance", types: ["acceptance"], label: "受領" },
 ];
 
 const INBOUND_ARCHIVE_FORM_TYPES = [
@@ -207,11 +213,11 @@ const FORM_DEFINITIONS = {
     specificsLabel: "見積条件",
     totalLabel: "御見積金額",
     lead: "下記の通り、お見積り申し上げます。",
-    notesPlaceholder: "有効期限、納入予定、見積条件など",
+    notesPlaceholder: "有効期限、納入予定、税抜/税込表示、見積条件など",
     secondaryPlaceholder: "例: 月末締め翌月末払い / 銀行振込",
     specificsPlaceholder: "例: 価格条件、納期、保証、見積範囲",
     defaultNotes: "本見積の内容にご不明点がございましたらお問い合わせください。",
-    defaultSpecifics: "見積有効期限、納入予定、税率・合計金額を確認してください。",
+    defaultSpecifics: "見積有効期限、納入予定、税率10%・税抜/税込合計を確認してください。",
   },
   order: {
     partySection: "注文元",
@@ -239,11 +245,11 @@ const FORM_DEFINITIONS = {
     specificsLabel: "購買条件",
     totalLabel: "発注金額",
     lead: "下記の通り、注文を発行いたします。",
-    notesPlaceholder: "支払条件、検収、キャンセル条件、納入場所など",
+    notesPlaceholder: "支払条件、納入場所、検収条件、キャンセル条件など",
     secondaryPlaceholder: "例: 検収後月末締め翌月末払い",
     specificsPlaceholder: "例: 納入場所、検収条件、納品書同梱、分納可否",
     defaultNotes: "注文内容をご確認の上、手配をお願いいたします。",
-    defaultSpecifics: "支払・発注条件、納入場所、検収条件を確認してください。",
+    defaultSpecifics: "発注日、納期、納入場所、支払条件、検収条件を確認してください。",
   },
   delivery: {
     partySection: "納品先",
@@ -258,8 +264,8 @@ const FORM_DEFINITIONS = {
     notesPlaceholder: "納品・検収時の注意事項など",
     secondaryPlaceholder: "例: 納品先住所 / 倉庫 / 担当者",
     specificsPlaceholder: "例: 配送会社、送り状番号、納品場所、検収期限",
-    defaultNotes: "上記の通り、納品いたしましたことを証明いたします。",
-    defaultSpecifics: "物流情報、納品場所、検収期限を入力してください。",
+    defaultNotes: "上記の通り、納品いたしました。内容をご確認ください。",
+    defaultSpecifics: "納品日、納品場所、数量、送り状番号、検収期限を入力してください。",
   },
   invoice: {
     partySection: "請求先",
@@ -271,11 +277,11 @@ const FORM_DEFINITIONS = {
     specificsLabel: "請求条件",
     totalLabel: "ご請求金額",
     lead: "下記の通り、ご請求申し上げます。",
-    notesPlaceholder: "振込手数料、請求条件、入金確認など",
+    notesPlaceholder: "振込手数料、支払条件、消費税端数処理、源泉徴収の有無など",
     secondaryPlaceholder: "例: 三井住友銀行 東京支店 普通 1234567",
-    specificsPlaceholder: "例: 支払期限、源泉徴収、請求条件",
-    defaultNotes: "お支払期限までにお振込みをお願いいたします。",
-    defaultSpecifics: "振込先、支払期限、請求条件を確認してください。",
+    specificsPlaceholder: "例: 適格請求書登録番号、取引年月日、税率別対象額・消費税額、源泉徴収の有無",
+    defaultNotes: "振込手数料は貴社にてご負担ください。お支払期限までにお振込みをお願いいたします。",
+    defaultSpecifics: "適格請求書として、登録番号、取引年月日、税率別対象額、消費税額、合計金額を確認してください。",
   },
   receipt: {
     partySection: "領収先",
@@ -287,11 +293,11 @@ const FORM_DEFINITIONS = {
     specificsLabel: "領収内容",
     totalLabel: "領収金額",
     lead: "下記の金額を領収いたしました。",
-    notesPlaceholder: "但し書き、支払方法、入金確認など",
+    notesPlaceholder: "但し書き、支払方法、入金確認、収入印紙の要否など",
     secondaryPlaceholder: "例: 銀行振込 / 現金 / クレジットカード",
-    specificsPlaceholder: "例: 但し書き、入金日、領収方法",
+    specificsPlaceholder: "例: 但し○○代として / 銀行振込 / 現金 / 5万円以上の現金領収は収入印紙確認",
     defaultNotes: "上記正に領収いたしました。",
-    defaultSpecifics: "入金日、領収但し書き、支払方法を確認してください。",
+    defaultSpecifics: "但し書き、領収日、支払方法、税率別対象額・消費税額を確認してください。現金領収が5万円以上の場合は収入印紙の要否を確認してください。",
   },
   acceptance: {
     partySection: "受領元",
@@ -299,15 +305,15 @@ const FORM_DEFINITIONS = {
     issuerSection: "受領者",
     transactionLabel: "受領日",
     dueLabel: "検収期限",
-    secondaryLabel: "受領場所",
+    secondaryLabel: "検収結果",
     specificsLabel: "受領・検収内容",
-    totalLabel: "受領金額",
+    totalLabel: "受領内容",
     lead: "下記の通り、受領いたしました。",
-    notesPlaceholder: "受領品、検収結果、差異など",
-    secondaryPlaceholder: "例: 受領場所 / 担当者",
-    specificsPlaceholder: "例: 受領数量、検収結果、差異、保管場所",
-    defaultNotes: "上記の通り、受領いたしました。",
-    defaultSpecifics: "受領数量、検収結果、差異を確認してください。",
+    notesPlaceholder: "受領品、受領場所、検収結果、差異、返品・不足など",
+    secondaryPlaceholder: "例: 検収済み / 数量差異あり / 確認中",
+    specificsPlaceholder: "例: 受領数量、受領場所、検収結果、差異、保管場所",
+    defaultNotes: "上記の通り、受領いたしました。検収結果をご確認ください。",
+    defaultSpecifics: "受領日、受領数量、受領場所、検収結果、差異の有無を確認してください。",
   },
   customerFiles: {
     partySection: "取引先",
@@ -333,6 +339,11 @@ const BUILT_IN_TEMPLATES = [
   { id: "ledger", name: "明細表", style: "ledger", accent: "#62666a", builtin: true },
   { id: "indigo", name: "濃灰罫線", style: "indigo", accent: "#1f2224", builtin: true },
   { id: "sepia", name: "淡灰罫線", style: "sepia", accent: "#aeb3b7", builtin: true },
+  { id: "oceanTable", name: "海藍表格", style: "oceanTable", accent: "#2563eb", builtin: true },
+  { id: "mintTable", name: "薄荷表格", style: "mintTable", accent: "#0f766e", builtin: true },
+  { id: "roseTable", name: "玫瑰表格", style: "roseTable", accent: "#be123c", builtin: true },
+  { id: "amberTable", name: "琥珀表格", style: "amberTable", accent: "#b45309", builtin: true },
+  { id: "graphiteTable", name: "石墨表格", style: "graphiteTable", accent: "#475569", builtin: true },
 ];
 
 const SAMPLE_CUSTOMER = {
@@ -359,7 +370,7 @@ const state = {
   currentId: crypto.randomUUID(),
   projectId: "",
   projectName: "",
-  projectDirection: "outbound",
+  projectDirection: "customer",
   templateId: "monochrome",
   sourceDocumentId: "",
   sourceDocumentNumber: "",
@@ -388,6 +399,8 @@ const state = {
   mobileExpandedSections: new Set(),
   mobileTitleRestoreTimer: null,
   mobileLastScrollTop: 0,
+  mobileActionBarTouch: null,
+  suppressNextMobileActionClick: false,
 };
 
 const els = {};
@@ -585,7 +598,7 @@ function formDefinition(type = state.docType) {
 }
 
 function showsPrices(type = state.docType, projectDirection = state.projectDirection) {
-  return normalizeProjectDirection(projectDirection) !== "inbound" && !["order", "delivery", "customerFiles"].includes(type);
+  return normalizeProjectDirection(projectDirection) !== "inbound" && !["order", "delivery", "acceptance", "customerFiles"].includes(type);
 }
 
 function isCustomerOrderRecord(type = state.docType) {
@@ -593,11 +606,17 @@ function isCustomerOrderRecord(type = state.docType) {
 }
 
 function normalizeProjectDirection(value) {
-  return value === "inbound" ? "inbound" : "outbound";
+  if (value === "vendor" || value === "supplier") return "vendor";
+  if (value === "inbound") return "inbound";
+  return "customer";
 }
 
 function isInboundProject(doc = state) {
   return normalizeProjectDirection(doc.projectDirection) === "inbound";
+}
+
+function isVendorProject(doc = state) {
+  return normalizeProjectDirection(doc.projectDirection) === "vendor";
 }
 
 function isReceivedDocumentRecord(doc = getFormData()) {
@@ -693,12 +712,12 @@ function ensureNiixCompany() {
 function applyCompanyToIssuer(company) {
   if (!company) return;
   state.issuerLogo = company.logo || "";
-  els.issuerName.value = company.name || "";
-  els.issuerRegistration.value = company.registration || "";
-  els.issuerAddress.value = company.address || "";
-  if (els.issuerContact) els.issuerContact.value = company.contact || "";
-  els.issuerPhone.value = company.phone || "";
-  els.issuerEmail.value = company.email || "";
+  smartField("issuerName").value = company.name || "";
+  smartField("issuerRegistration").value = company.registration || "";
+  smartField("issuerAddress").value = company.address || "";
+  if (smartField("issuerContact")) smartField("issuerContact").value = company.contact || "";
+  smartField("issuerPhone").value = company.phone || "";
+  smartField("issuerEmail").value = company.email || "";
   renderPreview();
   setDirty(true);
 }
@@ -822,12 +841,123 @@ function findItemBySmartInput(value = "") {
 
 function applyCustomerToDocument(customer) {
   if (!customer) return;
-  els.customerName.value = customer.companyName || "";
-  els.customerAddress.value = customer.companyAddress || "";
-  els.customerContact.value = customerDisplayContact(customer);
-  if (els.customerEmail) els.customerEmail.value = customer.email || customer.contactEmail || "";
+  smartField("customerName").value = customer.companyName || "";
+  smartField("customerAddress").value = customer.companyAddress || "";
+  smartField("customerContact").value = customerDisplayContact(customer);
+  if (smartField("customerEmail")) smartField("customerEmail").value = customer.email || customer.contactEmail || "";
   renderPreview();
   setDirty(true);
+}
+
+function smartField(id) {
+  return els[id] || document.getElementById(id);
+}
+
+function smartCompanyPickerConfig(kind) {
+  if (kind === "issuer") {
+    return {
+      input: smartField("issuerName"),
+      list: smartField("issuerCompanySuggestions"),
+      records: settingsCompanies(),
+      nameFor: (company) => company.name || "",
+      summaryFor: (company) => [company.registration, company.contact, company.phone, company.email].filter(Boolean).join(" / "),
+      valuesFor: companySmartValues,
+      apply: applyCompanyToIssuer,
+      create: () => saveCompanyRecord({
+        logo: state.issuerLogo || "",
+        name: smartField("issuerName").value.trim(),
+        registration: smartField("issuerRegistration")?.value.trim() || "",
+        address: smartField("issuerAddress")?.value.trim() || "",
+        contact: smartField("issuerContact")?.value.trim() || "",
+        phone: smartField("issuerPhone")?.value.trim() || "",
+        email: smartField("issuerEmail")?.value.trim() || "",
+      }),
+      createLabel: "新規発行者を作成",
+      emptyLabel: "保存済み発行者はありません",
+    };
+  }
+  return {
+    input: smartField("customerName"),
+    list: smartField("customerCompanySuggestions"),
+    records: loadCustomers(),
+    nameFor: (customer) => customer.companyName || "",
+    summaryFor: (customer) => [customerDisplayContact(customer) === "-" ? "" : customerDisplayContact(customer), customer.companyPhone, customer.email].filter(Boolean).join(" / "),
+    valuesFor: customerSmartValues,
+    apply: applyCustomerToDocument,
+    create: () => saveCustomerRecord({
+      companyName: smartField("customerName").value.trim(),
+      companyAddress: smartField("customerAddress")?.value.trim() || "",
+      email: smartField("customerEmail")?.value.trim() || "",
+      contactName: smartField("customerContact")?.value.trim() || "",
+      updatedAt: new Date().toISOString(),
+    }, { silent: true }),
+    createLabel: "新規取引先を作成",
+    emptyLabel: "保存済み取引先はありません",
+  };
+}
+
+function smartCompanyMatches(record, query, config) {
+  const needle = normalizeSmartText(query);
+  if (!needle) return true;
+  return config.valuesFor(record).some((value) => normalizeSmartText(value).includes(needle));
+}
+
+function hideSmartCompanyPickers() {
+  [els.customerCompanySuggestions, els.issuerCompanySuggestions].forEach((list) => {
+    if (list) list.hidden = true;
+  });
+}
+
+function renderSmartCompanyPicker(kind, { showAll = false } = {}) {
+  const config = smartCompanyPickerConfig(kind);
+  if (!config.input || !config.list) return;
+  const query = config.input.value.trim();
+  const records = config.records
+    .filter((record) => showAll || smartCompanyMatches(record, query, config))
+    .slice(0, 10);
+  const hasExactName = config.records.some((record) => normalizeSmartText(config.nameFor(record)) === normalizeSmartText(query));
+
+  config.list.innerHTML = "";
+  records.forEach((record) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "smart-company-option";
+    const name = config.nameFor(record) || "名称未入力";
+    const summary = config.summaryFor(record);
+    button.innerHTML = `<strong>${escapeHtml(name)}</strong><span>${escapeHtml(summary || "クリックで入力")}</span>`;
+    button.addEventListener("click", () => {
+      config.apply(record);
+      hideSmartCompanyPickers();
+    });
+    config.list.appendChild(button);
+  });
+
+  if (query && !hasExactName) {
+    const createButton = document.createElement("button");
+    createButton.type = "button";
+    createButton.className = "smart-company-option is-create";
+    createButton.innerHTML = `<strong>＋ ${escapeHtml(config.createLabel)}</strong><span>${escapeHtml(query)}</span>`;
+    createButton.addEventListener("click", () => {
+      const created = config.create();
+      renderCompanyOptions();
+      config.apply(created);
+      hideSmartCompanyPickers();
+    });
+    config.list.appendChild(createButton);
+  }
+
+  if (!config.list.children.length) {
+    const empty = document.createElement("div");
+    empty.className = "smart-company-option";
+    empty.innerHTML = `<strong>${escapeHtml(config.emptyLabel)}</strong><span>会社名を入力すると新規作成できます</span>`;
+    config.list.appendChild(empty);
+  }
+  config.list.hidden = false;
+}
+
+function refreshOpenSmartCompanyPickers() {
+  if (els.customerCompanySuggestions && !els.customerCompanySuggestions.hidden) renderSmartCompanyPicker("customer");
+  if (els.issuerCompanySuggestions && !els.issuerCompanySuggestions.hidden) renderSmartCompanyPicker("issuer");
 }
 
 function seedItems() {
@@ -1121,7 +1251,7 @@ function defaultDocument(type = state.docType, options = {}) {
     notes: definition.defaultNotes,
     bankDetails: "",
     documentSpecifics: definition.defaultSpecifics,
-    taxRate: 8,
+    taxRate: 10,
     sourceDocumentId: "",
     sourceDocumentNumber: "",
     sourceDocumentType: "",
@@ -1152,7 +1282,7 @@ function taxModeFromRate(taxRate) {
   return "reduced8";
 }
 
-function normalizeTaxRate(value, fallback = 8) {
+function normalizeTaxRate(value, fallback = 10) {
   if (value === undefined || value === null || value === "") return fallback;
   const rate = Number(value);
   if (!Number.isFinite(rate)) return fallback;
@@ -1167,7 +1297,7 @@ function documentTaxRate(doc) {
 }
 
 function getFormData() {
-  const taxRate = normalizeTaxRate(els.taxRate?.value, 8);
+  const taxRate = normalizeTaxRate(els.taxRate?.value, 10);
   const relatedNumberInput = els.customRelatedNumber?.value.trim() || "";
   return {
     id: state.currentId,
@@ -1275,10 +1405,12 @@ function setFormData(doc) {
     "customRelatedNumber",
     "relatedNumberMode",
     "customerName",
+    "customerCompanySuggestions",
     "customerAddress",
     "customerContact",
     "customerEmail",
     "issuerName",
+    "issuerCompanySuggestions",
     "issuerRegistration",
     "issuerAddress",
     "issuerContact",
@@ -1307,12 +1439,12 @@ function setFormData(doc) {
 function totals(doc) {
   const subtotal = doc.lines.reduce((total, line) => total + Number(line.quantity || 0) * Number(line.unitPrice || 0), 0);
   const taxRate = documentTaxRate(doc);
-  const taxable10 = 0;
-  const taxable8 = taxRate > 0 ? subtotal : 0;
+  const taxable10 = taxRate === 10 ? subtotal : 0;
+  const taxable8 = taxRate > 0 && taxRate !== 10 ? subtotal : 0;
   const taxable0 = taxRate > 0 ? 0 : subtotal;
+  const tax10 = Math.floor(taxable10 * 0.1);
   const tax8 = Math.floor(taxable8 * (taxRate / 100));
-  const tax10 = 0;
-  return { subtotal, taxRate, taxable8, taxable10, taxable0, tax8, tax10, total: subtotal + tax8 };
+  return { subtotal, taxRate, taxable8, taxable10, taxable0, tax8, tax10, total: subtotal + tax8 + tax10 };
 }
 
 function documentIssueItems(doc, sum = totals(doc)) {
@@ -1340,7 +1472,11 @@ function documentIssueItems(doc, sum = totals(doc)) {
   }
   if (doc.docType === "purchaseOrder" && !String(doc.bankDetails || "").trim()) issues.push({ id: "bankDetails", message: "支払・発注条件が未入力", field: "bankDetails" });
   if (doc.docType === "purchaseOrder" && sum.total <= 0) issues.push({ id: "total", message: "発注金額を確認", field: "lineItems" });
-  if (["invoice", "receipt"].includes(doc.docType) && !/^T\d{13}$/.test(doc.issuerRegistration || "")) issues.push({ id: "issuerRegistration", message: "登録番号を確認", field: "issuerRegistration" });
+  if (doc.docType === "invoice" && !String(doc.bankDetails || "").trim()) issues.push({ id: "bankDetails", message: "振込先が未入力", field: "bankDetails" });
+  if (doc.docType === "invoice" && !/^T\d{13}$/.test(doc.issuerRegistration || "")) issues.push({ id: "issuerRegistration", message: "適格請求書登録番号を確認", field: "issuerRegistration" });
+  if (doc.docType === "receipt" && /現金/.test(`${doc.bankDetails || ""} ${doc.documentSpecifics || ""}`) && sum.total >= 50000 && !/収入印紙|印紙/.test(`${doc.notes || ""} ${doc.documentSpecifics || ""}`)) {
+    issues.push({ id: "revenueStamp", message: "5万円以上の現金領収は収入印紙を確認", field: "documentSpecifics" });
+  }
   if (["invoice", "receipt"].includes(doc.docType) && sum.total <= 0) issues.push({ id: "total", message: "合計金額を確認", field: "lineItems" });
   return issues;
 }
@@ -1366,8 +1502,9 @@ function simplifiedFieldTitle(label) {
     .filter((node) => node.nodeType === Node.TEXT_NODE)
     .forEach((node) => node.remove());
 
-  const firstControl = label.querySelector(":scope > input, :scope > textarea, :scope > select");
-  if (firstControl) label.insertBefore(title, firstControl);
+  const firstControl = label.querySelector(":scope > input, :scope > textarea, :scope > select, :scope > .smart-picker-anchor > input");
+  const insertionTarget = firstControl?.parentElement?.classList.contains("smart-picker-anchor") ? firstControl.parentElement : firstControl;
+  if (insertionTarget) label.insertBefore(title, insertionTarget);
   else label.prepend(title);
   if (text) title.dataset.defaultLabel = text;
   return title;
@@ -1387,7 +1524,7 @@ function labelTitleText(label) {
 
 function simplifyInputLabels(root = document) {
   root.querySelectorAll("label").forEach((label) => {
-    const control = label.querySelector(":scope > input:not([type='radio']):not([type='checkbox']):not([type='file']):not([type='color']):not([type='hidden']), :scope > select, :scope > textarea");
+    const control = label.querySelector(":scope > input:not([type='radio']):not([type='checkbox']):not([type='file']):not([type='color']):not([type='hidden']), :scope > select, :scope > textarea, :scope > .smart-picker-anchor > input");
     if (!control) return;
     const title = simplifiedFieldTitle(label);
     const text = labelTitleText(label) || control.getAttribute("aria-label") || control.name || control.id;
@@ -1400,7 +1537,7 @@ function simplifyInputLabels(root = document) {
 
 function updateSimplifiedPlaceholders(root = document) {
   root.querySelectorAll("label.simplified-field").forEach((label) => {
-    const control = label.querySelector(":scope > input:not([type='radio']):not([type='checkbox']):not([type='file']):not([type='color']):not([type='hidden']), :scope > select, :scope > textarea");
+    const control = label.querySelector(":scope > input:not([type='radio']):not([type='checkbox']):not([type='file']):not([type='color']):not([type='hidden']), :scope > select, :scope > textarea, :scope > .smart-picker-anchor > input");
     if (!control) return;
     const title = label.querySelector(":scope > .input-title, :scope > span[id$='Label']");
     const text = title?.dataset.defaultLabel || title?.textContent?.trim() || labelTitleText(label);
@@ -1414,7 +1551,7 @@ function updateSimplifiedPlaceholders(root = document) {
 
 function updatePrefixedFields(root = document) {
   root.querySelectorAll("label.simplified-field").forEach((label) => {
-    const control = label.querySelector(":scope > input:not([type='radio']):not([type='checkbox']):not([type='file']):not([type='color']):not([type='hidden']), :scope > select, :scope > textarea");
+    const control = label.querySelector(":scope > input:not([type='radio']):not([type='checkbox']):not([type='file']):not([type='color']):not([type='hidden']), :scope > select, :scope > textarea, :scope > .smart-picker-anchor > input");
     if (!control || !label) return;
     const title = label.querySelector(":scope > .input-title, :scope > span[id$='Label']");
     const text = title?.dataset.defaultLabel || title?.textContent?.trim() || labelTitleText(label);
@@ -1436,7 +1573,7 @@ function updatePrefixedFields(root = document) {
 
 function clearFieldIssueTitles(root = document) {
   root.querySelectorAll("label.simplified-field").forEach((label) => {
-    const control = label.querySelector(":scope > input, :scope > textarea");
+    const control = label.querySelector(":scope > input, :scope > textarea, :scope > .smart-picker-anchor > input");
     const title = label.querySelector(":scope > .input-title, :scope > span[id$='Label']");
     label.classList.remove("has-field-issue");
     if (title) title.textContent = "";
@@ -1628,6 +1765,83 @@ function bindMobileActionBarStability() {
   window.visualViewport?.addEventListener("resize", syncMobileActionBarPosition, { passive: true });
 }
 
+function activeMobileScrollContainer() {
+  if (document.body.classList.contains("mobile-view-preview")) return document.querySelector(".preview-column");
+  if (document.body.classList.contains("mobile-view-menu")) return document.querySelector(".sidebar");
+  return els.documentForm || document.querySelector(".editor");
+}
+
+function canScrollMobileContainer(scroller, deltaY) {
+  if (!scroller || scroller.scrollHeight <= scroller.clientHeight + 1) return false;
+  const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+  if (deltaY > 0) return scroller.scrollTop < maxScroll;
+  if (deltaY < 0) return scroller.scrollTop > 0;
+  return false;
+}
+
+function bindMobileActionBarScrollPriority() {
+  const bar = document.querySelector(".mobile-action-bar");
+  if (!bar) return;
+
+  bar.addEventListener("touchstart", (event) => {
+    if (!isMobileFormLayout() || event.touches.length !== 1) {
+      state.mobileActionBarTouch = null;
+      return;
+    }
+    const touch = event.touches[0];
+    state.mobileActionBarTouch = {
+      startX: touch.clientX,
+      startY: touch.clientY,
+      lastY: touch.clientY,
+      isVerticalScroll: false,
+    };
+  }, { passive: true });
+
+  bar.addEventListener("touchmove", (event) => {
+    const tracker = state.mobileActionBarTouch;
+    if (!tracker || event.touches.length !== 1) return;
+
+    const touch = event.touches[0];
+    const totalX = touch.clientX - tracker.startX;
+    const totalY = touch.clientY - tracker.startY;
+    const deltaY = tracker.lastY - touch.clientY;
+    const verticalIntent = Math.abs(totalY) > 8 && Math.abs(totalY) > Math.abs(totalX) * 1.15;
+    const scroller = activeMobileScrollContainer();
+
+    if (verticalIntent) {
+      tracker.isVerticalScroll = true;
+      state.suppressNextMobileActionClick = true;
+      tracker.lastY = touch.clientY;
+      if (canScrollMobileContainer(scroller, deltaY)) {
+        scroller.scrollTop += deltaY;
+        event.preventDefault();
+      }
+      return;
+    }
+
+    tracker.lastY = touch.clientY;
+  }, { passive: false });
+
+  ["touchend", "touchcancel"].forEach((eventName) => {
+    bar.addEventListener(eventName, () => {
+      if (state.mobileActionBarTouch?.isVerticalScroll) {
+        state.suppressNextMobileActionClick = true;
+        window.setTimeout(() => {
+          state.suppressNextMobileActionClick = false;
+        }, 180);
+      }
+      state.mobileActionBarTouch = null;
+    }, { passive: true });
+  });
+
+  bar.addEventListener("click", (event) => {
+    if (!state.suppressNextMobileActionClick) return;
+    event.preventDefault();
+    event.stopPropagation();
+    state.suppressNextMobileActionClick = false;
+  }, true);
+}
+
 function relatedFlowDocuments(currentDoc = getFormData()) {
   const docs = loadDocuments();
   const ids = new Set([
@@ -1677,11 +1891,12 @@ function relatedFlowDocuments(currentDoc = getFormData()) {
 
 function archiveFormKey(type) {
   if (type === "customerFiles") return "customerFiles";
-  return ARCHIVE_FORM_TYPES.find((entry) => entry.types.includes(type))?.key || type;
+  return [...CUSTOMER_PROJECT_FORM_TYPES, ...VENDOR_PROJECT_FORM_TYPES].find((entry) => entry.types.includes(type))?.key || type;
 }
 
 function archiveEntriesForProject(projectOrDoc = {}) {
-  return isInboundProject(projectOrDoc) ? INBOUND_ARCHIVE_FORM_TYPES : ARCHIVE_FORM_TYPES;
+  if (isInboundProject(projectOrDoc)) return INBOUND_ARCHIVE_FORM_TYPES;
+  return isVendorProject(projectOrDoc) ? VENDOR_PROJECT_FORM_TYPES : CUSTOMER_PROJECT_FORM_TYPES;
 }
 
 function docArchiveDate(doc = {}) {
@@ -1707,7 +1922,8 @@ function archiveCompanyName(project) {
 }
 
 function projectDirectionLabel(projectOrDoc = {}) {
-  return isInboundProject(projectOrDoc) ? "受領管理" : "発行管理";
+  if (isInboundProject(projectOrDoc)) return "受領管理";
+  return isVendorProject(projectOrDoc) ? "給廠商" : "給客戶";
 }
 
 function projectDisplayName(project) {
@@ -1745,7 +1961,7 @@ function buildArchiveProjects() {
       id: projectId,
       projectName: primaryDoc.projectName || "",
       projectDirection,
-      companyName: projectDirection === "inbound" ? (primaryDoc.customerName || "") : (primaryDoc.issuerName || defaultCompany()?.name || NIIX_COMPANY_NAME),
+      companyName: primaryDoc.customerName || (projectDirection === "inbound" ? "" : primaryDoc.issuerName || defaultCompany()?.name || NIIX_COMPANY_NAME),
       customerName: primaryDoc.customerName || "",
       date: archiveDate,
       week: weekStart(archiveDate),
@@ -1808,7 +2024,7 @@ function renderArchiveTimeline() {
   const groups = groupArchiveProjects(projects);
   els.archiveTimeline.innerHTML = "";
   if (!projects.length) {
-    els.archiveTimeline.innerHTML = `<div class="empty-master">該当する项目档案はありません。</div>`;
+    els.archiveTimeline.innerHTML = `<div class="empty-master">該当する專案档案はありません。</div>`;
     renderArchiveDetail(null);
     return;
   }
@@ -1845,13 +2061,13 @@ function renderArchiveTimeline() {
           button.setAttribute("role", "button");
           button.dataset.projectId = project.id;
           button.innerHTML = `
-            <input type="checkbox" data-project-check="${escapeHtml(project.id)}" aria-label="项目を選択" />
+            <input type="checkbox" data-project-check="${escapeHtml(project.id)}" aria-label="專案を選択" />
             <div class="archive-project-main">
               <div class="archive-project-title">
                 <strong>${escapeHtml(projectDisplayName(project))}</strong>
                 <small>${escapeHtml(projectDirectionLabel(project))} ${project.completed}/${archiveEntriesForProject(project).length}</small>
               </div>
-              <span>${escapeHtml(projectDirectionLabel(project))} / ${escapeHtml(project.customerName || "取引先未入力")} / ${escapeHtml(formatDate(project.date))}</span>
+              <span>${escapeHtml(archiveCompanyName(project) || "取引先未入力")} / ${escapeHtml(formatDate(project.date))}</span>
               <div class="archive-status">${renderArchiveStatusDots(project)}</div>
             </div>
           `;
@@ -1867,7 +2083,7 @@ function renderArchiveTimeline() {
 function renderArchiveDetail(project) {
   if (!els.archiveDetail) return;
   if (!project) {
-    els.archiveDetail.innerHTML = `<p class="empty-master">项目を選択してください。</p>`;
+    els.archiveDetail.innerHTML = `<p class="empty-master">專案を選択してください。</p>`;
     return;
   }
   els.archiveDetail.innerHTML = `
@@ -1875,11 +2091,11 @@ function renderArchiveDetail(project) {
       <div>
         <p class="eyebrow">${escapeHtml(archiveCompanyName(project))}</p>
         <h3>${escapeHtml(projectDisplayName(project))}</h3>
-        <span>${escapeHtml(projectDirectionLabel(project))} / ${escapeHtml(project.customerName || "取引先未入力")} / ${escapeHtml(formatDate(project.date))}</span>
+        <span>${escapeHtml(projectDirectionLabel(project))} / 必要書類 ${project.completed}/${archiveEntriesForProject(project).length} / ${escapeHtml(formatDate(project.date))}</span>
       </div>
       <div class="archive-detail-actions">
         <button class="secondary-button" type="button" data-export-project="${escapeHtml(project.id)}">ZIP</button>
-        <button class="secondary-button danger-button" type="button" data-delete-project="${escapeHtml(project.id)}">项目削除</button>
+        <button class="secondary-button danger-button" type="button" data-delete-project="${escapeHtml(project.id)}">專案削除</button>
       </div>
     </div>
     <div class="archive-form-list">
@@ -1913,11 +2129,7 @@ async function openArchiveProjectForm(projectId, formKey) {
     return;
   }
   if (!(await confirmLeaveCurrentDocument())) return;
-  let targetType = entry.key === "customerFiles"
-    ? "customerFiles"
-    : entry.key === "order" && entry.types.length > 1
-    ? (isInboundProject(project) ? "order" : "purchaseOrder")
-    : entry.types[0];
+  let targetType = entry.key === "customerFiles" ? "customerFiles" : entry.types[0];
   const source = project.primaryDoc || project.docs[0] || defaultDocument(targetType);
   const next = buildConvertedDocument(source, targetType);
   next.projectId = project.id.startsWith("legacy-") ? crypto.randomUUID() : project.id;
@@ -1969,7 +2181,7 @@ function updateArchiveProjectNamePreview() {
 function openArchiveProjectDialog() {
   renderArchiveProjectCompanyOptions();
   document.querySelectorAll('input[name="archiveProjectDirection"]').forEach((input) => {
-    input.checked = input.value === "outbound";
+    input.checked = input.value === "customer";
   });
   if (els.archiveProjectCompanyNameInput) els.archiveProjectCompanyNameInput.value = "";
   if (els.archiveProjectCompanyAddressInput) els.archiveProjectCompanyAddressInput.value = "";
@@ -1987,7 +2199,7 @@ function createArchiveProject() {
   const savedCompany = saveCustomerRecord(company, { silent: true });
   const projectDirection = normalizeProjectDirection(document.querySelector('input[name="archiveProjectDirection"]:checked')?.value);
   const projectId = crypto.randomUUID();
-  const doc = defaultDocument(projectDirection === "inbound" ? "customerFiles" : "estimate", { projectDirection });
+  const doc = defaultDocument(isVendorProject({ projectDirection }) ? "purchaseOrder" : projectDirection === "inbound" ? "customerFiles" : "estimate", { projectDirection });
   doc.projectId = projectId;
   doc.projectName = archiveProjectNameForCompany(savedCompany.companyName);
   doc.projectDirection = projectDirection;
@@ -2004,7 +2216,7 @@ function createArchiveProject() {
 function deleteArchiveProject(projectId) {
   const project = archiveProjectById(projectId);
   if (!project) return;
-  const label = `项目 ${projectDisplayName(project)}`;
+  const label = `專案 ${projectDisplayName(project)}`;
   if (!confirmRepeatedDelete(label)) return;
   const ids = new Set(project.docs.map((doc) => doc.id));
   storeDocuments(loadDocuments().filter((doc) => !ids.has(doc.id)));
@@ -2430,7 +2642,10 @@ function renderPreview() {
     els.previewLogo.hidden = true;
   }
   els.printArea?.classList.toggle("has-logo", Boolean(state.issuerLogo));
-  if (els.invoiceBadge) els.invoiceBadge.hidden = !hasQualifiedInvoiceRegistration(doc);
+  if (els.invoiceBadge) {
+    els.invoiceBadge.hidden = !hasQualifiedInvoiceRegistration(doc) || !["invoice", "receipt"].includes(doc.docType);
+    els.invoiceBadge.textContent = doc.docType === "receipt" ? "適格簡易請求書確認" : "適格請求書対応";
+  }
   syncSealSurfaces();
   if (els.totalBanner) {
     els.totalBanner.hidden = !hasPrices || !["invoice", "receipt", "acceptance"].includes(doc.docType);
@@ -2451,10 +2666,10 @@ function renderPreview() {
   const taxRateLabel = formatTaxRate(sum.taxRate);
   if (els.previewTaxableRateLabel) els.previewTaxableRateLabel.textContent = `${taxRateLabel}%対象`;
   if (els.previewTaxRateLabel) els.previewTaxRateLabel.textContent = `消費税 ${taxRateLabel}%`;
-  toggleTotalRow(els.previewTaxable10, false);
-  toggleTotalRow(els.previewTax10, false);
-  toggleTotalRow(els.previewTaxable8, sum.taxRate > 0);
-  toggleTotalRow(els.previewTax8, sum.taxRate > 0);
+  toggleTotalRow(els.previewTaxable10, sum.taxRate === 10);
+  toggleTotalRow(els.previewTax10, sum.taxRate === 10);
+  toggleTotalRow(els.previewTaxable8, sum.taxRate > 0 && sum.taxRate !== 10);
+  toggleTotalRow(els.previewTax8, sum.taxRate > 0 && sum.taxRate !== 10);
   toggleTotalRow(els.previewTaxable0, sum.taxRate <= 0);
   els.previewTotal.textContent = hasPrices ? yen(sum.total) : "";
   els.previewNotes.textContent = doc.notes || "-";
@@ -2795,7 +3010,7 @@ function renderFormDefinition(definition, config) {
     issueDateLabel: "発行日",
     transactionDateLabel: definition.transactionLabel,
     dueDateLabel: definition.dueLabel,
-    taxRateLabel: "税(%)",
+    taxRateLabel: "消費税率(%)",
     partySectionTitle: definition.partySection,
     partyNameLabel: definition.partyName,
     partyAddressLabel: `${definition.partySection}住所`,
@@ -3068,8 +3283,8 @@ function uniqueProjectSourceLines(sources = []) {
 }
 
 function projectLineSourceEmptyText(doc = getFormData()) {
-  if (doc.docType === "estimate") return "同一项目の注文・発注・納品・請求・領収明細はまだありません。";
-  return "同一项目の見積明細はまだありません。";
+  if (doc.docType === "estimate") return "同一專案の注文・発注・納品・請求・領収明細はまだありません。";
+  return "同一專案の見積明細はまだありません。";
 }
 
 function ensureProjectLinesDialog() {
@@ -3432,7 +3647,7 @@ async function openFlowDocument(type) {
   const related = relatedFlowDocuments(doc);
   if (type === "order" && !related.get("order") && !related.get("purchaseOrder") && doc.docType !== "purchaseOrder") {
     const selectedType = doc.projectId
-      ? (isInboundProject(doc) ? "order" : "purchaseOrder")
+      ? (isVendorProject(doc) ? "purchaseOrder" : "order")
       : await chooseOrderDirection();
     if (!selectedType) return;
     type = selectedType;
@@ -3751,6 +3966,7 @@ function renderCompanyOptions() {
       .flatMap((customer) => customerSmartValues(customer).map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(customer.companyName || "")}</option>`))
       .join("");
   }
+  refreshOpenSmartCompanyPickers();
   renderItemSmartOptions();
 }
 
@@ -3830,12 +4046,18 @@ function acceptInviteFromUrl() {
   history.replaceState(null, "", location.pathname);
 }
 
-function openSettingsDialog() {
+function openSettingsDialog(options = {}) {
   state.pendingCompanyLogo = "";
   state.companyLogoMarkedForDeletion = false;
   renderSettings();
   els.backupOutput.value = "";
   els.settingsDialog.showModal();
+  if (options.focusAccount) {
+    window.requestAnimationFrame(() => {
+      document.getElementById("accountSettingsSection")?.scrollIntoView({ block: "start" });
+      els.settingsAccountName?.focus();
+    });
+  }
 }
 
 function companyFromSettingsForm(existing = {}) {
@@ -3955,6 +4177,22 @@ function exportBackupZip({ download = true } = {}) {
   els.backupOutput.value = json;
   if (download) downloadBlob(zip, `shoko-forms-backup-${today()}.zip`);
   return zip;
+}
+
+function saveLocalBackup() {
+  const payload = buildBackupPayload();
+  writeStore(LOCAL_BACKUP_KEY, payload);
+  updateBackupStatus(`本機に保存しました。\n${payload.exportedAt}\n帳票 ${payload.documents.length} 件 / 取引先 ${payload.customers.length} 件 / 商品 ${payload.items.length} 件`);
+}
+
+function restoreLocalBackup() {
+  const payload = readStore(LOCAL_BACKUP_KEY, null);
+  if (!payload) {
+    updateBackupStatus("本機保存データがありません。");
+    return;
+  }
+  const changed = applyBackupPayload(payload);
+  updateBackupStatus(`本機保存データを読み込みました。\n${payload.exportedAt || "保存日時不明"}\n${changed} 件のデータ候補を取り込みました。`);
 }
 
 function safeFilename(value) {
@@ -4086,17 +4324,64 @@ function buildDocumentRenderPayload(doc = getFormData()) {
   const badge = clone.querySelector("#invoiceBadge");
   if (badge) badge.hidden = !hasQualifiedInvoiceRegistration(doc);
   const filename = `${doc.docNumber || "document"}.pdf`;
+  const pagination = measureDocumentPagination();
   return {
     title: doc.docNumber || DOC_TYPES[doc.docType]?.title || "帳票",
     filename,
-    html: clone.outerHTML,
+    html: buildPaginatedDocumentHtml(clone, pagination),
     accent: selectedTemplate().accent || "#2f3744",
+    pageCount: pagination.pageCount,
   };
 }
 
 function buildPdfPayload() {
   renderPreview();
   return buildDocumentRenderPayload();
+}
+
+function measureDocumentPagination() {
+  const preview = els.printArea;
+  if (!preview) return { pageCount: 1, pageHeight: 1123, contentHeight: 1123 };
+  const rect = preview.getBoundingClientRect();
+  const width = rect.width || preview.offsetWidth || 794;
+  const pageHeight = Math.max(1, width * (297 / 210));
+  const safeArea = preview.querySelector(".document-safe-area");
+  const safeAreaBottom = safeArea
+    ? safeArea.offsetTop + Math.max(safeArea.scrollHeight, safeArea.offsetHeight)
+    : 0;
+  const contentHeight = Math.max(
+    pageHeight,
+    preview.scrollHeight,
+    preview.offsetHeight,
+    safeAreaBottom
+  );
+  const pageCount = contentHeight > pageHeight + 2 ? 2 : 1;
+  return { pageCount, pageHeight, contentHeight };
+}
+
+function buildPaginatedDocumentHtml(sourceClone, pagination = measureDocumentPagination()) {
+  const pageCount = Math.max(1, Math.min(2, pagination.pageCount || 1));
+  if (pageCount <= 1) return sourceClone.outerHTML;
+  const pageHeight = Math.ceil(pagination.pageHeight || 1123);
+  const contentHeight = Math.ceil(Math.max(pageHeight * pageCount, pagination.contentHeight || pageHeight));
+  const pages = Array.from({ length: pageCount }, (_, index) => {
+    const pageClone = sourceClone.cloneNode(true);
+    pageClone.removeAttribute("id");
+    pageClone.style.minHeight = `${contentHeight}px`;
+    pageClone.style.height = `${contentHeight}px`;
+    pageClone.style.margin = "0";
+    pageClone.style.boxShadow = "none";
+    pageClone.style.overflow = "visible";
+    pageClone.style.setProperty("--pdf-page-offset", `-${Math.round(pageHeight * index)}px`);
+    pageClone.style.transform = "translateY(var(--pdf-page-offset))";
+    return `
+      <section class="pdf-page" aria-label="${index + 1}/${pageCount}">
+        <div class="pdf-page-slice">${pageClone.outerHTML}</div>
+        <div class="pdf-page-number">${index + 1}/${pageCount}</div>
+      </section>
+    `;
+  }).join("");
+  return `<div class="pdf-page-list" data-page-count="${pageCount}">${pages}</div>`;
 }
 
 async function buildPreviewPngBlob() {
@@ -4809,7 +5094,19 @@ async function printPdfDirect() {
 
 function printWithBrowserFallback(message = "") {
   if (message) window.alert(message);
+  preparePdfPrintHost();
   window.setTimeout(() => window.print(), 80);
+}
+
+function preparePdfPrintHost() {
+  let host = document.getElementById("pdfPrintHost");
+  if (!host) {
+    host = document.createElement("div");
+    host.id = "pdfPrintHost";
+    host.setAttribute("aria-hidden", "true");
+    document.body.appendChild(host);
+  }
+  host.innerHTML = buildPdfPayload().html;
 }
 
 function triggerPdfDownload(url, filename = "document.pdf") {
@@ -4861,14 +5158,15 @@ function openPdfPrintUrl(printUrl) {
 function fitPdfPreview(dialog) {
   const preview = dialog?.querySelector(".pdf-html-preview");
   const sheet = dialog?.querySelector(".pdf-preview-sheet");
-  const documentPreview = sheet?.querySelector(".document-preview");
+  const documentPreview = sheet?.querySelector(".pdf-page, .document-preview");
   if (!preview || !sheet || !documentPreview) return;
   const availableWidth = Math.max(0, preview.clientWidth - 24);
   const naturalWidth = documentPreview.offsetWidth || 794;
   const scale = Math.min(1, availableWidth / naturalWidth);
   sheet.style.setProperty("--pdf-preview-scale", String(scale || 1));
   sheet.style.width = `${Math.ceil(naturalWidth * scale)}px`;
-  sheet.style.minHeight = `${Math.ceil((documentPreview.offsetHeight || 1123) * scale)}px`;
+  const naturalHeight = sheet.querySelector(".pdf-page-list")?.offsetHeight || documentPreview.offsetHeight || 1123;
+  sheet.style.minHeight = `${Math.ceil(naturalHeight * scale)}px`;
 }
 
 function showPdfPreview(pdfFile, html) {
@@ -5382,6 +5680,8 @@ function bindElements() {
     "archiveDetail",
     "exportBackupBtn",
     "exportBackupZipBtn",
+    "saveLocalBackupBtn",
+    "restoreLocalBackupBtn",
     "backupToDriveBtn",
     "restoreFromDriveBtn",
     "importBackupInput",
@@ -5810,6 +6110,7 @@ function bindEvents() {
       googleClientId: els.settingsGoogleClientId.value.trim(),
     });
     renderSettings();
+    updateBackupStatus("設定を保存しました。");
   });
   els.registerEmailAccountBtn?.addEventListener("click", registerEmailAccount);
   els.googleLoginBtn?.addEventListener("click", googleLogin);
@@ -5950,6 +6251,7 @@ function bindEvents() {
     applyCompanyToIssuer(company);
     renderSettings();
     syncProjectSurfaces();
+    updateBackupStatus(`自社情報を保存しました。\n${company.name}`);
     logOperation({ category: "変更", priority: "通常", assignee: loadSettings().accountName || "自分", memo: `自社情報 ${company.name} を保存` });
   });
   els.inviteStaffBtn?.addEventListener("click", () => {
@@ -6084,6 +6386,8 @@ function bindEvents() {
   });
   els.exportBackupBtn?.addEventListener("click", exportBackup);
   els.exportBackupZipBtn?.addEventListener("click", () => exportBackupZip());
+  els.saveLocalBackupBtn?.addEventListener("click", saveLocalBackup);
+  els.restoreLocalBackupBtn?.addEventListener("click", restoreLocalBackup);
   els.backupToDriveBtn?.addEventListener("click", uploadBackupToDrive);
   els.restoreFromDriveBtn?.addEventListener("click", restoreLatestBackupFromDrive);
   els.importBackupInput?.addEventListener("change", (event) => importBackup(event.target.files?.[0]));
@@ -6108,6 +6412,9 @@ function bindEvents() {
     els.customerDialog.showModal();
   });
 
+  els.customerName?.addEventListener("focus", () => renderSmartCompanyPicker("customer", { showAll: true }));
+  els.customerName?.addEventListener("click", () => renderSmartCompanyPicker("customer", { showAll: true }));
+  els.customerName?.addEventListener("input", () => renderSmartCompanyPicker("customer"));
   [els.customerName, els.customerAddress, els.customerContact, els.customerEmail].forEach((input) => {
     input?.addEventListener("input", () => {
       renderCompanyOptions();
@@ -6129,6 +6436,9 @@ function bindEvents() {
     renderPreview();
     setDirty(true);
   });
+  els.issuerName?.addEventListener("focus", () => renderSmartCompanyPicker("issuer", { showAll: true }));
+  els.issuerName?.addEventListener("click", () => renderSmartCompanyPicker("issuer", { showAll: true }));
+  els.issuerName?.addEventListener("input", () => renderSmartCompanyPicker("issuer"));
   [els.issuerName, els.issuerRegistration, els.issuerAddress, els.issuerContact, els.issuerPhone, els.issuerEmail].forEach((input) => {
     input?.addEventListener("input", () => {
       renderCompanyOptions();
@@ -6150,10 +6460,16 @@ function bindEvents() {
     });
   });
 
+  document.addEventListener("click", (event) => {
+    if (event.target.closest(".smart-picker-anchor")) return;
+    hideSmartCompanyPickers();
+  });
+
   document.getElementById("openCustomerMasterBtn")?.addEventListener("click", () => {
     renderCustomerMaster();
     els.customerDialog.showModal();
   });
+  document.getElementById("openAccountSettingsBtn")?.addEventListener("click", () => openSettingsDialog({ focusAccount: true }));
 
   els.customerSearchInput?.addEventListener("input", renderCustomerMaster);
   els.newCustomerBtn?.addEventListener("click", () => openCustomerEdit(null));
@@ -6265,6 +6581,7 @@ function init() {
   simplifyInputLabels();
   bindEvents();
   bindMobileActionBarStability();
+  bindMobileActionBarScrollPriority();
   setMobileView("menu");
   setFormData(documentFromUrl() || defaultDocument("invoice"));
   acceptInviteFromUrl();

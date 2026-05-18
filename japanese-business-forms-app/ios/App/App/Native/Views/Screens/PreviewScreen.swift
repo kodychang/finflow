@@ -2,57 +2,67 @@ import SwiftUI
 
 struct PreviewScreen: View {
     let document: BusinessDocument
+    @Environment(\.appButtonAccent) private var buttonAccent
     @State private var sharePayload: SharePayload?
     @State private var exportError = ""
+    @State private var previewImages: [UIImage] = []
+    @State private var previewScale: CGFloat = 1
+    @State private var lastPreviewScale: CGFloat = 1
+    @State private var previewOffset: CGSize = .zero
+    @State private var lastPreviewOffset: CGSize = .zero
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("PDF Preview")
-                            .font(.caption.weight(.black))
-                            .foregroundColor(.appMuted)
-                        if !exportError.isEmpty {
-                            Text(exportError)
-                                .font(.caption)
-                                .foregroundColor(.red)
-                        }
-                    }
-                    Spacer()
-                    Button {
-                        exportPDF()
-                    } label: {
-                        Label("PDF保存", systemImage: "square.and.arrow.up")
-                            .font(.subheadline.weight(.black))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(Color.appAccent)
-                            .foregroundColor(.appInk)
-                            .cornerRadius(10)
-                    }
-                }
-                .frame(maxWidth: 720)
+        GeometryReader { proxy in
+            ZStack(alignment: .top) {
+                pdfPreview(size: proxy.size)
+                    .frame(width: proxy.size.width, height: proxy.size.height)
 
-                VStack(alignment: .leading, spacing: 18) {
-                    documentHeader
-                    parties
-                    totalBanner
-                    lineTable
-                    notesAndTotals
-                }
-                .padding(28)
-                .frame(maxWidth: 720, alignment: .topLeading)
-                .background(Color(red: 1.0, green: 0.996, blue: 0.968))
-                .cornerRadius(6)
-                .shadow(color: Color.black.opacity(0.12), radius: 22, x: 0, y: 12)
+                previewToolbar
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
             }
-            .padding(24)
         }
         .background(Color.appBackground.edgesIgnoringSafeArea(.all))
+        .onAppear(perform: renderPreviewImage)
+        .onChange(of: document) { _ in
+            renderPreviewImage()
+        }
         .sheet(item: $sharePayload) { payload in
             ShareSheet(url: payload.url)
         }
+    }
+
+    private var previewToolbar: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("PDF Preview")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.appMuted)
+                if !exportError.isEmpty {
+                    Text(exportError)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                }
+            }
+            Spacer()
+            Button {
+                exportPDF()
+            } label: {
+                Label("PDF保存", systemImage: "square.and.arrow.up")
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(buttonAccent)
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.appPanel.opacity(0.94))
+        .cornerRadius(8)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appDivider))
+        .shadow(color: Color.black.opacity(0.05), radius: 14, x: 0, y: 8)
     }
 
     private func exportPDF() {
@@ -64,163 +74,126 @@ struct PreviewScreen: View {
         }
     }
 
-    private var documentHeader: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(document.type.title)
-                    .font(.system(size: 32, weight: .black, design: .serif))
-                Text(document.type.subtitle)
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(.appMuted)
-                Text("下記の通り、ご案内申し上げます。")
-                    .font(.caption)
-                    .padding(.top, 6)
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 5) {
-                meta("番号", document.number)
-                meta("発行日", AppFormatters.date.string(from: document.issueDate))
-                meta("取引日", AppFormatters.date.string(from: document.transactionDate))
-                meta("期限", AppFormatters.date.string(from: document.dueDate))
-            }
-            .font(.caption)
-        }
-    }
-
-    private var parties: some View {
-        HStack(alignment: .top, spacing: 30) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("\(document.customerName.isEmpty ? "取引先名" : document.customerName) \(document.honorific)")
-                    .font(.headline.weight(.black))
-                Text(document.customerAddress)
-                Text(document.customerContact)
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 6) {
-                if !document.issuerRegistration.isEmpty {
-                    Text("登録番号: \(document.issuerRegistration)")
-                        .font(.caption.weight(.semibold))
+    private func pdfPreview(size: CGSize) -> some View {
+        Group {
+            if !previewImages.isEmpty {
+                if previewImages.count == 1, let image = previewImages.first {
+                    singlePagePreview(image, size: size)
+                } else {
+                    multipagePreview(size: size)
                 }
-                Text(document.issuerName.isEmpty ? "自社名" : document.issuerName)
-                    .font(.headline.weight(.black))
-                Text(document.issuerAddress)
-                Text([document.issuerContact, document.issuerPhone, document.issuerEmail].filter { !$0.isEmpty }.joined(separator: " / "))
-                    .font(.caption)
+            } else {
+                ProgressView("PNGプレビュー生成中")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .font(.subheadline)
-        .padding(.vertical, 18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .background(Color.appPanel)
     }
 
-    private var totalBanner: some View {
-        HStack {
-            Text(document.type.totalLabel)
-                .font(.headline.weight(.black))
-            Spacer()
-            Text(AppFormatters.yen(document.total))
-                .font(.title.weight(.black))
+    private func singlePagePreview(_ image: UIImage, size: CGSize) -> some View {
+        ZStack {
+            pdfPage(image, availableWidth: size.width)
+                .padding(.top, 110)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 132)
+                .scaleEffect(previewScale)
+                .offset(previewOffset)
         }
-        .padding(16)
-        .background(Color.white)
-        .overlay(RoundedRectangle(cornerRadius: 2).stroke(Color.appInk.opacity(0.55)))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .gesture(previewMagnificationGesture)
+        .simultaneousGesture(previewDragGesture)
+        .simultaneousGesture(previewResetGesture)
     }
 
-    private var lineTable: some View {
-        VStack(spacing: 0) {
-            HStack {
-                tableHeader("品目", width: nil)
-                tableHeader("型番 / 仕様", width: nil)
-                tableHeader("数量", width: 58)
-                tableHeader("単価", width: 92)
-                tableHeader("金額", width: 104)
-            }
-            ForEach(document.lines) { line in
-                HStack(alignment: .top) {
-                    tableCell(line.name, width: nil)
-                    tableCell([line.model, line.specification].filter { !$0.isEmpty }.joined(separator: " / "), width: nil)
-                    tableCell(String(format: "%.2g", line.quantity), width: 58, alignment: .trailing)
-                    tableCell(AppFormatters.yen(line.unitPrice), width: 92, alignment: .trailing)
-                    tableCell(AppFormatters.yen(line.amount), width: 104, alignment: .trailing)
-                }
-                .background(Color.white.opacity(0.72))
-            }
-        }
-        .overlay(RoundedRectangle(cornerRadius: 2).stroke(Color.appInk.opacity(0.35)))
-    }
-
-    private var notesAndTotals: some View {
-        HStack(alignment: .top, spacing: 24) {
-            VStack(alignment: .leading, spacing: 12) {
-                memoBlock("備考", document.notes)
-                memoBlock("振込先 / 確認状況", document.paymentDetails)
-                memoBlock("帳票別メモ", document.documentMemo)
-            }
-            Spacer()
+    private func multipagePreview(size: CGSize) -> some View {
+        ScrollView(.vertical, showsIndicators: true) {
             VStack(spacing: 0) {
-                totalRow("小計", document.subtotal)
-                totalRow("消費税 \(String(format: "%.1g", document.taxRate))%", document.tax)
-                totalRow("合計", document.total, emphasized: true)
+                ForEach(Array(previewImages.enumerated()), id: \.offset) { _, image in
+                    pdfPage(image, availableWidth: size.width)
+                        .padding(.vertical, 20)
+                }
             }
-            .frame(width: 220)
-            .overlay(RoundedRectangle(cornerRadius: 2).stroke(Color.appInk.opacity(0.35)))
+            .padding(.top, 110)
+            .padding(.bottom, 132)
+            .frame(maxWidth: .infinity)
+        }
+        .simultaneousGesture(previewResetGesture)
+    }
+
+    private func pdfPage(_ image: UIImage, availableWidth: CGFloat) -> some View {
+        let pageWidth = max(1, availableWidth - 32)
+        return Image(uiImage: image)
+            .resizable()
+            .interpolation(.high)
+            .antialiased(true)
+            .aspectRatio(contentMode: .fit)
+            .frame(width: pageWidth)
+            .background(Color.white)
+            .shadow(color: Color.black.opacity(0.10), radius: 10, x: 0, y: 5)
+            .accessibilityLabel("PDFプレビュー")
+    }
+
+    private func renderPreviewImage() {
+        do {
+            exportError = ""
+            previewImages = try DocumentPDFExporter.previewImages(for: document, scale: UIScreen.main.scale)
+            resetPreviewZoom()
+        } catch {
+            previewImages = []
+            exportError = "PNGプレビューを生成できませんでした。"
         }
     }
 
-    private func meta(_ title: String, _ value: String) -> some View {
-        HStack {
-            Text(title).foregroundColor(.appMuted)
-            Text(value.isEmpty ? "-" : value).fontWeight(.bold)
-        }
-    }
-
-    private func tableHeader(_ text: String, width: CGFloat?) -> some View {
-        Group {
-            if let width = width {
-                Text(text)
-                    .font(.caption.weight(.black))
-                    .frame(width: width, alignment: .leading)
-            } else {
-                Text(text)
-                    .font(.caption.weight(.black))
-                    .frame(maxWidth: .infinity, alignment: .leading)
+    private var previewMagnificationGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { value in
+                previewScale = clampedPreviewScale(lastPreviewScale * value)
+                if previewScale <= 1 {
+                    previewOffset = .zero
+                }
             }
-        }
-        .padding(8)
-        .background(Color.appInk.opacity(0.08))
-    }
-
-    private func tableCell(_ text: String, width: CGFloat?, alignment: Alignment = .leading) -> some View {
-        Group {
-            if let width = width {
-                Text(text.isEmpty ? "-" : text)
-                    .font(.caption)
-                    .frame(width: width, alignment: alignment)
-            } else {
-                Text(text.isEmpty ? "-" : text)
-                    .font(.caption)
-                    .frame(maxWidth: .infinity, alignment: alignment)
+            .onEnded { _ in
+                lastPreviewScale = previewScale
+                if previewScale <= 1 {
+                    resetPreviewZoom()
+                }
             }
-        }
-        .padding(8)
     }
 
-    private func memoBlock(_ title: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.caption.weight(.black))
-            Text(value.isEmpty ? "-" : value)
-                .font(.caption)
-                .foregroundColor(.appInk.opacity(0.78))
-        }
+    private var previewDragGesture: some Gesture {
+        DragGesture()
+            .onChanged { value in
+                guard previewScale > 1 else { return }
+                previewOffset = CGSize(
+                    width: lastPreviewOffset.width + value.translation.width,
+                    height: lastPreviewOffset.height + value.translation.height
+                )
+            }
+            .onEnded { _ in
+                lastPreviewOffset = previewOffset
+            }
     }
 
-    private func totalRow(_ title: String, _ value: Double, emphasized: Bool = false) -> some View {
-        HStack {
-            Text(title)
-            Spacer()
-            Text(AppFormatters.yen(value))
-        }
-        .font(emphasized ? .headline.weight(.black) : .caption.weight(.bold))
-        .padding(10)
-        .background(emphasized ? Color.appAccent.opacity(0.5) : Color.white)
+    private var previewResetGesture: some Gesture {
+        TapGesture(count: 2)
+            .onEnded {
+                withAnimation(.spring(response: 0.24, dampingFraction: 0.86)) {
+                    resetPreviewZoom()
+                }
+            }
+    }
+
+    private func resetPreviewZoom() {
+        previewScale = 1
+        lastPreviewScale = 1
+        previewOffset = .zero
+        lastPreviewOffset = .zero
+    }
+
+    private func clampedPreviewScale(_ value: CGFloat) -> CGFloat {
+        min(max(value, 1), 4)
     }
 }
