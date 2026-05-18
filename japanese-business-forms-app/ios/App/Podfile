@@ -1,0 +1,5 @@
+platform :ios, '14.0'
+
+target 'App' do
+  # Native SwiftUI app. Add future native pods here only when needed.
+end

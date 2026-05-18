@@ -1,0 +1,19 @@
+{
+  "name": "shoko-forms",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shoko Forms Capacitor iOS app.",
+  "scripts": {
+    "build": "node scripts/build-capacitor-web.js",
+    "cap:sync": "npm run build && DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer cap sync ios",
+    "ios": "npm run cap:sync && cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/ios": "^7.0.0",
+    "html2canvas": "^1.4.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.0.0"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "appId": "com.shoko.forms",
+  "appName": "Shoko Forms",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "ios": {
+    "contentInset": "never"
+  }
+}
