@@ -22,9 +22,26 @@ enum AppFormatters {
         currency.string(from: NSNumber(value: value)) ?? "¥0"
     }
 
+    static func yen(_ value: Double, language: AppLanguage) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "JPY"
+        formatter.locale = Locale(identifier: language.localeIdentifier)
+        formatter.maximumFractionDigits = 0
+        return formatter.string(from: NSNumber(value: value)) ?? yen(value)
+    }
+
     static func shortDate(_ value: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy/MM/dd"
+        return formatter.string(from: value)
+    }
+
+    static func dateTime(_ value: Date, language: AppLanguage) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: language.localeIdentifier)
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
         return formatter.string(from: value)
     }
 }

@@ -7,40 +7,57 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		03F5C4F5904A4CF897E7F4D9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		06E837C3933947E591E16FA1 /* SharedComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 115C34074013488D8CDFDC79 /* SharedComponents.swift */; };
+		1472C0AC30D1420199F829B1 /* StampComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1472C0A930D1420199F829B1 /* StampComposer.swift */; };
+		1472C0AD30D1420199F829B1 /* StampImageProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1472C0A830D1420199F829B1 /* StampImageProcessor.swift */; };
+		1472C0AE30D1420199F829B1 /* StampEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1472C0AA30D1420199F829B1 /* StampEditorView.swift */; };
+		18F53875F8C94D188FC44E13 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 18F53874F8C94D188FC44E13 /* PrivacyInfo.xcprivacy */; };
+		1A8D4E0E30E84A5C9A0E3101 /* PurchaseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A8D4E0D30E84A5C9A0E3101 /* PurchaseService.swift */; };
+		1A8D4E1030E84A5C9A0E3101 /* ProSubscriptionScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A8D4E0F30E84A5C9A0E3101 /* ProSubscriptionScreen.swift */; };
+		1D4F7C9E6A2B4C3189F0D123 /* shoko-forms-demo-100.shokobackup in Resources */ = {isa = PBXBuildFile; fileRef = 1D4F7C9D6A2B4C3189F0D123 /* shoko-forms-demo-100.shokobackup */; };
+		20E6469C77164A09B1212C75 /* GoogleDriveSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEE67BC7C329478DB820CE29 /* GoogleDriveSyncService.swift */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		55EDACEADD304848A8189296 /* ShareSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C94377551BF4BB6BEDFCC2F /* ShareSheet.swift */; };
-		5C801B972149D73B65C6ED48 /* libPods-App.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DCC4EAA8C619090719AE69F5 /* libPods-App.a */; };
 		775FE15033CF4F59803BDE80 /* PreviewScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2F25B7AE8D84C5391BF0E95 /* PreviewScreen.swift */; };
 		7EC83575FA4C43EDB8598F34 /* EditorScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = D81EF69356C44019ADD1FD7D /* EditorScreen.swift */; };
+		8AFD8A6628EF4D338851B7D1 /* ProjectRelationshipGraphScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CF6C74D5DD34F29B43305A6 /* ProjectRelationshipGraphScreen.swift */; };
 		A904AC814F5B40B3AF719A80 /* Formatters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62A7DFBFE4D349E3BD1604E8 /* Formatters.swift */; };
 		BB9F4DDD3F7A4154813DB8D5 /* DocumentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0BD2456A11D41749A5AB9AC /* DocumentStore.swift */; };
+		CBE454262FBE3229004CE538 /* client_838223731627-gjpurbejme3gdtpgo72f8huaug2slplh.apps.googleusercontent.com.plist in Resources */ = {isa = PBXBuildFile; fileRef = CBE454252FBE3229004CE538 /* client_838223731627-gjpurbejme3gdtpgo72f8huaug2slplh.apps.googleusercontent.com.plist */; };
 		D32DB80E46A846E1B735033A /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4757704670FF473BBB30752A /* SidebarView.swift */; };
 		D6E786909FD4404CB869EF7C /* DocumentPDFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3607D13C2E3945AEB48920E4 /* DocumentPDFExporter.swift */; };
 		F138FEF668954C708CEF5618 /* ShokoFormsRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8B4A2B50D574551B7D3857B /* ShokoFormsRootView.swift */; };
 		F3C67ACD3A064B9DA1FAECB7 /* FormModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33E30498C4FC4DCBB4DEF29E /* FormModels.swift */; };
+		F68AA95200F44AD3B617C9D0 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 2FF0720FD5514630B5ACF76B /* GoogleSignIn */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0CF6C74D5DD34F29B43305A6 /* ProjectRelationshipGraphScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectRelationshipGraphScreen.swift; sourceTree = "<group>"; };
 		115C34074013488D8CDFDC79 /* SharedComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedComponents.swift; sourceTree = "<group>"; };
+		1472C0A830D1420199F829B1 /* StampImageProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StampImageProcessor.swift; sourceTree = "<group>"; };
+		1472C0A930D1420199F829B1 /* StampComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StampComposer.swift; sourceTree = "<group>"; };
+		1472C0AA30D1420199F829B1 /* StampEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StampEditorView.swift; sourceTree = "<group>"; };
+		18F53874F8C94D188FC44E13 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		1A8D4E0D30E84A5C9A0E3101 /* PurchaseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PurchaseService.swift; sourceTree = "<group>"; };
+		1A8D4E0F30E84A5C9A0E3101 /* ProSubscriptionScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProSubscriptionScreen.swift; sourceTree = "<group>"; };
+		1D4F7C9D6A2B4C3189F0D123 /* shoko-forms-demo-100.shokobackup */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "shoko-forms-demo-100.shokobackup"; sourceTree = "<group>"; };
 		33E30498C4FC4DCBB4DEF29E /* FormModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormModels.swift; sourceTree = "<group>"; };
 		3607D13C2E3945AEB48920E4 /* DocumentPDFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentPDFExporter.swift; sourceTree = "<group>"; };
 		4757704670FF473BBB30752A /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		504EC30C1FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
 		504EC30E1FED79650016851F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		5C94377551BF4BB6BEDFCC2F /* ShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheet.swift; sourceTree = "<group>"; };
 		62A7DFBFE4D349E3BD1604E8 /* Formatters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatters.swift; sourceTree = "<group>"; };
-		AE8E7799CEA21A442FC5EDA5 /* Pods-App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.debug.xcconfig"; path = "Target Support Files/Pods-App/Pods-App.debug.xcconfig"; sourceTree = "<group>"; };
 		B2F25B7AE8D84C5391BF0E95 /* PreviewScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewScreen.swift; sourceTree = "<group>"; };
+		CBE454252FBE3229004CE538 /* client_838223731627-gjpurbejme3gdtpgo72f8huaug2slplh.apps.googleusercontent.com.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "client_838223731627-gjpurbejme3gdtpgo72f8huaug2slplh.apps.googleusercontent.com.plist"; sourceTree = "<group>"; };
 		D81EF69356C44019ADD1FD7D /* EditorScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorScreen.swift; sourceTree = "<group>"; };
 		D8B4A2B50D574551B7D3857B /* ShokoFormsRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShokoFormsRootView.swift; sourceTree = "<group>"; };
-		DCC4EAA8C619090719AE69F5 /* libPods-App.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-App.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		E0BD2456A11D41749A5AB9AC /* DocumentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentStore.swift; sourceTree = "<group>"; };
-		EDF546DD332CF89F48C05919 /* Pods-App.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.release.xcconfig"; path = "Target Support Files/Pods-App/Pods-App.release.xcconfig"; sourceTree = "<group>"; };
+		EEE67BC7C329478DB820CE29 /* GoogleDriveSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleDriveSyncService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -48,7 +65,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				5C801B972149D73B65C6ED48 /* libPods-App.a in Frameworks */,
+				F68AA95200F44AD3B617C9D0 /* GoogleSignIn in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -63,21 +80,11 @@
 			path = Models;
 			sourceTree = "<group>";
 		};
-		27E2DDA53C4D2A4D1A88CE4A /* Frameworks */ = {
-			isa = PBXGroup;
-			children = (
-				DCC4EAA8C619090719AE69F5 /* libPods-App.a */,
-			);
-			name = Frameworks;
-			sourceTree = "<group>";
-		};
 		504EC2FB1FED79650016851F = {
 			isa = PBXGroup;
 			children = (
 				504EC3061FED79650016851F /* App */,
 				504EC3051FED79650016851F /* Products */,
-				27E2DDA53C4D2A4D1A88CE4A /* Frameworks */,
-				C089646BC0F4336CA05E59A1 /* Pods */,
 			);
 			sourceTree = "<group>";
 		};
@@ -94,10 +101,12 @@
 			children = (
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				C4DFAFE085734F129C8A2888 /* Native */,
-				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
 				504EC3131FED79650016851F /* Info.plist */,
+				18F53874F8C94D188FC44E13 /* PrivacyInfo.xcprivacy */,
+				1D4F7C9D6A2B4C3189F0D123 /* shoko-forms-demo-100.shokobackup */,
+				CBE454252FBE3229004CE538 /* client_838223731627-gjpurbejme3gdtpgo72f8huaug2slplh.apps.googleusercontent.com.plist */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -107,6 +116,10 @@
 			children = (
 				E0BD2456A11D41749A5AB9AC /* DocumentStore.swift */,
 				3607D13C2E3945AEB48920E4 /* DocumentPDFExporter.swift */,
+				EEE67BC7C329478DB820CE29 /* GoogleDriveSyncService.swift */,
+				1A8D4E0D30E84A5C9A0E3101 /* PurchaseService.swift */,
+				1472C0A830D1420199F829B1 /* StampImageProcessor.swift */,
+				1472C0A930D1420199F829B1 /* StampComposer.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -117,6 +130,8 @@
 				4757704670FF473BBB30752A /* SidebarView.swift */,
 				D81EF69356C44019ADD1FD7D /* EditorScreen.swift */,
 				B2F25B7AE8D84C5391BF0E95 /* PreviewScreen.swift */,
+				0CF6C74D5DD34F29B43305A6 /* ProjectRelationshipGraphScreen.swift */,
+				1A8D4E0F30E84A5C9A0E3101 /* ProSubscriptionScreen.swift */,
 			);
 			path = Screens;
 			sourceTree = "<group>";
@@ -134,18 +149,9 @@
 			children = (
 				115C34074013488D8CDFDC79 /* SharedComponents.swift */,
 				5C94377551BF4BB6BEDFCC2F /* ShareSheet.swift */,
+				1472C0AA30D1420199F829B1 /* StampEditorView.swift */,
 			);
 			path = Components;
-			sourceTree = "<group>";
-		};
-		C089646BC0F4336CA05E59A1 /* Pods */ = {
-			isa = PBXGroup;
-			children = (
-				AE8E7799CEA21A442FC5EDA5 /* Pods-App.debug.xcconfig */,
-				EDF546DD332CF89F48C05919 /* Pods-App.release.xcconfig */,
-			);
-			name = Pods;
-			path = Pods;
 			sourceTree = "<group>";
 		};
 		C4DFAFE085734F129C8A2888 /* Native */ = {
@@ -176,7 +182,6 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 504EC3161FED79650016851F /* Build configuration list for PBXNativeTarget "App" */;
 			buildPhases = (
-				F80E8B3693E2C90EAEB604EF /* [CP] Check Pods Manifest.lock */,
 				504EC3001FED79650016851F /* Sources */,
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
@@ -186,6 +191,9 @@
 			dependencies = (
 			);
 			name = App;
+			packageProductDependencies = (
+				2FF0720FD5514630B5ACF76B /* GoogleSignIn */,
+			);
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
 			productType = "com.apple.product-type.application";
@@ -216,6 +224,9 @@
 				Base,
 			);
 			mainGroup = 504EC2FB1FED79650016851F;
+			packageReferences = (
+				9E77D119446549318D53928D /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+			);
 			productRefGroup = 504EC3051FED79650016851F /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -230,35 +241,14 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				03F5C4F5904A4CF897E7F4D9 /* Assets.xcassets in Resources */,
+				18F53875F8C94D188FC44E13 /* PrivacyInfo.xcprivacy in Resources */,
+				1D4F7C9E6A2B4C3189F0D123 /* shoko-forms-demo-100.shokobackup in Resources */,
+				CBE454262FBE3229004CE538 /* client_838223731627-gjpurbejme3gdtpgo72f8huaug2slplh.apps.googleusercontent.com.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		F80E8B3693E2C90EAEB604EF /* [CP] Check Pods Manifest.lock */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
-				"${PODS_ROOT}/Manifest.lock",
-			);
-			name = "[CP] Check Pods Manifest.lock";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(DERIVED_FILE_DIR)/Pods-App-checkManifestLockResult.txt",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
-			showEnvVarsInLog = 0;
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		504EC3001FED79650016851F /* Sources */ = {
@@ -269,27 +259,26 @@
 				F3C67ACD3A064B9DA1FAECB7 /* FormModels.swift in Sources */,
 				BB9F4DDD3F7A4154813DB8D5 /* DocumentStore.swift in Sources */,
 				D6E786909FD4404CB869EF7C /* DocumentPDFExporter.swift in Sources */,
+				20E6469C77164A09B1212C75 /* GoogleDriveSyncService.swift in Sources */,
+				1A8D4E0E30E84A5C9A0E3101 /* PurchaseService.swift in Sources */,
+				1472C0AD30D1420199F829B1 /* StampImageProcessor.swift in Sources */,
+				1472C0AC30D1420199F829B1 /* StampComposer.swift in Sources */,
 				A904AC814F5B40B3AF719A80 /* Formatters.swift in Sources */,
 				F138FEF668954C708CEF5618 /* ShokoFormsRootView.swift in Sources */,
 				06E837C3933947E591E16FA1 /* SharedComponents.swift in Sources */,
 				55EDACEADD304848A8189296 /* ShareSheet.swift in Sources */,
+				1472C0AE30D1420199F829B1 /* StampEditorView.swift in Sources */,
 				D32DB80E46A846E1B735033A /* SidebarView.swift in Sources */,
 				7EC83575FA4C43EDB8598F34 /* EditorScreen.swift in Sources */,
 				775FE15033CF4F59803BDE80 /* PreviewScreen.swift in Sources */,
+				8AFD8A6628EF4D338851B7D1 /* ProjectRelationshipGraphScreen.swift in Sources */,
+				1A8D4E1030E84A5C9A0E3101 /* ProSubscriptionScreen.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXVariantGroup section */
-		504EC30B1FED79650016851F /* Main.storyboard */ = {
-			isa = PBXVariantGroup;
-			children = (
-				504EC30C1FED79650016851F /* Base */,
-			);
-			name = Main.storyboard;
-			sourceTree = "<group>";
-		};
 		504EC3101FED79650016851F /* LaunchScreen.storyboard */ = {
 			isa = PBXVariantGroup;
 			children = (
@@ -339,7 +328,7 @@
 				DEVELOPMENT_TEAM = D9Y88ASJ78;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -402,7 +391,7 @@
 				DEVELOPMENT_TEAM = D9Y88ASJ78;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -423,10 +412,11 @@
 		};
 		504EC3171FED79650016851F /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = AE8E7799CEA21A442FC5EDA5 /* Pods-App.debug.xcconfig */;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
+				DEVELOPMENT_TEAM = RMBJCSP3G9;
 				INFOPLIST_FILE = App/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -439,16 +429,17 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
 		504EC3181FED79650016851F /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = EDF546DD332CF89F48C05919 /* Pods-App.release.xcconfig */;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
+				DEVELOPMENT_TEAM = RMBJCSP3G9;
 				INFOPLIST_FILE = App/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -461,7 +452,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -487,6 +478,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		9E77D119446549318D53928D /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 8.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		2FF0720FD5514630B5ACF76B /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9E77D119446549318D53928D /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 504EC2FC1FED79650016851F /* Project object */;
 }

@@ -1,23 +1,38 @@
 {
   "images" : [
     {
+      "filename" : "iPhone_17_Pro_Max__iPhone_16_Pro_Max_portrait.png",
       "idiom" : "universal",
-      "filename" : "splash-2732x2732-2.png",
       "scale" : "1x"
     },
     {
+      "filename" : "iPhone_17_Pro_Max__iPhone_16_Pro_Max_portrait 1.png",
       "idiom" : "universal",
-      "filename" : "splash-2732x2732-1.png",
       "scale" : "2x"
     },
     {
+      "filename" : "iPhone_17_Pro_Max__iPhone_16_Pro_Max_portrait 2.png",
       "idiom" : "universal",
-      "filename" : "splash-2732x2732.png",
+      "scale" : "3x"
+    },
+    {
+      "filename" : "iPhone_17_Pro_Max__iPhone_16_Pro_Max_portrait 3.png",
+      "idiom" : "iphone",
+      "scale" : "1x"
+    },
+    {
+      "filename" : "iPhone_17_Pro_Max__iPhone_16_Pro_Max_portrait 4.png",
+      "idiom" : "iphone",
+      "scale" : "2x"
+    },
+    {
+      "filename" : "iPhone_17_Pro_Max__iPhone_16_Pro_Max_portrait 5.png",
+      "idiom" : "iphone",
       "scale" : "3x"
     }
   ],
   "info" : {
-    "version" : 1,
-    "author" : "xcode"
+    "author" : "xcode",
+    "version" : 1
   }
 }

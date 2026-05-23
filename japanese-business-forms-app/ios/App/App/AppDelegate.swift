@@ -1,5 +1,10 @@
 import UIKit
 import SwiftUI
+import GoogleSignIn
+
+extension Notification.Name {
+    static let shokoFormsOpenFileURL = Notification.Name("shokoFormsOpenFileURL")
+}
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -11,7 +16,39 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         window?.rootViewController = UIHostingController(rootView: ShokoFormsRootView())
         window?.backgroundColor = .systemBackground
         window?.makeKeyAndVisible()
+
+        if let url = launchOptions?[.url] as? URL {
+            DispatchQueue.main.async {
+                Self.openFileURL(url)
+            }
+        }
+
         return true
+    }
+
+    func application(
+        _ app: UIApplication,
+        open url: URL,
+        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+    ) -> Bool {
+        if GIDSignIn.sharedInstance.handle(url) {
+            return true
+        }
+
+        guard Self.canOpenFileURL(url) else {
+            return false
+        }
+
+        Self.openFileURL(url)
+        return true
+    }
+
+    private static func canOpenFileURL(_ url: URL) -> Bool {
+        ["shokoform", "shokobackup"].contains(url.pathExtension.lowercased())
+    }
+
+    private static func openFileURL(_ url: URL) {
+        NotificationCenter.default.post(name: .shokoFormsOpenFileURL, object: url)
     }
 
     func applicationWillResignActive(_ application: UIApplication) {
