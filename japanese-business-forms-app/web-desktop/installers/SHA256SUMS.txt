@@ -1,0 +1,3 @@
+1ac9154cd845492ed837727a77c665f0551d6ed4d8a52e61b2518aeaa151e407  Shoko Forms Desktop_0.1.0_universal.dmg
+7da76d9f734bd7ad6aa1dba64ffe431ff927759726ae755f04172a591f5c0971  Shoko Forms Desktop_0.1.0_universal.app.zip
+1e5fe0490f4c439a9ae44f0b260cad486ff2da4e259d114012dba01d9599706b  Shoko Forms Desktop_0.1.0_x64-setup.exe
