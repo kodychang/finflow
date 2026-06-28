@@ -910,152 +910,152 @@ struct ProjectRelationshipGraphScreen: View {
     private var localizedTitle: String {
         switch language {
         case .japanese: return "プロジェクト関係グリッド"
-        case .simplifiedChinese: return "项目关系网格"
-        case .english: return "Project Relationship Grid"
+        case .simplifiedChinese, .traditionalChinese: return "项目关系网格"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Project Relationship Grid"
         }
     }
 
     private var localizedOverviewTitle: String {
         switch language {
         case .japanese: return "グリッド表示"
-        case .simplifiedChinese: return "网格视图"
-        case .english: return "Grid View"
+        case .simplifiedChinese, .traditionalChinese: return "网格视图"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Grid View"
         }
     }
 
     private var localizedSelectedTitle: String {
         switch language {
         case .japanese: return "選択中の帳票"
-        case .simplifiedChinese: return "选中的表单"
-        case .english: return "Selected Form"
+        case .simplifiedChinese, .traditionalChinese: return "选中的表单"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Selected Form"
         }
     }
 
     private var localizedExitTitle: String {
         switch language {
         case .japanese: return "閉じる"
-        case .simplifiedChinese: return "离开"
-        case .english: return "Exit"
+        case .simplifiedChinese, .traditionalChinese: return "离开"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Exit"
         }
     }
 
     private var localizedCancelLinkTitle: String {
         switch language {
         case .japanese: return "関連解除"
-        case .simplifiedChinese: return "取消连线"
-        case .english: return "Cancel Link"
+        case .simplifiedChinese, .traditionalChinese: return "取消连线"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Cancel Link"
         }
     }
 
     private var localizedOrganizeTitle: String {
         switch language {
         case .japanese: return "全体表示"
-        case .simplifiedChinese: return "显示全部"
-        case .english: return "Fit All"
+        case .simplifiedChinese, .traditionalChinese: return "显示全部"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Fit All"
         }
     }
 
     private var localizedStartLinkTitle: String {
         switch language {
         case .japanese: return "関連を作成"
-        case .simplifiedChinese: return "建立关联"
-        case .english: return "Create Relation"
+        case .simplifiedChinese, .traditionalChinese: return "建立关联"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Create Relation"
         }
     }
 
     private var localizedClearRelationTitle: String {
         switch language {
         case .japanese: return "関連番号を空にする"
-        case .simplifiedChinese: return "清空关联编号"
-        case .english: return "Clear Reference No."
+        case .simplifiedChinese, .traditionalChinese: return "清空关联编号"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Clear Reference No."
         }
     }
 
     private var localizedDeleteRelationTitle: String {
         switch language {
         case .japanese: return "関連線を削除"
-        case .simplifiedChinese: return "删除关联线"
-        case .english: return "Delete relation line"
+        case .simplifiedChinese, .traditionalChinese: return "删除关联线"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Delete relation line"
         }
     }
 
     private var localizedOpenFormTitle: String {
         switch language {
         case .japanese: return "帳票を開く"
-        case .simplifiedChinese: return "打开表单"
-        case .english: return "Open Form"
+        case .simplifiedChinese, .traditionalChinese: return "打开表单"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Open Form"
         }
     }
 
     private var localizedEditFormTitle: String {
         switch language {
         case .japanese: return "編集"
-        case .simplifiedChinese: return "编辑"
-        case .english: return "Edit"
+        case .simplifiedChinese, .traditionalChinese: return "编辑"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Edit"
         }
     }
 
     private var localizedAssociateActionTitle: String {
         switch language {
         case .japanese: return "関連"
-        case .simplifiedChinese: return "关联"
-        case .english: return "Relate"
+        case .simplifiedChinese, .traditionalChinese: return "关联"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Relate"
         }
     }
 
     private var localizedCancelRelationActionTitle: String {
         switch language {
         case .japanese: return "関連解除"
-        case .simplifiedChinese: return "取消关联"
-        case .english: return "Clear relation"
+        case .simplifiedChinese, .traditionalChinese: return "取消关联"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Clear relation"
         }
     }
 
     private var localizedCancelDialogTitle: String {
         switch language {
         case .japanese: return "キャンセル"
-        case .simplifiedChinese: return "取消"
-        case .english: return "Cancel"
+        case .simplifiedChinese, .traditionalChinese: return "取消"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Cancel"
         }
     }
 
     private var localizedSelectNodeText: String {
         switch language {
         case .japanese: return "帳票カードを選択すると、関連番号を編集できます。"
-        case .simplifiedChinese: return "选择表单卡片后，可以编辑关联编号。"
-        case .english: return "Select a form card to edit its reference number."
+        case .simplifiedChinese, .traditionalChinese: return "选择表单卡片后，可以编辑关联编号。"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Select a form card to edit its reference number."
         }
     }
 
     private var localizedEmptyProjectText: String {
         switch language {
         case .japanese: return "表示できるプロジェクトがありません。"
-        case .simplifiedChinese: return "没有可显示的项目。"
-        case .english: return "No project is available."
+        case .simplifiedChinese, .traditionalChinese: return "没有可显示的项目。"
+        case .english, .korean, .nepali, .french, .vietnamese: return "No project is available."
         }
     }
 
     private var localizedNoRelationText: String {
         switch language {
         case .japanese: return "関連番号なし"
-        case .simplifiedChinese: return "无关联编号"
-        case .english: return "No reference number"
+        case .simplifiedChinese, .traditionalChinese: return "无关联编号"
+        case .english, .korean, .nepali, .french, .vietnamese: return "No reference number"
         }
     }
 
     private var localizedRelationTitle: String {
         switch language {
         case .japanese: return "関連番号"
-        case .simplifiedChinese: return "关联编号"
-        case .english: return "Reference No."
+        case .simplifiedChinese, .traditionalChinese: return "关联编号"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Reference No."
         }
     }
 
     private var localizedNoNumberText: String {
         switch language {
         case .japanese: return "番号なし"
-        case .simplifiedChinese: return "无编号"
-        case .english: return "No number"
+        case .simplifiedChinese, .traditionalChinese: return "无编号"
+        case .english, .korean, .nepali, .french, .vietnamese: return "No number"
         }
     }
 }
@@ -1195,16 +1195,16 @@ private struct ProjectGraphDocumentNode: View {
     private var localizedNumberFallback: String {
         switch language {
         case .japanese: return node.document.isGraphPlaceholder ? "未作成" : "番号なし"
-        case .simplifiedChinese: return node.document.isGraphPlaceholder ? "未创建" : "无编号"
-        case .english: return node.document.isGraphPlaceholder ? "Not created" : "No number"
+        case .simplifiedChinese, .traditionalChinese: return node.document.isGraphPlaceholder ? "未创建" : "无编号"
+        case .english, .korean, .nepali, .french, .vietnamese: return node.document.isGraphPlaceholder ? "Not created" : "No number"
         }
     }
 
     private var localizedNoRelationText: String {
         switch language {
         case .japanese: return "関連なし"
-        case .simplifiedChinese: return "无关联"
-        case .english: return "No relation"
+        case .simplifiedChinese, .traditionalChinese: return "无关联"
+        case .english, .korean, .nepali, .french, .vietnamese: return "No relation"
         }
     }
 

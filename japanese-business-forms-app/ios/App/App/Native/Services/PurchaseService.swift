@@ -4,9 +4,12 @@ import StoreKit
 @MainActor
 final class PurchaseService: ObservableObject {
     static let proMonthlyProductID = "monthly"
-    private static let proProductIDs: Set<String> = [proMonthlyProductID]
+    static let proYearlyProductID = "yearly"
+    private static let proYearlyProductAliasIDs: Set<String> = [proYearlyProductID, "annual"]
+    private static let proProductIDs: Set<String> = Set([proMonthlyProductID]).union(proYearlyProductAliasIDs)
 
     @Published private(set) var proMonthlyProduct: Product?
+    @Published private(set) var proYearlyProduct: Product?
     @Published private(set) var hasProAccess = false
     @Published private(set) var isLoading = false
     @Published private(set) var statusMessage = ""
@@ -24,8 +27,26 @@ final class PurchaseService: ObservableObject {
         transactionUpdatesTask?.cancel()
     }
 
-    var displayMonthlyPrice: String {
-        proMonthlyProduct?.displayPrice ?? "¥600"
+    var displayMonthlyPrice: String? {
+        guard let proMonthlyProduct else {
+            return nil
+        }
+        return "\(proMonthlyProduct.displayPrice) \(proMonthlyProduct.priceFormatStyle.currencyCode)"
+    }
+
+    var displayYearlyPrice: String? {
+        guard let proYearlyProduct else {
+            return nil
+        }
+        return "\(proYearlyProduct.displayPrice) \(proYearlyProduct.priceFormatStyle.currencyCode)"
+    }
+
+    var isProMonthlyProductAvailable: Bool {
+        proMonthlyProduct != nil
+    }
+
+    var isProYearlyProductAvailable: Bool {
+        proYearlyProduct != nil
     }
 
     func refresh() async {
@@ -37,6 +58,9 @@ final class PurchaseService: ObservableObject {
 
     func purchasePro(_ option: ProPurchaseOption) async {
         statusMessage = ""
+        isLoading = true
+        defer { isLoading = false }
+
         if product(for: option) == nil {
             await loadProducts()
         }
@@ -92,8 +116,11 @@ final class PurchaseService: ObservableObject {
         do {
             let products = try await Product.products(for: Array(Self.proProductIDs))
             proMonthlyProduct = products.first { $0.id == Self.proMonthlyProductID }
+            proYearlyProduct = products.first { $0.id == Self.proYearlyProductID }
+                ?? products.first { Self.proYearlyProductAliasIDs.contains($0.id) }
         } catch {
             proMonthlyProduct = nil
+            proYearlyProduct = nil
         }
     }
 
@@ -112,6 +139,8 @@ final class PurchaseService: ObservableObject {
         switch option {
         case .monthly:
             return proMonthlyProduct
+        case .yearly:
+            return proYearlyProduct
         }
     }
 
@@ -141,4 +170,5 @@ private enum StoreKitError: Error {
 
 enum ProPurchaseOption {
     case monthly
+    case yearly
 }

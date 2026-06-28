@@ -1,6 +1,8 @@
 import Foundation
 import Combine
 import UniformTypeIdentifiers
+import UIKit
+import ImageIO
 
 enum GoogleDriveDocumentFileKind {
     case pdf
@@ -12,6 +14,16 @@ enum ProjectDocumentCopyMode: Equatable {
     case overwrite
 }
 
+struct DeletedDocumentRecord: Identifiable, Codable {
+    let id: UUID
+    var document: BusinessDocument
+    var deletedAt: Date
+
+    var expiresAt: Date {
+        Calendar.current.date(byAdding: .day, value: 30, to: deletedAt) ?? deletedAt
+    }
+}
+
 final class DocumentStore: ObservableObject {
     @Published var current: BusinessDocument {
         didSet {
@@ -21,6 +33,7 @@ final class DocumentStore: ObservableObject {
         }
     }
     @Published private(set) var documents: [BusinessDocument]
+    @Published private(set) var deletedDocuments: [DeletedDocumentRecord]
     @Published private(set) var hasActiveDocument = false
     @Published private(set) var customers: [CustomerProfile]
     @Published private(set) var issuers: [IssuerProfile]
@@ -52,6 +65,7 @@ final class DocumentStore: ObservableObject {
     }
 
     private let storageKey = "native.shokoForms.documents.v1"
+    private let deletedDocumentsStorageKey = "native.shokoForms.deletedDocuments.v1"
     private let customersStorageKey = "native.shokoForms.customers.v1"
     private let issuersStorageKey = "native.shokoForms.issuers.v1"
     private let productsStorageKey = "native.shokoForms.products.v1"
@@ -63,6 +77,7 @@ final class DocumentStore: ObservableObject {
     private let pdfLanguageStorageKey = "native.shokoForms.pdfLanguage.v1"
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private static let projectSerialNameWidth = 4
 
     init() {
         encoder.dateEncodingStrategy = .iso8601
@@ -71,6 +86,9 @@ final class DocumentStore: ObservableObject {
         }
         let loaded = Self.loadDocuments(key: storageKey, decoder: decoder)
         documents = loaded.sorted { $0.updatedAt > $1.updatedAt }
+        deletedDocuments = Self.loadProfiles(key: deletedDocumentsStorageKey, decoder: decoder)
+            .filter { Self.isDeletedRecordRetained($0, now: Date()) }
+            .sorted { $0.deletedAt > $1.deletedAt }
         let initialCurrent =
             loaded.first ??
             BusinessDocument.blank(type: .invoice, number: Self.makeNumber(type: .invoice, documents: loaded))
@@ -84,8 +102,9 @@ final class DocumentStore: ObservableObject {
         textTemplates = Self.loadProfiles(key: textTemplatesStorageKey, decoder: decoder)
         defaultColorTemplateId = UserDefaults.standard.string(forKey: defaultColorTemplateStorageKey) ?? initialCurrent.colorTemplate.rawValue
         defaultIssuerProfileId = UserDefaults.standard.string(forKey: defaultIssuerProfileStorageKey)
-        interfaceLanguageId = UserDefaults.standard.string(forKey: interfaceLanguageStorageKey) ?? AppLanguage.japanese.rawValue
-        pdfLanguageId = UserDefaults.standard.string(forKey: pdfLanguageStorageKey) ?? AppLanguage.japanese.rawValue
+        let defaultLanguageId = AppLanguage.systemDefault.rawValue
+        interfaceLanguageId = UserDefaults.standard.string(forKey: interfaceLanguageStorageKey) ?? defaultLanguageId
+        pdfLanguageId = UserDefaults.standard.string(forKey: pdfLanguageStorageKey) ?? defaultLanguageId
         clearDraft()
         if loaded.isEmpty {
             applyDefaultIssuer(to: &current)
@@ -95,6 +114,7 @@ final class DocumentStore: ObservableObject {
         } else if textTemplates.isEmpty {
             seedTextTemplates(from: loaded)
         }
+        persistDeletedDocuments()
     }
 
     var interfaceLanguage: AppLanguage {
@@ -105,6 +125,34 @@ final class DocumentStore: ObservableObject {
     var pdfLanguage: AppLanguage {
         get { AppLanguage.from(pdfLanguageId) }
         set { pdfLanguageId = newValue.rawValue }
+    }
+
+    private static func formattedProjectSerial(_ serial: Int) -> String {
+        String(format: "%0\(projectSerialNameWidth)d", max(serial, 1))
+    }
+
+    private static func projectSerial(from name: String) -> Int? {
+        let digits = name.filter(\.isNumber)
+        guard !digits.isEmpty else { return nil }
+        return Int(digits)
+    }
+
+    private func makeProjectSerialName(excluding excludedProjectId: UUID? = nil) -> String {
+        let projectDocuments = documents.filter { document in
+            guard let projectId = document.projectId else { return false }
+            return projectId != excludedProjectId
+        }
+        let existingSerials = projectDocuments
+            .compactMap { $0.projectName?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .compactMap(Self.projectSerial)
+        let existingProjectCount = Set(projectDocuments.compactMap(\.projectId)).count
+        let nextSerial = max((existingSerials.max() ?? 0) + 1, existingProjectCount + 1)
+        return Self.formattedProjectSerial(nextSerial)
+    }
+
+    private func defaultProjectName(for project: ProjectArchive) -> String {
+        let existingName = project.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return existingName.isEmpty ? makeProjectSerialName(excluding: project.id) : existingName
     }
 
     var defaultIssuerProfile: IssuerProfile? {
@@ -143,7 +191,7 @@ final class DocumentStore: ObservableObject {
             let customerName = primary.customerName.trimmingCharacters(in: .whitespacesAndNewlines)
             return ProjectArchive(
                 id: projectId,
-                name: projectName?.isEmpty == false ? projectName ?? "" : customerName.isEmpty ? "Project \(projectId.uuidString.prefix(8))" : "\(AppFormatters.shortDate(primary.updatedAt)) \(customerName)",
+                name: projectName?.isEmpty == false ? projectName ?? "" : "Project \(projectId.uuidString.prefix(8))",
                 direction: direction,
                 customerName: customerName,
                 updatedAt: sorted.map(\.updatedAt).max() ?? primary.updatedAt,
@@ -151,12 +199,25 @@ final class DocumentStore: ObservableObject {
             )
         }
         .sorted { $0.updatedAt > $1.updatedAt }
+        .enumerated()
+        .map { index, project in
+            let cleanName = project.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard cleanName.hasPrefix("Project ") else { return project }
+            return ProjectArchive(
+                id: project.id,
+                name: Self.formattedProjectSerial(index + 1),
+                direction: project.direction,
+                customerName: project.customerName,
+                updatedAt: project.updatedAt,
+                documents: project.documents
+            )
+        }
     }
 
     var relatedDocumentCandidatesForCurrentProject: [BusinessDocument] {
         guard let projectId = current.projectId else { return [] }
 
-        return documents
+        return documents.filter { $0.type != .paymentNotice }
             .filter { document in
                 document.projectId == projectId &&
                     document.id != current.id &&
@@ -185,20 +246,21 @@ final class DocumentStore: ObservableObject {
             document.customerEmail = customer.email
             document.customerAddress = customer.address
         }
-        let cleanName = document.customerName.trimmingCharacters(in: .whitespacesAndNewlines)
-        document.projectName = cleanName.isEmpty ? "\(direction.title) \(AppFormatters.shortDate(Date()))" : "\(AppFormatters.shortDate(Date())) \(cleanName)"
+        document.projectName = makeProjectSerialName()
         hasActiveDocument = true
         current = document
         saveCurrent()
     }
 
     func makeProjectArchive(direction: ProjectDirection, customer: CustomerProfile?) -> ProjectArchive {
+        makeProjectArchive(direction: direction, customerName: customer?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? "")
+    }
+
+    func makeProjectArchive(direction: ProjectDirection, customerName: String) -> ProjectArchive {
         let projectId = UUID()
-        let customerName = customer?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let projectName = customerName.isEmpty ? "\(direction.title) \(AppFormatters.shortDate(Date()))" : "\(AppFormatters.shortDate(Date())) \(customerName)"
         return ProjectArchive(
             id: projectId,
-            name: projectName,
+            name: makeProjectSerialName(),
             direction: direction,
             customerName: customerName,
             updatedAt: Date(),
@@ -210,8 +272,7 @@ final class DocumentStore: ObservableObject {
         let projectId = UUID()
         current.projectId = projectId
         current.projectDirection = direction
-        let cleanName = current.customerName.trimmingCharacters(in: .whitespacesAndNewlines)
-        current.projectName = cleanName.isEmpty ? "\(direction.title) \(AppFormatters.shortDate(Date()))" : "\(AppFormatters.shortDate(Date())) \(cleanName)"
+        current.projectName = makeProjectSerialName()
         saveCurrent()
     }
 
@@ -308,7 +369,7 @@ final class DocumentStore: ObservableObject {
     func updateProject(project: ProjectArchive, name: String, direction: ProjectDirection, customer: CustomerProfile?) {
         let cleanProjectName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let projectName = cleanProjectName.isEmpty
-            ? (customer.map { "\(AppFormatters.shortDate(project.updatedAt)) \($0.name)" } ?? "\(direction.title) \(AppFormatters.shortDate(project.updatedAt))")
+            ? defaultProjectName(for: project)
             : cleanProjectName
 
         for index in documents.indices where documents[index].projectId == project.id {
@@ -482,7 +543,7 @@ final class DocumentStore: ObservableObject {
     func resetCurrentDocumentSelection() {
         clearDraft()
         hasActiveDocument = false
-        current = documents.first ?? newFallbackDocument()
+        current = newFallbackDocument()
     }
 
     func backupFileURL() throws -> URL {
@@ -555,13 +616,14 @@ final class DocumentStore: ObservableObject {
         let backup = try decoder.decode(LocalBackup.self, from: data)
         switch mode {
         case .replace:
-            documents = backup.documents.sorted { $0.updatedAt > $1.updatedAt }
+            documents = backup.documents.filter { $0.type != .paymentNotice }.sorted { $0.updatedAt > $1.updatedAt }
             customers = backup.customers.sorted { $0.updatedAt > $1.updatedAt }
             issuers = backup.issuers.sorted { $0.updatedAt > $1.updatedAt }
             products = backup.products.sorted { $0.updatedAt > $1.updatedAt }
             textTemplates = (backup.textTemplates ?? []).sorted { $0.updatedAt > $1.updatedAt }
-            hasActiveDocument = backup.draft != nil
-            current = backup.draft ?? documents.first ?? newFallbackDocument()
+            let visibleDraft = backup.draft?.type == .paymentNotice ? nil : backup.draft
+            hasActiveDocument = visibleDraft != nil
+            current = visibleDraft ?? documents.first ?? newFallbackDocument()
             defaultColorTemplateId = current.colorTemplate.rawValue
         case .merge:
             let hadDocuments = !documents.isEmpty
@@ -570,7 +632,7 @@ final class DocumentStore: ObservableObject {
             mergeIssuers(backup.issuers)
             mergeProducts(backup.products)
             mergeTextTemplates(backup.textTemplates ?? [])
-            if !hadDocuments, let draft = backup.draft {
+            if !hadDocuments, let draft = backup.draft, draft.type != .paymentNotice {
                 hasActiveDocument = true
                 current = draft
             }
@@ -782,6 +844,30 @@ final class DocumentStore: ObservableObject {
         persistProfiles()
     }
 
+    func savedDocumentUsageCount(for customer: CustomerProfile) -> Int {
+        let cleanName = Self.normalizedProfileKey(customer.name)
+        guard !cleanName.isEmpty else { return 0 }
+        return documents.filter { document in
+            Self.normalizedProfileKey(document.customerName) == cleanName
+        }.count
+    }
+
+    func savedDocumentUsageCount(for product: ProductProfile) -> Int {
+        let cleanName = Self.normalizedProfileKey(product.name)
+        guard !cleanName.isEmpty else { return 0 }
+        let cleanModel = Self.normalizedProfileKey(product.model)
+        let cleanSpecification = Self.normalizedProfileKey(product.specification)
+        return documents.filter { document in
+            document.lines.contains { line in
+                guard Self.normalizedProfileKey(line.name) == cleanName else { return false }
+                let lineModel = Self.normalizedProfileKey(line.model)
+                let lineSpecification = Self.normalizedProfileKey(line.specification)
+                return (cleanModel.isEmpty || cleanModel == lineModel)
+                    && (cleanSpecification.isEmpty || cleanSpecification == lineSpecification)
+            }
+        }.count
+    }
+
     func deleteCustomer(_ customer: CustomerProfile) {
         customers.removeAll { $0.id == customer.id }
         persistProfiles()
@@ -826,24 +912,60 @@ final class DocumentStore: ObservableObject {
     }
 
     func delete(_ document: BusinessDocument) {
-        documents.removeAll { $0.id == document.id }
-        if current.id == document.id {
-            hasActiveDocument = false
-            current = documents.first ?? newFallbackDocument()
-        }
-        clearDraft()
-        persist()
+        deleteDocuments(ids: Set([document.id]))
     }
 
     func deleteDocuments(ids: Set<BusinessDocument.ID>) {
         guard !ids.isEmpty else { return }
-        documents.removeAll { ids.contains($0.id) }
+        moveDocumentsToDeletedHistory(ids: ids)
         if ids.contains(current.id) {
             hasActiveDocument = false
             current = documents.first ?? newFallbackDocument()
         }
         clearDraft()
         persist()
+        persistDeletedDocuments()
+    }
+
+    func restoreDeletedDocuments(ids: Set<DeletedDocumentRecord.ID>) {
+        guard !ids.isEmpty else { return }
+        pruneExpiredDeletedDocuments()
+        let records = deletedDocuments.filter { ids.contains($0.id) }
+        guard !records.isEmpty else { return }
+        let existingDocumentIDs = Set(documents.map(\.id))
+        let restored = records.map(\.document).filter { !existingDocumentIDs.contains($0.id) }
+        documents.append(contentsOf: restored)
+        documents.sort { $0.updatedAt > $1.updatedAt }
+        deletedDocuments.removeAll { ids.contains($0.id) }
+        persist()
+        persistDeletedDocuments()
+    }
+
+    func permanentlyDeleteDeletedDocuments(ids: Set<DeletedDocumentRecord.ID>) {
+        guard !ids.isEmpty else { return }
+        deletedDocuments.removeAll { ids.contains($0.id) }
+        persistDeletedDocuments()
+    }
+
+    func pruneExpiredDeletedDocuments() {
+        let retained = deletedDocuments.filter { Self.isDeletedRecordRetained($0, now: Date()) }
+        guard retained.count != deletedDocuments.count else { return }
+        deletedDocuments = retained
+        persistDeletedDocuments()
+    }
+
+    private func moveDocumentsToDeletedHistory(ids: Set<BusinessDocument.ID>) {
+        let now = Date()
+        let deletingDocuments = documents.filter { ids.contains($0.id) }
+        documents.removeAll { ids.contains($0.id) }
+        deletedDocuments.removeAll { ids.contains($0.document.id) }
+        deletedDocuments.insert(
+            contentsOf: deletingDocuments.map { DeletedDocumentRecord(id: UUID(), document: $0, deletedAt: now) },
+            at: 0
+        )
+        deletedDocuments = deletedDocuments
+            .filter { Self.isDeletedRecordRetained($0, now: now) }
+            .sorted { $0.deletedAt > $1.deletedAt }
     }
 
     private func newFallbackDocument() -> BusinessDocument {
@@ -859,6 +981,7 @@ final class DocumentStore: ObservableObject {
 
     func clearLocalBusinessData() {
         documents = []
+        deletedDocuments = []
         customers = []
         issuers = []
         products = []
@@ -870,6 +993,7 @@ final class DocumentStore: ObservableObject {
 
         [
             storageKey,
+            deletedDocumentsStorageKey,
             customersStorageKey,
             issuersStorageKey,
             productsStorageKey,
@@ -912,6 +1036,21 @@ final class DocumentStore: ObservableObject {
         current.updatedAt = Date()
         persistDraft()
         return attachments.count
+    }
+
+    @discardableResult
+    func importExternalAttachments(from urls: [URL], into project: ProjectArchive?, direction: ProjectDirection, type: DocumentType) -> Int {
+        guard type.isAttachmentRecord, type != .paymentNotice else { return 0 }
+        if let project {
+            openProjectForm(project: project, type: type)
+        } else {
+            createProject(direction: direction, customer: nil, initialType: type)
+        }
+        let importedCount = addOrderAttachments(from: urls)
+        if importedCount > 0 {
+            saveCurrent()
+        }
+        return importedCount
     }
 
     func removeOrderAttachment(id: OrderAttachment.ID) {
@@ -979,10 +1118,37 @@ final class DocumentStore: ObservableObject {
                     url.stopAccessingSecurityScopedResource()
                 }
             }
+            let fileType = UTType(filenameExtension: url.pathExtension)
+            if fileType?.conforms(to: .image) == true,
+               let imageAttachment = makeImageAttachment(from: url) {
+                return imageAttachment
+            }
             guard let data = try? Data(contentsOf: url) else { return nil }
-            let type = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+            let type = fileType?.preferredMIMEType ?? "application/octet-stream"
             return OrderAttachment(filename: url.lastPathComponent, contentType: type, data: data, uploadedAt: Date())
         }
+    }
+
+    private func makeImageAttachment(from url: URL) -> OrderAttachment? {
+        guard let data = resizedJPEGData(from: url)
+        else { return nil }
+        let filename = url.deletingPathExtension().lastPathComponent + ".jpg"
+        return OrderAttachment(filename: filename, contentType: "image/jpeg", data: data, uploadedAt: Date())
+    }
+
+    private func resizedJPEGData(from url: URL, maxDimension: CGFloat = 1800, compressionQuality: CGFloat = 0.82) -> Data? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: Int(maxDimension)
+        ]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: compressionQuality] as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return data as Data
     }
 
     private func ensureActiveDocumentForManagementApply() {
@@ -1077,6 +1243,12 @@ final class DocumentStore: ObservableObject {
         guard let data = try? encoder.encode(documents) else { return }
         UserDefaults.standard.set(data, forKey: storageKey)
         persistProfiles()
+        FormReminderNotificationService.shared.rescheduleAll(for: documents)
+    }
+
+    private func persistDeletedDocuments() {
+        guard let data = try? encoder.encode(deletedDocuments) else { return }
+        UserDefaults.standard.set(data, forKey: deletedDocumentsStorageKey)
     }
 
     private func persistDraft() {
@@ -1121,6 +1293,10 @@ final class DocumentStore: ObservableObject {
             return []
         }
         return profiles
+    }
+
+    private static func isDeletedRecordRetained(_ record: DeletedDocumentRecord, now: Date) -> Bool {
+        record.expiresAt > now
     }
 
     private static func loadDraft(key: String, decoder: JSONDecoder) -> BusinessDocument? {
@@ -1449,7 +1625,7 @@ final class DocumentStore: ObservableObject {
 
     private func mergeDocuments(_ incoming: [BusinessDocument]) {
         let existingIds = Set(documents.map(\.id))
-        documents.append(contentsOf: incoming.filter { !existingIds.contains($0.id) })
+        documents.append(contentsOf: incoming.filter { $0.type != .paymentNotice && !existingIds.contains($0.id) })
     }
 
     private func mergeCustomers(_ incoming: [CustomerProfile]) {
@@ -1484,6 +1660,11 @@ final class DocumentStore: ObservableObject {
         let sanitized = String(value.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" })
             .trimmingCharacters(in: CharacterSet(charactersIn: "-_"))
         return sanitized.isEmpty ? fallback : sanitized
+    }
+
+    private static func normalizedProfileKey(_ value: String) -> String {
+        let trimSet = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
+        return value.trimmingCharacters(in: trimSet).lowercased()
     }
 
     private func filtered<T>(_ values: [T], query: String, text: (T) -> String) -> [T] {

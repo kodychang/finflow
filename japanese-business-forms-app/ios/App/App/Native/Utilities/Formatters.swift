@@ -46,6 +46,117 @@ enum AppFormatters {
     }
 }
 
+enum AppFont {
+    enum Role {
+        case display
+        case pageTitle
+        case sectionTitle
+        case cardTitle
+        case body
+        case callout
+        case secondary
+        case small
+        case micro
+    }
+
+    static func role(_ role: Role, _ weight: Font.Weight = .regular) -> Font {
+        switch role {
+        case .display:
+            return platformFont(iOS: 28, mac: 30, weight: weight)
+        case .pageTitle:
+            return platformFont(iOS: 20, mac: 24, weight: weight)
+        case .sectionTitle:
+            return platformFont(iOS: 13, mac: 17, weight: weight)
+        case .cardTitle:
+            return platformFont(iOS: 15, mac: 18, weight: weight)
+        case .body:
+            return platformFont(iOS: 17, mac: 17, weight: weight)
+        case .callout:
+            return platformFont(iOS: 15, mac: 16, weight: weight)
+        case .secondary:
+            return platformFont(iOS: 12, mac: 14, weight: weight)
+        case .small:
+            return platformFont(iOS: 11, mac: 13, weight: weight)
+        case .micro:
+            return platformFont(iOS: 8, mac: 11, weight: weight)
+        }
+    }
+
+    static func pageTitle(_ weight: Font.Weight = .semibold) -> Font {
+        role(.pageTitle, weight)
+    }
+
+    static func sectionTitle(_ weight: Font.Weight = .semibold) -> Font {
+        role(.sectionTitle, weight)
+    }
+
+    static func cardTitle(_ weight: Font.Weight = .semibold) -> Font {
+        role(.cardTitle, weight)
+    }
+
+    static func body(_ weight: Font.Weight = .regular) -> Font {
+        role(.body, weight)
+    }
+
+    static func callout(_ weight: Font.Weight = .regular) -> Font {
+        role(.callout, weight)
+    }
+
+    static func secondary(_ weight: Font.Weight = .semibold) -> Font {
+        role(.secondary, weight)
+    }
+
+    static func small(_ weight: Font.Weight = .semibold) -> Font {
+        role(.small, weight)
+    }
+
+    static func micro(_ weight: Font.Weight = .semibold) -> Font {
+        role(.micro, weight)
+    }
+
+    private static func platformFont(iOS: CGFloat, mac: CGFloat, weight: Font.Weight) -> Font {
+        #if targetEnvironment(macCatalyst)
+        return .system(size: mac, weight: weight)
+        #else
+        return .system(size: iOS, weight: weight)
+        #endif
+    }
+}
+
+enum AppFontMetrics {
+    static var homeIconSize: CGFloat {
+        #if targetEnvironment(macCatalyst)
+        return 52
+        #else
+        return 44
+        #endif
+    }
+
+    static var homeVerticalPadding: CGFloat {
+        #if targetEnvironment(macCatalyst)
+        return 12
+        #else
+        return 8
+        #endif
+    }
+
+    static var sidebarWidth: CGFloat {
+        #if targetEnvironment(macCatalyst)
+        return 340
+        #else
+        return 304
+        #endif
+    }
+
+    static var dynamicTypeSize: DynamicTypeSize {
+        #if targetEnvironment(macCatalyst)
+        return .large
+        #else
+        return .medium
+        #endif
+    }
+}
+
 extension Color {
     static let appBackground = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark

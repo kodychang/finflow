@@ -1,29 +1,38 @@
 import UIKit
 import SwiftUI
 import GoogleSignIn
+import UniformTypeIdentifiers
+import UserNotifications
 
 extension Notification.Name {
     static let shokoFormsOpenFileURL = Notification.Name("shokoFormsOpenFileURL")
 }
 
 @UIApplicationMain
-class AppDelegate: UIResponder, UIApplicationDelegate {
+class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
 
-    var window: UIWindow?
+    private static var pendingOpenFileURLs: [URL] = []
+    private static var pendingReminderDocumentIDs: [UUID] = []
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        window = UIWindow(frame: UIScreen.main.bounds)
-        window?.rootViewController = UIHostingController(rootView: ShokoFormsRootView())
-        window?.backgroundColor = .systemBackground
-        window?.makeKeyAndVisible()
-
+        UNUserNotificationCenter.current().delegate = self
+        FormReminderNotificationService.shared.registerNotificationCategories()
         if let url = launchOptions?[.url] as? URL {
-            DispatchQueue.main.async {
-                Self.openFileURL(url)
-            }
+            _ = Self.handleOpenURL(url)
         }
 
         return true
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        if let documentID = FormReminderNotificationService.pendingDocumentID(from: response) {
+            Self.queueReminderDocumentID(documentID)
+        }
+        completionHandler()
     }
 
     func application(
@@ -35,20 +44,63 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             return true
         }
 
+        return Self.handleOpenURL(url)
+    }
+
+    func application(
+        _ application: UIApplication,
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        let configuration = UISceneConfiguration(
+            name: "Default Configuration",
+            sessionRole: connectingSceneSession.role
+        )
+        configuration.delegateClass = SceneDelegate.self
+        return configuration
+    }
+
+    static func handleOpenURL(_ url: URL) -> Bool {
         guard Self.canOpenFileURL(url) else {
             return false
         }
 
-        Self.openFileURL(url)
+        Self.queueOpenFileURL(url)
         return true
     }
 
     private static func canOpenFileURL(_ url: URL) -> Bool {
-        ["shokoform", "shokobackup"].contains(url.pathExtension.lowercased())
+        if url.scheme == "shokoforms" {
+            return true
+        }
+        let extensionName = url.pathExtension.lowercased()
+        if ["shokoform", "shokobackup", "json"].contains(extensionName) {
+            return true
+        }
+        let type = UTType(filenameExtension: extensionName)
+        return type?.conforms(to: .pdf) == true || type?.conforms(to: .image) == true
     }
 
-    private static func openFileURL(_ url: URL) {
-        NotificationCenter.default.post(name: .shokoFormsOpenFileURL, object: url)
+    static func consumePendingOpenFileURLs() -> [URL] {
+        let urls = pendingOpenFileURLs
+        pendingOpenFileURLs.removeAll()
+        return urls
+    }
+
+    static func consumePendingReminderDocumentIDs() -> [UUID] {
+        let ids = pendingReminderDocumentIDs
+        pendingReminderDocumentIDs.removeAll()
+        return ids
+    }
+
+    private static func queueOpenFileURL(_ url: URL) {
+        pendingOpenFileURLs.append(url)
+        NotificationCenter.default.post(name: .shokoFormsOpenFileURL, object: nil)
+    }
+
+    private static func queueReminderDocumentID(_ documentID: UUID) {
+        pendingReminderDocumentIDs.append(documentID)
+        NotificationCenter.default.post(name: .shokoFormsOpenReminderDocument, object: nil)
     }
 
     func applicationWillResignActive(_ application: UIApplication) {

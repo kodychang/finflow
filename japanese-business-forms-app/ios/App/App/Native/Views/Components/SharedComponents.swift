@@ -15,10 +15,10 @@ struct AppBrandHeader: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Shoko Forms")
-                    .font(compact ? .subheadline.weight(.semibold) : .headline.weight(.semibold))
+                    .font(compact ? AppFont.cardTitle(.semibold) : AppFont.pageTitle(.semibold))
                     .foregroundColor(.appInk)
                 Text("日本商業帳票作成")
-                    .font(.caption.weight(.semibold))
+                    .font(AppFont.secondary(.semibold))
                     .foregroundColor(.appMuted)
             }
         }
@@ -93,10 +93,11 @@ struct FormField<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 5) {
             Text(title)
-                .font(.caption.weight(.black))
+                .font(AppFont.secondary(.semibold))
                 .foregroundColor(.appMuted)
+                .lineLimit(1)
             content
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -105,7 +106,7 @@ struct FormField<Content: View>: View {
 
 struct MultilineTextInput: UIViewRepresentable {
     @Binding var text: String
-    var minHeight: CGFloat = 82
+    var minHeight: CGFloat = 104
 
     func makeUIView(context: Context) -> UITextView {
         let textView = UITextView()
@@ -116,7 +117,7 @@ struct MultilineTextInput: UIViewRepresentable {
         textView.font = UIFont.preferredFont(forTextStyle: .body)
         textView.adjustsFontForContentSizeCategory = true
         textView.isScrollEnabled = true
-        textView.textContainerInset = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+        textView.textContainerInset = UIEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
         textView.textContainer.lineFragmentPadding = 0
         return textView
     }
@@ -266,15 +267,14 @@ struct AutocompleteTextField<Suggestion: Identifiable>: View {
 }
 
 private struct FlatInputSurface: ViewModifier {
-    var minHeight: CGFloat = 50
+    var minHeight: CGFloat = 48
 
     func body(content: Content) -> some View {
         content
             .font(.body)
             .foregroundColor(.appInk)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .leading)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, minHeight: minHeight, maxHeight: minHeight, alignment: .leading)
             .background(Color.appInputBackground)
             .cornerRadius(8)
             .inputInnerShadow(cornerRadius: 8)
@@ -282,14 +282,14 @@ private struct FlatInputSurface: ViewModifier {
 }
 
 private struct MultilineInputSurface: ViewModifier {
-    var minHeight: CGFloat = 82
+    var minHeight: CGFloat = 104
 
     func body(content: Content) -> some View {
         content
             .font(.body)
             .foregroundColor(.appInk)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
             .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .leading)
             .background(Color.appInputBackground)
             .cornerRadius(8)
@@ -302,9 +302,9 @@ private struct PillInputSurface: ViewModifier {
         content
             .font(.body)
             .foregroundColor(.appInk)
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
             .background(Color.appInputBackground)
             .cornerRadius(8)
             .inputInnerShadow(cornerRadius: 8)
@@ -334,11 +334,11 @@ extension Text {
 }
 
 extension View {
-    func flatFormInput(minHeight: CGFloat = 50) -> some View {
+    func flatFormInput(minHeight: CGFloat = 48) -> some View {
         modifier(FlatInputSurface(minHeight: minHeight))
     }
 
-    func multilineFormInput(minHeight: CGFloat = 82) -> some View {
+    func multilineFormInput(minHeight: CGFloat = 104) -> some View {
         modifier(MultilineInputSurface(minHeight: minHeight))
     }
 

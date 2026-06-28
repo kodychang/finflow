@@ -1,3 +1,4 @@
+import AVKit
 import PhotosUI
 import StoreKit
 import SwiftUI
@@ -5,6 +6,8 @@ import UIKit
 import UniformTypeIdentifiers
 
 private let defaultDSAContactAddress = "3F,  3 - 11 - 2  Nezu, Bunkyou-ku, Tokyo, Japan."
+private let shokoFormsAppGroupIdentifier = "group.com.shoko.forms"
+private let shokoFormsExternalImportFolderName = "ExternalImports"
 
 struct ShokoFormsRootView: View {
     private static let initialSection: AppSection = ProcessInfo.processInfo.arguments.contains("--app-review-pro-screenshot") ? .pro : .menu
@@ -19,7 +22,9 @@ struct ShokoFormsRootView: View {
     @State private var isBackNavigationPending = false
     @State private var shouldReturnToCreateStartOnFormBack = false
     @State private var isCreateStartNavigationPending = false
+    @State private var pendingNewFormType: DocumentType?
     @State private var isLeaveFormConfirmationPresented = false
+    @State private var isIpadEditorModalActive = false
     @State private var isResolvingSectionChange = false
     @AppStorage("shokoFormsDarkModeEnabled") private var isDarkModeEnabled = false
     @AppStorage("shokoFormsSyncButtonColorWithTableTemplate") private var syncButtonColorWithTableTemplate = false
@@ -33,6 +38,8 @@ struct ShokoFormsRootView: View {
     @State private var pendingPreviewIntroKeys: Set<String> = []
     @State private var isListPreviewNavigation = false
     @State private var focusedProjectID: ProjectArchive.ID?
+    @State private var isDeleteFormVideoPresented = false
+    @State private var pendingExternalAttachmentImport: ExternalAttachmentImport?
     @AppStorage("native.shokoForms.onboardingCompleted.v1") private var isOnboardingCompleted = false
     private var interfaceLanguage: AppLanguage { store.interfaceLanguage }
 
@@ -46,78 +53,21 @@ struct ShokoFormsRootView: View {
                         selectedSection: $selectedSection,
                         onOpenRecentProject: openRecentProject,
                         onPreviewDocument: navigateToPreviewFromList,
-                        onCreateStartRequested: requestCreateStartFromNavigation
+                        onOpenReminderDocument: navigateToEditorFromReminder,
+                        onCreateStartRequested: requestCreateStartFromNavigation,
+                        onOpenOnboardingGuide: openOnboardingGuide
                     )
-                        .frame(width: 304)
-                    if selectedSection == .account {
-                        AccountManagementScreen(
-                            store: store,
-                            purchaseService: purchaseService,
-                            selectedSection: $selectedSection,
-                            isDarkModeEnabled: $isDarkModeEnabled,
-                            syncButtonColorWithTableTemplate: $syncButtonColorWithTableTemplate,
-                            isPDFPreviewPrinterAnimationEnabled: $isPDFPreviewPrinterAnimationEnabled,
-                            isOnboardingGuidePresented: $isOnboardingGuidePresented,
-                            language: interfaceLanguage
-                        )
-                            .frame(minWidth: 430, maxWidth: .infinity)
-                    } else if selectedSection == .data {
-                        DataManagementHubScreen(
-                            store: store,
-                            selectedSection: $selectedSection,
-                            language: interfaceLanguage,
-                            onBack: navigateBackInApp
-                        )
-                            .frame(minWidth: 430, maxWidth: .infinity)
-                    } else if selectedSection == .company {
-                        CompanyManagementScreen(store: store, onBack: navigateBackInApp, onAppliedToForm: navigateToFormAfterManagementApply)
-                            .frame(minWidth: 430, maxWidth: .infinity)
-                    } else if selectedSection == .files {
-                        FileManagementScreen(store: store, selectedSection: $selectedSection, onBack: navigateBackInApp, onPreviewDocument: navigateToPreviewFromList)
-                            .frame(minWidth: 430, maxWidth: .infinity)
-                    } else if selectedSection == .projects {
-                        ProjectManagementScreen(store: store, purchaseService: purchaseService, selectedSection: $selectedSection, focusedProjectID: $focusedProjectID, onBack: navigateBackInApp)
-                            .frame(minWidth: 430, maxWidth: .infinity)
-                    } else if selectedSection == .customers {
-                        CustomerManagementScreen(store: store, onBack: navigateBackInApp, onAppliedToForm: navigateToFormAfterManagementApply)
-                            .frame(minWidth: 430, maxWidth: .infinity)
-                    } else if selectedSection == .products {
-                        ProductManagementScreen(store: store, onBack: navigateBackInApp, onAppliedToForm: navigateToFormAfterManagementApply)
-                            .frame(minWidth: 430, maxWidth: .infinity)
-                    } else if selectedSection == .templates {
-                        TemplateManagementScreen(store: store, onBack: navigateBackInApp)
-                            .frame(minWidth: 430, maxWidth: .infinity)
-                    } else if selectedSection == .stamp {
-                        StampManagementScreen(language: interfaceLanguage, onBack: navigateBackInApp)
-                            .frame(minWidth: 430, maxWidth: .infinity)
-                    } else if selectedSection == .pro {
-                        ProSubscriptionScreen(purchaseService: purchaseService, language: interfaceLanguage)
-                            .frame(minWidth: 430, maxWidth: .infinity)
-                    } else if !store.hasActiveDocument {
-                        CreateFormStartScreen(language: interfaceLanguage, onSelect: startNewForm)
-                            .frame(minWidth: 430, maxWidth: .infinity)
-                    } else {
-                        EditorScreen(
-                            store: store,
-                            purchaseService: purchaseService,
-                            language: interfaceLanguage,
-                            onRequirePro: showProPlanForLockedAction,
-                            onBack: navigateBackInApp,
-                            onReturnToCreateStart: navigateToCreateStartAfterFormExit,
-                            onDocumentSaved: registerPreviewIntroForSavedDocument
-                        )
-                            .frame(minWidth: 430, maxWidth: .infinity)
-                        PreviewScreen(
-                            document: store.current,
-                            purchaseService: purchaseService,
-                            interfaceLanguage: interfaceLanguage,
-                            pdfLanguage: store.pdfLanguage,
-                            onRequirePro: showProPlanForLockedAction
-                        )
-                            .frame(minWidth: 430, maxWidth: .infinity)
-                    }
+                        .frame(width: AppFontMetrics.sidebarWidth)
+                    iPadPrimaryContent
+                        .frame(minWidth: 430, maxWidth: .infinity)
                 }
                 .background(Color.appBackground.edgesIgnoringSafeArea(.all))
+                .fullScreenCover(isPresented: iPadEditorPresentation) {
+                    iPadEditorModalContent
+                }
+                .fullScreenCover(isPresented: iPadPreviewPresentation) {
+                    iPadPreviewModalContent
+                }
             } else {
                 TabView(selection: compactTabSelection) {
                     SidebarView(
@@ -126,7 +76,9 @@ struct ShokoFormsRootView: View {
                         selectedSection: $selectedSection,
                         onOpenRecentProject: openRecentProject,
                         onPreviewDocument: navigateToPreviewFromList,
-                        onCreateStartRequested: requestCreateStartFromNavigation
+                        onOpenReminderDocument: navigateToEditorFromReminder,
+                        onCreateStartRequested: requestCreateStartFromNavigation,
+                        onOpenOnboardingGuide: openOnboardingGuide
                     )
                         .tabItem { Label(AppText.value(.home, interfaceLanguage), systemImage: "house") }
                         .tag(AppSection.menu)
@@ -160,25 +112,39 @@ struct ShokoFormsRootView: View {
         }
         .environment(\.appButtonAccent, buttonAccent)
         .environment(\.locale, Locale(identifier: interfaceLanguage.localeIdentifier))
+        .dynamicTypeSize(AppFontMetrics.dynamicTypeSize)
         .preferredColorScheme(isDarkModeEnabled ? .dark : .light)
-        .onOpenURL { url in
-            readOpenedFile(from: url)
+        .overlay {
+            if isDeleteFormVideoPresented {
+                DeleteFormConfirmationVideoView {
+                    navigateToCreateStartAfterFormExit()
+                    isDeleteFormVideoPresented = false
+                }
+                .zIndex(1000)
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .shokoFormsOpenFileURL)) { notification in
-            guard let url = notification.object as? URL else { return }
-            readOpenedFile(from: url)
+            processPendingOpenedFileURLs()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .shokoFormsOpenReminderDocument)) { _ in
+            processPendingReminderDocuments()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            processPendingExternalAttachmentImportDirectories()
+            processPendingReminderDocuments()
             Task {
-                await appUpdateChecker.checkForUpdateIfNeeded(language: interfaceLanguage)
+                await checkForUpdateIfNoExternalImport()
             }
         }
         .onChange(of: selectedSection) { newSection in
             handleSectionChange(newSection)
         }
         .task {
-            await appUpdateChecker.checkForUpdateIfNeeded(language: interfaceLanguage)
-            if !isOnboardingCompleted {
+            processPendingOpenedFileURLs()
+            processPendingReminderDocuments()
+            processPendingExternalAttachmentImportDirectories()
+            await checkForUpdateIfNoExternalImport()
+            if !isOnboardingCompleted, pendingExternalAttachmentImport == nil {
                 isOnboardingGuidePresented = true
             }
         }
@@ -192,28 +158,48 @@ struct ShokoFormsRootView: View {
                 }
             )
         }
-        .confirmationDialog(leaveFormTitle, isPresented: $isLeaveFormConfirmationPresented, titleVisibility: .visible) {
+        .sheet(item: $pendingExternalAttachmentImport) { importRequest in
+            ExternalAttachmentImportSheet(
+                store: store,
+                importRequest: importRequest,
+                language: interfaceLanguage,
+                onComplete: { document in
+                    cleanupExternalAttachmentImport(importRequest)
+                    store.select(document)
+                    selectedSection = .form
+                    pendingExternalAttachmentImport = nil
+                },
+                onCancel: {
+                    cleanupExternalAttachmentImport(importRequest)
+                    pendingExternalAttachmentImport = nil
+                }
+            )
+        }
+        .confirmationDialog(leaveFormTitle, isPresented: rootLeaveFormConfirmationPresentation, titleVisibility: .visible) {
             Button(leaveFormSaveTitle) {
                 store.saveCurrent()
                 registerPreviewIntroForSavedDocument(store.current)
-                if isCreateStartNavigationPending {
+                if let pendingNewFormType {
+                    performStartNewForm(pendingNewFormType)
+                } else if isCreateStartNavigationPending {
                     navigateToCreateStartAfterFormExit()
                 } else {
                     navigateToPendingSection()
                 }
             }
             Button(leaveFormDiscardTitle, role: .destructive) {
-                if isCreateStartNavigationPending {
-                    navigateToCreateStartAfterFormExit()
+                if let pendingNewFormType {
+                    store.discardCurrentChanges()
+                    performStartNewForm(pendingNewFormType)
+                } else if isCreateStartNavigationPending {
+                    discardCurrentFormToCreateStartWithAnimation()
                 } else {
                     store.discardCurrentChanges()
                     navigateToPendingSection()
                 }
             }
             Button(leaveFormContinueTitle, role: .cancel) {
-                pendingSectionAfterForm = nil
-                isBackNavigationPending = false
-                isCreateStartNavigationPending = false
+                cancelPendingLeaveFormAction()
             }
         } message: {
             Text(leaveFormMessage)
@@ -265,6 +251,42 @@ struct ShokoFormsRootView: View {
         store.hasActiveDocument || !store.documents.isEmpty
     }
 
+    private var currentDocumentIsSaved: Bool {
+        store.documents.contains { $0.id == store.current.id }
+    }
+
+    private var hasUnsavedSavedDocumentChanges: Bool {
+        store.hasActiveDocument &&
+            store.hasUnsavedCurrentChanges &&
+            currentDocumentIsSaved
+    }
+
+    private var hasUnsavedNewDraft: Bool {
+        store.hasActiveDocument &&
+            store.hasUnsavedCurrentChanges &&
+            !currentDocumentIsSaved
+    }
+
+    private var rootLeaveFormConfirmationPresentation: Binding<Bool> {
+        Binding {
+            isLeaveFormConfirmationPresented && !isIpadEditorModalActive
+        } set: { isPresented in
+            if !isPresented {
+                isLeaveFormConfirmationPresented = false
+            }
+        }
+    }
+
+    private var iPadEditorLeaveFormConfirmationPresentation: Binding<Bool> {
+        Binding {
+            isLeaveFormConfirmationPresented && isIpadEditorModalActive
+        } set: { isPresented in
+            if !isPresented {
+                isLeaveFormConfirmationPresented = false
+            }
+        }
+    }
+
     private var compactTabSelection: Binding<AppSection> {
         Binding {
             compactRootSection(for: selectedSection)
@@ -275,7 +297,7 @@ struct ShokoFormsRootView: View {
 
     private func compactRootSection(for section: AppSection) -> AppSection {
         switch section {
-        case .company, .files, .projects, .customers, .products, .templates, .stamp:
+        case .company, .files, .projects, .customers, .products, .templates, .stamp, .reports:
             return .data
         case .pro:
             return .account
@@ -299,7 +321,7 @@ struct ShokoFormsRootView: View {
             isResolvingSectionChange = true
             selectedSection = .form
             isResolvingSectionChange = false
-            isLeaveFormConfirmationPresented = true
+            presentLeaveFormConfirmation()
             return
         }
 
@@ -337,7 +359,7 @@ struct ShokoFormsRootView: View {
                 pendingSectionAfterForm = nil
                 isBackNavigationPending = false
                 isCreateStartNavigationPending = true
-                isLeaveFormConfirmationPresented = true
+                presentLeaveFormConfirmation()
                 return
             }
 
@@ -357,7 +379,7 @@ struct ShokoFormsRootView: View {
            store.hasUnsavedCurrentChanges {
             pendingSectionAfterForm = destination
             isBackNavigationPending = true
-            isLeaveFormConfirmationPresented = true
+            presentLeaveFormConfirmation()
             return
         }
 
@@ -377,7 +399,7 @@ struct ShokoFormsRootView: View {
                 pendingSectionAfterForm = nil
                 isBackNavigationPending = false
                 isCreateStartNavigationPending = true
-                isLeaveFormConfirmationPresented = true
+                presentLeaveFormConfirmation()
             } else {
                 navigateToCreateStartAfterFormExit()
             }
@@ -395,6 +417,21 @@ struct ShokoFormsRootView: View {
         isResolvingSectionChange = false
     }
 
+    private func requestIpadEditorExit() {
+        pendingNewFormType = nil
+        pendingSectionAfterForm = nil
+        isBackNavigationPending = false
+        isCreateStartNavigationPending = false
+
+        guard store.hasActiveDocument, store.hasUnsavedCurrentChanges else {
+            navigateToCreateStartAfterFormExit()
+            return
+        }
+
+        isCreateStartNavigationPending = true
+        presentLeaveFormConfirmation()
+    }
+
     private func navigateToCreateStartAfterFormExit() {
         pendingSectionAfterForm = nil
         isBackNavigationPending = false
@@ -406,6 +443,24 @@ struct ShokoFormsRootView: View {
         selectedSection = .form
         confirmedSection = .form
         isResolvingSectionChange = false
+    }
+
+    private func discardCurrentFormToCreateStartWithAnimation() {
+        store.resetCurrentDocumentSelection()
+        presentDeleteFormVideo()
+    }
+
+    private func presentDeleteFormVideo() {
+        pendingSectionAfterForm = nil
+        isBackNavigationPending = false
+        isCreateStartNavigationPending = false
+        shouldReturnToCreateStartOnFormBack = false
+        isListPreviewNavigation = false
+        isResolvingSectionChange = true
+        selectedSection = .form
+        confirmedSection = .form
+        isResolvingSectionChange = false
+        isDeleteFormVideoPresented = true
     }
 
     private func recordNavigationHistory(from source: AppSection, to destination: AppSection) {
@@ -424,8 +479,52 @@ struct ShokoFormsRootView: View {
     }
 
     private func startNewForm(_ type: DocumentType) {
+        if hasUnsavedSavedDocumentChanges {
+            pendingNewFormType = type
+            pendingSectionAfterForm = nil
+            isBackNavigationPending = false
+            isCreateStartNavigationPending = false
+            presentLeaveFormConfirmation()
+            return
+        }
+
+        if hasUnsavedNewDraft {
+            store.resetCurrentDocumentSelection()
+        }
+
+        performStartNewForm(type)
+    }
+
+    private func presentLeaveFormConfirmation() {
+        guard !isLeaveFormConfirmationPresented else {
+            isLeaveFormConfirmationPresented = false
+            DispatchQueue.main.async {
+                isLeaveFormConfirmationPresented = true
+            }
+            return
+        }
+        isLeaveFormConfirmationPresented = true
+    }
+
+    private func cancelPendingLeaveFormAction() {
+        pendingNewFormType = nil
+        pendingSectionAfterForm = nil
+        isBackNavigationPending = false
+        isCreateStartNavigationPending = false
+    }
+
+    private func performStartNewForm(_ type: DocumentType) {
+        pendingNewFormType = nil
         store.newDocument(type: type)
+        isListPreviewNavigation = false
+        isResolvingSectionChange = true
+        if confirmedSection != .form {
+            recordNavigationHistory(from: confirmedSection, to: .form)
+        }
+        selectedSection = .form
+        confirmedSection = .form
         shouldReturnToCreateStartOnFormBack = true
+        isResolvingSectionChange = false
     }
 
     private func navigateToFormAfterManagementApply() {
@@ -448,12 +547,174 @@ struct ShokoFormsRootView: View {
                 language: interfaceLanguage,
                 onRequirePro: showProPlanForLockedAction,
                 onBack: navigateBackInApp,
-                onReturnToCreateStart: navigateToCreateStartAfterFormExit,
-                onDocumentSaved: registerPreviewIntroForSavedDocument
+                onReturnToCreateStart: discardCurrentFormToCreateStartWithAnimation,
+                onDocumentDeleted: presentDeleteFormVideo,
+                onDocumentSaved: navigateToPreviewAfterSave
             )
         } else {
             CreateFormStartScreen(language: interfaceLanguage, onSelect: startNewForm)
         }
+    }
+
+    @ViewBuilder
+    private var iPadPrimaryContent: some View {
+        if selectedSection == .account {
+            AccountManagementScreen(
+                store: store,
+                purchaseService: purchaseService,
+                selectedSection: $selectedSection,
+                isDarkModeEnabled: $isDarkModeEnabled,
+                syncButtonColorWithTableTemplate: $syncButtonColorWithTableTemplate,
+                isPDFPreviewPrinterAnimationEnabled: $isPDFPreviewPrinterAnimationEnabled,
+                isOnboardingGuidePresented: $isOnboardingGuidePresented,
+                language: interfaceLanguage
+            )
+        } else if selectedSection == .data {
+            DataManagementHubScreen(
+                store: store,
+                selectedSection: $selectedSection,
+                language: interfaceLanguage,
+                onBack: navigateBackInApp
+            )
+        } else if selectedSection == .reports {
+            ReportExportScreen(store: store, language: interfaceLanguage, onBack: navigateBackInApp)
+        } else if selectedSection == .company {
+            CompanyManagementScreen(store: store, onBack: navigateBackInApp, onAppliedToForm: navigateToFormAfterManagementApply)
+        } else if selectedSection == .files {
+            FileManagementScreen(store: store, selectedSection: $selectedSection, onBack: navigateBackInApp, onPreviewDocument: navigateToPreviewFromList)
+        } else if selectedSection == .projects {
+            ProjectManagementScreen(store: store, purchaseService: purchaseService, selectedSection: $selectedSection, focusedProjectID: $focusedProjectID, onBack: navigateBackInApp)
+        } else if selectedSection == .customers {
+            CustomerManagementScreen(store: store, onBack: navigateBackInApp, onAppliedToForm: navigateToFormAfterManagementApply)
+        } else if selectedSection == .products {
+            ProductManagementScreen(store: store, onBack: navigateBackInApp, onAppliedToForm: navigateToFormAfterManagementApply)
+        } else if selectedSection == .templates {
+            TemplateManagementScreen(store: store, onBack: navigateBackInApp)
+        } else if selectedSection == .stamp {
+            StampManagementScreen(language: interfaceLanguage, onBack: navigateBackInApp)
+        } else if selectedSection == .pro {
+            ProSubscriptionScreen(purchaseService: purchaseService, language: interfaceLanguage, onBack: navigateBackInApp)
+        } else if selectedSection == .preview, !store.hasActiveDocument {
+            EmptyPDFPreviewScreen(language: interfaceLanguage) {
+                selectedSection = .form
+            }
+        } else {
+            iPadHomeDashboardScreen(
+                store: store,
+                language: interfaceLanguage,
+                onSelectForm: startNewForm,
+                onOpenDocument: { document in
+                    store.select(document)
+                    selectedSection = .form
+                }
+            )
+        }
+    }
+
+    private var iPadEditorPresentation: Binding<Bool> {
+        Binding {
+            selectedSection == .form && store.hasActiveDocument
+        } set: { isPresented in
+            guard !isPresented, selectedSection == .form else { return }
+            guard !isDeleteFormVideoPresented else { return }
+            navigateBackInApp()
+        }
+    }
+
+    private var iPadPreviewPresentation: Binding<Bool> {
+        Binding {
+            selectedSection == .preview && store.hasActiveDocument
+        } set: { isPresented in
+            guard !isPresented, selectedSection == .preview else { return }
+            navigateBackInApp()
+        }
+    }
+
+    @ViewBuilder
+    private var iPadEditorModalContent: some View {
+        GeometryReader { proxy in
+            let panelWidth = min(max(proxy.size.width - 220, 860), 1040)
+            let panelHeight = min(max(proxy.size.height - 120, 760), 980)
+
+            ZStack {
+                Color.black.opacity(0.28)
+                    .ignoresSafeArea()
+
+                EditorScreen(
+                    store: store,
+                    purchaseService: purchaseService,
+                    language: interfaceLanguage,
+                    onRequirePro: showProPlanForLockedAction,
+                    onBack: requestIpadEditorExit,
+                    onReturnToCreateStart: discardCurrentFormToCreateStartWithAnimation,
+                    onDocumentDeleted: presentDeleteFormVideo,
+                    onDocumentSaved: navigateToPreviewAfterSave
+                )
+                .frame(width: panelWidth, height: panelHeight)
+                .background(Color.appBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                .shadow(color: Color.black.opacity(0.24), radius: 34, x: 0, y: 18)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.vertical, 36)
+        }
+        .background(Color.clear)
+        .onAppear {
+            isIpadEditorModalActive = true
+        }
+        .onDisappear {
+            isIpadEditorModalActive = false
+        }
+        .confirmationDialog(leaveFormTitle, isPresented: iPadEditorLeaveFormConfirmationPresentation, titleVisibility: .visible) {
+            Button(leaveFormSaveTitle) {
+                store.saveCurrent()
+                registerPreviewIntroForSavedDocument(store.current)
+                if let pendingNewFormType {
+                    performStartNewForm(pendingNewFormType)
+                } else if isCreateStartNavigationPending {
+                    navigateToCreateStartAfterFormExit()
+                } else {
+                    navigateToPendingSection()
+                }
+            }
+            Button(leaveFormDiscardTitle, role: .destructive) {
+                if let pendingNewFormType {
+                    store.discardCurrentChanges()
+                    performStartNewForm(pendingNewFormType)
+                } else if isCreateStartNavigationPending {
+                    discardCurrentFormToCreateStartWithAnimation()
+                } else {
+                    store.discardCurrentChanges()
+                    navigateToPendingSection()
+                }
+            }
+            Button(leaveFormContinueTitle, role: .cancel) {
+                cancelPendingLeaveFormAction()
+            }
+        } message: {
+            Text(leaveFormMessage)
+        }
+        .interactiveDismissDisabled(store.hasUnsavedCurrentChanges)
+    }
+
+    @ViewBuilder
+    private var iPadPreviewModalContent: some View {
+        let introKey = previewIntroKey(for: store.current)
+        PreviewScreen(
+            document: store.current,
+            purchaseService: purchaseService,
+            interfaceLanguage: interfaceLanguage,
+            pdfLanguage: store.pdfLanguage,
+            onRequirePro: showProPlanForLockedAction,
+            onClose: {
+                navigateBackInApp()
+            },
+            previewIntroKey: isPDFPreviewPrinterAnimationEnabled && !isListPreviewNavigation && selectedSection == .preview && pendingPreviewIntroKeys.contains(introKey) ? introKey : nil,
+            onPreviewIntroCompleted: { completedKey in
+                pendingPreviewIntroKeys.remove(completedKey)
+            }
+        )
+        .ignoresSafeArea(edges: .bottom)
     }
 
     @ViewBuilder
@@ -491,6 +752,13 @@ struct ShokoFormsRootView: View {
         pendingPreviewIntroKeys.insert(previewIntroKey(for: document))
     }
 
+    private func navigateToPreviewAfterSave(_ document: BusinessDocument) {
+        registerPreviewIntroForSavedDocument(document)
+        store.select(document)
+        isListPreviewNavigation = false
+        selectedSection = .preview
+    }
+
     private func openRecentProject(_ project: ProjectArchive) {
         focusedProjectID = project.id
         selectedSection = .projects
@@ -500,6 +768,21 @@ struct ShokoFormsRootView: View {
         store.select(document)
         isListPreviewNavigation = true
         selectedSection = .preview
+    }
+
+    private func navigateToEditorFromReminder(_ document: BusinessDocument) {
+        store.select(document)
+        isListPreviewNavigation = false
+        selectedSection = .form
+    }
+
+    private func processPendingReminderDocuments() {
+        for documentID in AppDelegate.consumePendingReminderDocumentIDs() {
+            guard let document = store.documents.first(where: { $0.id == documentID }) else {
+                continue
+            }
+            navigateToEditorFromReminder(document)
+        }
     }
 
     private func showProPlanForLockedAction() {
@@ -513,6 +796,10 @@ struct ShokoFormsRootView: View {
         selectedSection = .pro
         confirmedSection = .pro
         isResolvingSectionChange = false
+    }
+
+    private func openOnboardingGuide() {
+        isOnboardingGuidePresented = true
     }
 
     private func navigateFromOnboarding(_ section: AppSection) {
@@ -545,6 +832,8 @@ struct ShokoFormsRootView: View {
             TemplateManagementScreen(store: store, onBack: navigateBackInApp)
         case .stamp:
             StampManagementScreen(language: interfaceLanguage, onBack: navigateBackInApp)
+        case .reports:
+            ReportExportScreen(store: store, language: interfaceLanguage, onBack: navigateBackInApp)
         default:
             DataManagementHubScreen(
                 store: store,
@@ -558,7 +847,7 @@ struct ShokoFormsRootView: View {
     @ViewBuilder
     private var compactAccountContent: some View {
         if selectedSection == .pro {
-            ProSubscriptionScreen(purchaseService: purchaseService, language: interfaceLanguage)
+            ProSubscriptionScreen(purchaseService: purchaseService, language: interfaceLanguage, onBack: navigateBackInApp)
         } else {
             AccountManagementScreen(
                 store: store,
@@ -576,169 +865,280 @@ struct ShokoFormsRootView: View {
     private var companyTabTitle: String {
         switch interfaceLanguage {
         case .japanese: return "会社"
-        case .simplifiedChinese: return "公司"
-        case .english: return "Company"
+        case .simplifiedChinese, .traditionalChinese: return "公司"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Company"
         }
     }
 
     private var templateTabTitle: String {
         switch interfaceLanguage {
         case .japanese: return "テンプレート"
-        case .simplifiedChinese: return "模板"
-        case .english: return "Templates"
+        case .simplifiedChinese, .traditionalChinese: return "模板"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Templates"
         }
     }
 
     private var fileManagementTabTitle: String {
         switch interfaceLanguage {
         case .japanese: return "ファイル"
-        case .simplifiedChinese: return "文件"
-        case .english: return "Files"
+        case .simplifiedChinese, .traditionalChinese: return "文件"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Files"
         }
     }
 
     private var proTabTitle: String {
         switch interfaceLanguage {
         case .japanese: return "Pro"
-        case .simplifiedChinese: return "Pro"
-        case .english: return "Pro"
+        case .simplifiedChinese, .traditionalChinese: return "Pro"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Pro"
         }
     }
 
     private var localizedDataTitle: String {
         switch interfaceLanguage {
         case .japanese: return "データ管理"
-        case .simplifiedChinese: return "数据管理"
-        case .english: return "Data"
+        case .simplifiedChinese, .traditionalChinese: return "数据管理"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Data"
         }
     }
 
     private var cancelTitle: String {
         switch interfaceLanguage {
         case .japanese: return "キャンセル"
-        case .simplifiedChinese: return "取消"
-        case .english: return "Cancel"
+        case .simplifiedChinese, .traditionalChinese: return "取消"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Cancel"
         }
     }
 
     private var leaveFormTitle: String {
         switch interfaceLanguage {
         case .japanese: return "編集中の帳票を保存しますか？"
-        case .simplifiedChinese: return "要保存正在编辑的表单吗？"
-        case .english: return "Save the form you are editing?"
+        case .simplifiedChinese, .traditionalChinese: return "要保存正在编辑的表单吗？"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Save the form you are editing?"
         }
     }
 
     private var leaveFormMessage: String {
         switch interfaceLanguage {
         case .japanese: return "この帳票を離れる前に、保存するか、変更を破棄するか選択してください。"
-        case .simplifiedChinese: return "离开这个表单前，请选择保存、放弃更改，或继续编辑。"
-        case .english: return "Before leaving this form, choose whether to save, discard changes, or keep editing."
+        case .simplifiedChinese, .traditionalChinese: return "离开这个表单前，请选择保存、放弃更改，或继续编辑。"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Before leaving this form, choose whether to save, discard changes, or keep editing."
         }
     }
 
     private var leaveFormSaveTitle: String {
         switch interfaceLanguage {
         case .japanese: return "保存して離れる"
-        case .simplifiedChinese: return "保存并离开"
-        case .english: return "Save and Leave"
+        case .simplifiedChinese, .traditionalChinese: return "保存并离开"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Save and Leave"
         }
     }
 
     private var leaveFormDiscardTitle: String {
         switch interfaceLanguage {
         case .japanese: return "破棄して離れる"
-        case .simplifiedChinese: return "放弃并离开"
-        case .english: return "Discard and Leave"
+        case .simplifiedChinese, .traditionalChinese: return "放弃并离开"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Discard and Leave"
         }
     }
 
     private var leaveFormContinueTitle: String {
         switch interfaceLanguage {
         case .japanese: return "編集を続ける"
-        case .simplifiedChinese: return "继续编辑"
-        case .english: return "Keep Editing"
+        case .simplifiedChinese, .traditionalChinese: return "继续编辑"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Keep Editing"
         }
     }
 
     private var previewUnavailableTitle: String {
         switch interfaceLanguage {
         case .japanese: return "プレビューする帳票がありません"
-        case .simplifiedChinese: return "没有可预览的表单"
-        case .english: return "No form to preview"
+        case .simplifiedChinese, .traditionalChinese: return "没有可预览的表单"
+        case .english, .korean, .nepali, .french, .vietnamese: return "No form to preview"
         }
     }
 
     private var previewUnavailableMessage: String {
         switch interfaceLanguage {
         case .japanese: return "先に帳票を作成するか、プロジェクト一覧から既存の帳票を選択してください。"
-        case .simplifiedChinese: return "请先建立表单，或到项目列表里选择已有表单。"
-        case .english: return "Create a form first, or choose an existing form from the project list."
+        case .simplifiedChinese, .traditionalChinese: return "请先建立表单，或到项目列表里选择已有表单。"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Create a form first, or choose an existing form from the project list."
         }
     }
 
     private var previewUnavailableCreateTitle: String {
         switch interfaceLanguage {
         case .japanese: return "帳票を作成"
-        case .simplifiedChinese: return "建立表单"
-        case .english: return "Create Form"
+        case .simplifiedChinese, .traditionalChinese: return "建立表单"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Create Form"
         }
     }
 
     private var previewUnavailableProjectTitle: String {
         switch interfaceLanguage {
         case .japanese: return "プロジェクト一覧へ"
-        case .simplifiedChinese: return "前往项目列表"
-        case .english: return "Go to Projects"
+        case .simplifiedChinese, .traditionalChinese: return "前往项目列表"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Go to Projects"
         }
     }
 
     private var openedBackupImportTitle: String {
         switch interfaceLanguage {
         case .japanese: return "バックアップファイルを読み込む"
-        case .simplifiedChinese: return "导入备份文件"
-        case .english: return "Import Backup File"
+        case .simplifiedChinese, .traditionalChinese: return "导入备份文件"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Import Backup File"
         }
     }
 
     private var openedBackupMergeTitle: String {
         switch interfaceLanguage {
         case .japanese: return "既存データに結合"
-        case .simplifiedChinese: return "合并到现有数据"
-        case .english: return "Merge with Existing Data"
+        case .simplifiedChinese, .traditionalChinese: return "合并到现有数据"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Merge with Existing Data"
         }
     }
 
     private var openedBackupReplaceTitle: String {
         switch interfaceLanguage {
         case .japanese: return "バックアップから新規作成"
-        case .simplifiedChinese: return "用备份重新建立"
-        case .english: return "Replace with Backup"
+        case .simplifiedChinese, .traditionalChinese: return "用备份重新建立"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Replace with Backup"
         }
     }
 
     private var openedBackupImportMessage: String {
         switch interfaceLanguage {
         case .japanese: return "外部バックアップファイルを検出しました。読み込み方法を選択してください。"
-        case .simplifiedChinese: return "检测到外部备份文件。请选择导入方式。"
-        case .english: return "An external backup file was detected. Choose how to import it."
+        case .simplifiedChinese, .traditionalChinese: return "检测到外部备份文件。请选择导入方式。"
+        case .english, .korean, .nepali, .french, .vietnamese: return "An external backup file was detected. Choose how to import it."
         }
     }
 
     private var openedBackupStatusTitle: String {
         switch interfaceLanguage {
         case .japanese: return "バックアップ読み込み"
-        case .simplifiedChinese: return "备份导入"
-        case .english: return "Backup Import"
+        case .simplifiedChinese, .traditionalChinese: return "备份导入"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Backup Import"
         }
     }
 
+    private func processPendingOpenedFileURLs() {
+        AppDelegate.consumePendingOpenFileURLs().forEach { url in
+            readOpenedFile(from: url)
+        }
+        processPendingExternalAttachmentImportDirectories()
+    }
+
+    private func checkForUpdateIfNoExternalImport() async {
+        guard pendingExternalAttachmentImport == nil else { return }
+        await appUpdateChecker.checkForUpdateIfNeeded(language: interfaceLanguage)
+    }
+
     private func readOpenedFile(from url: URL) {
-        if url.pathExtension.lowercased() == "shokoform" {
+        if url.scheme == "shokoforms" {
+            readExternalAttachmentImportRequest(from: url)
+            return
+        }
+        let pathExtension = url.pathExtension.lowercased()
+        if pathExtension == "shokoform" {
             importOpenedForm(from: url)
+        } else if pathExtension == "shokobackup" || pathExtension == "json" {
+            readOpenedBackup(from: url)
+        } else if isExternalAttachmentFile(url) {
+            pendingExternalAttachmentImport = ExternalAttachmentImport(urls: [url])
         } else {
             readOpenedBackup(from: url)
         }
+    }
+
+    private func readExternalAttachmentImportRequest(from url: URL) {
+        guard url.host == "external-import",
+              let token = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?
+                .first(where: { $0.name == "token" })?
+                .value,
+              let directory = externalAttachmentImportDirectory(token: token)
+        else {
+            return
+        }
+        let urls = externalAttachmentImportURLs(in: directory)
+        guard !urls.isEmpty else { return }
+        isOnboardingGuidePresented = false
+        pendingExternalAttachmentImport = ExternalAttachmentImport(urls: urls, sourceDirectory: directory)
+    }
+
+    private func processPendingExternalAttachmentImportDirectories() {
+        guard pendingExternalAttachmentImport == nil,
+              let directory = nextPendingExternalAttachmentImportDirectory()
+        else {
+            return
+        }
+        let urls = externalAttachmentImportURLs(in: directory)
+        guard !urls.isEmpty else {
+            try? FileManager.default.removeItem(at: directory)
+            return
+        }
+        isOnboardingGuidePresented = false
+        pendingExternalAttachmentImport = ExternalAttachmentImport(urls: urls, sourceDirectory: directory)
+    }
+
+    private func nextPendingExternalAttachmentImportDirectory() -> URL? {
+        guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: shokoFormsAppGroupIdentifier) else {
+            return nil
+        }
+        let root = container.appendingPathComponent(shokoFormsExternalImportFolderName, isDirectory: true)
+        let directories = (try? FileManager.default.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+
+        return directories
+            .filter { url in
+                (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+            }
+            .sorted { left, right in
+                let leftDate = (try? left.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let rightDate = (try? right.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return leftDate > rightDate
+            }
+            .first { !externalAttachmentImportURLs(in: $0).isEmpty }
+    }
+
+    private func externalAttachmentImportDirectory(token: String) -> URL? {
+        guard token.range(of: #"^[A-Fa-f0-9-]{36}$"#, options: .regularExpression) != nil,
+              let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: shokoFormsAppGroupIdentifier)
+        else {
+            return nil
+        }
+        return container
+            .appendingPathComponent(shokoFormsExternalImportFolderName, isDirectory: true)
+            .appendingPathComponent(token, isDirectory: true)
+    }
+
+    private func externalAttachmentImportURLs(in directory: URL) -> [URL] {
+        let urls = (try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        let supported = urls.filter(isExternalAttachmentFile).sorted { left, right in
+            left.lastPathComponent.localizedStandardCompare(right.lastPathComponent) == .orderedAscending
+        }
+        if let pdf = supported.first(where: { UTType(filenameExtension: $0.pathExtension)?.conforms(to: .pdf) == true }) {
+            return [pdf]
+        }
+        return supported
+    }
+
+    private func cleanupExternalAttachmentImport(_ importRequest: ExternalAttachmentImport) {
+        guard let sourceDirectory = importRequest.sourceDirectory else { return }
+        try? FileManager.default.removeItem(at: sourceDirectory)
+    }
+
+    private func isExternalAttachmentFile(_ url: URL) -> Bool {
+        let type = UTType(filenameExtension: url.pathExtension)
+        return type?.conforms(to: .pdf) == true || type?.conforms(to: .image) == true
     }
 
     private func importOpenedForm(from url: URL) {
@@ -791,48 +1191,48 @@ struct ShokoFormsRootView: View {
     private var localizedOpenedBackupReadFailed: String {
         switch interfaceLanguage {
         case .japanese: return "バックアップファイルを読み込めませんでした。"
-        case .simplifiedChinese: return "无法读取备份文件。"
-        case .english: return "Could not read the backup file."
+        case .simplifiedChinese, .traditionalChinese: return "无法读取备份文件。"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Could not read the backup file."
         }
     }
 
     private var localizedOpenedBackupMergeComplete: String {
         switch interfaceLanguage {
         case .japanese: return "バックアップ内容を既存データに結合しました。"
-        case .simplifiedChinese: return "已将备份内容合并到现有数据。"
-        case .english: return "Backup content was merged with existing data."
+        case .simplifiedChinese, .traditionalChinese: return "已将备份内容合并到现有数据。"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Backup content was merged with existing data."
         }
     }
 
     private var localizedOpenedBackupReplaceComplete: String {
         switch interfaceLanguage {
         case .japanese: return "バックアップ内容から新しいデータを作成しました。"
-        case .simplifiedChinese: return "已用备份内容重新建立数据。"
-        case .english: return "New data was created from the backup."
+        case .simplifiedChinese, .traditionalChinese: return "已用备份内容重新建立数据。"
+        case .english, .korean, .nepali, .french, .vietnamese: return "New data was created from the backup."
         }
     }
 
     private var localizedOpenedBackupImportFailed: String {
         switch interfaceLanguage {
         case .japanese: return "バックアップファイルを読み込めませんでした。"
-        case .simplifiedChinese: return "无法导入备份文件。"
-        case .english: return "Could not import the backup file."
+        case .simplifiedChinese, .traditionalChinese: return "无法导入备份文件。"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Could not import the backup file."
         }
     }
 
     private var localizedOpenedFormImportComplete: String {
         switch interfaceLanguage {
         case .japanese: return "帳票ファイルを開きました。"
-        case .simplifiedChinese: return "已打开表单文件。"
-        case .english: return "The form file was opened."
+        case .simplifiedChinese, .traditionalChinese: return "已打开表单文件。"
+        case .english, .korean, .nepali, .french, .vietnamese: return "The form file was opened."
         }
     }
 
     private var localizedOpenedFormImportFailed: String {
         switch interfaceLanguage {
         case .japanese: return "帳票ファイルを開けませんでした。"
-        case .simplifiedChinese: return "无法打开表单文件。"
-        case .english: return "Could not open the form file."
+        case .simplifiedChinese, .traditionalChinese: return "无法打开表单文件。"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Could not open the form file."
         }
     }
 }
@@ -850,6 +1250,7 @@ enum AppSection: Hashable {
     case products
     case templates
     case stamp
+    case reports
     case pro
     case developerStory
 }
@@ -937,31 +1338,60 @@ private struct CreateFormStartScreen: View {
     let language: AppLanguage
     let onSelect: (DocumentType) -> Void
 
+    @AppStorage("native.shokoForms.createFormHiddenTypes.v1") private var hiddenTypeStorage = "[]"
+    @State private var isVisibilitySettingsPresented = false
     private let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
-    private let formButtonIconSize: CGFloat = 44
-    private let formButtonVerticalPadding: CGFloat = 8
+    private let formButtonIconSize = AppFontMetrics.homeIconSize
+    private let formButtonVerticalPadding = AppFontMetrics.homeVerticalPadding
 
     var body: some View {
-        ManagementScroll(title: localizedTitle, subtitle: localizedSubtitle) {
+        ManagementScroll(
+            title: localizedTitle,
+            subtitle: localizedSubtitle,
+            actionTitle: localizedVisibilitySettingsTitle,
+            actionSystemImage: "slider.horizontal.3",
+            action: { isVisibilitySettingsPresented = true }
+        ) {
             directionSection(direction: .customer)
             directionSection(direction: .vendor)
+        }
+        .sheet(isPresented: $isVisibilitySettingsPresented) {
+            FormVisibilitySettingsSheet(hiddenTypeStorage: $hiddenTypeStorage, language: language)
         }
     }
 
     private func directionSection(direction: ProjectDirection) -> some View {
-        SectionCard(title: direction.localizedTitle(language), titleWeight: .regular) {
+        SectionCard(title: createFormSectionTitle(for: direction), titleWeight: .regular) {
             VStack(alignment: .leading, spacing: 12) {
-                Label(direction.localizedSubtitle(language), systemImage: direction == .customer ? "person.crop.circle" : "shippingbox")
-                    .font(.caption.weight(.semibold))
+                Label(createFormSectionTitle(for: direction), systemImage: direction == .customer ? "person.crop.circle" : "shippingbox")
+                    .font(AppFont.sectionTitle(.semibold))
                     .foregroundColor(.appMuted)
 
-                LazyVGrid(columns: columns, spacing: 10) {
-                    ForEach(direction.requiredTypes) { type in
-                        formTypeButton(type)
+                let visibleTypes = visibleTypes(for: direction)
+                if visibleTypes.isEmpty {
+                    EmptyManagementText(text: localizedNoVisibleFormsText)
+                } else {
+                    LazyVGrid(columns: columns, spacing: 10) {
+                        ForEach(visibleTypes) { type in
+                            formTypeButton(type)
+                        }
                     }
                 }
             }
         }
+    }
+
+    private func visibleTypes(for direction: ProjectDirection) -> [DocumentType] {
+        let hiddenTypes = decodedHiddenTypes
+        return direction.requiredTypes.filter { !hiddenTypes.contains($0) }
+    }
+
+    private var decodedHiddenTypes: Set<DocumentType> {
+        guard let data = hiddenTypeStorage.data(using: .utf8),
+              let rawValues = try? JSONDecoder().decode([String].self, from: data) else {
+            return []
+        }
+        return Set(rawValues.compactMap(DocumentType.init(rawValue:)))
     }
 
     private func formTypeButton(_ type: DocumentType) -> some View {
@@ -976,11 +1406,10 @@ private struct CreateFormStartScreen: View {
                     .background(accentColor(for: type).opacity(0.12))
                     .clipShape(Circle())
 
-                Text(type.localizedTitle(language))
-                    .font(.subheadline.weight(.semibold))
+                Text(createFormTitle(for: type))
+                    .font(AppFont.cardTitle(.semibold))
                     .foregroundColor(.appInk)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.75)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.horizontal, 12)
@@ -1005,11 +1434,50 @@ private struct CreateFormStartScreen: View {
         )
     }
 
+    private var localizedVisibilitySettingsTitle: String {
+        localized(japanese: "表示する帳票", chinese: "显示表单", english: "Visible Forms")
+    }
+
+    private var localizedNoVisibleFormsText: String {
+        localized(
+            japanese: "表示する帳票がありません。右上のボタンから表示する帳票を選択してください。",
+            chinese: "目前没有显示的表单。请点右上角按钮选择要显示的表单。",
+            english: "No forms are visible. Use the top-right button to choose forms to show."
+        )
+    }
+
     private func localized(japanese: String, chinese: String, english: String) -> String {
         switch language {
         case .japanese: return japanese
         case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
+        }
+    }
+
+    private func createFormSectionTitle(for direction: ProjectDirection) -> String {
+        switch direction {
+        case .customer:
+            return localized(japanese: "顧客", chinese: "客户", english: "Customer")
+        case .vendor:
+            return localized(japanese: "取引先", chinese: "供应商", english: "Vendor")
+        }
+    }
+
+    private func createFormTitle(for type: DocumentType) -> String {
+        switch type {
+        case .customerOrder:
+            return localized(japanese: "受注ファイル", chinese: "受注文件", english: "Order File")
+        case .vendorEstimate:
+            return localized(japanese: "見積書ファイル", chinese: "报价单文件", english: "Quote File")
+        case .vendorInvoice:
+            return localized(japanese: "請求書ファイル", chinese: "请款书文件", english: "Invoice File")
+        case .vendorReceipt:
+            return localized(japanese: "領収書ファイル", chinese: "收据文件", english: "Receipt File")
+        default:
+            return type.localizedTitle(language)
         }
     }
 
@@ -1024,6 +1492,7 @@ private struct CreateFormStartScreen: View {
         case .acceptance: return "tray.full.fill"
         case .customerFiles: return "folder.fill"
         case .vendorEstimate: return "doc.text.magnifyingglass"
+        case .vendorInvoice: return "doc.richtext.fill"
         case .vendorReceipt: return "checkmark.rectangle.stack.fill"
         case .paymentNotice: return "yensign.circle.fill"
         }
@@ -1038,6 +1507,7 @@ private struct CreateFormStartScreen: View {
         case .invoice: return .appAccent
         case .receipt: return .appBlue
         case .acceptance, .vendorReceipt: return Color(red: 0.212, green: 0.702, blue: 0.816)
+        case .vendorInvoice: return Color(red: 0.349, green: 0.435, blue: 0.898)
         case .customerFiles: return Color(red: 0.431, green: 0.533, blue: 0.678)
         case .vendorEstimate: return Color(red: 0.145, green: 0.388, blue: 0.922)
         case .paymentNotice: return Color(red: 0.706, green: 0.325, blue: 0.035)
@@ -1045,9 +1515,711 @@ private struct CreateFormStartScreen: View {
     }
 }
 
+private struct iPadHomeDashboardScreen: View {
+    @ObservedObject var store: DocumentStore
+    let language: AppLanguage
+    let onSelectForm: (DocumentType) -> Void
+    let onOpenDocument: (BusinessDocument) -> Void
+
+    @Environment(\.appButtonAccent) private var buttonAccent
+    @AppStorage("native.shokoForms.createFormHiddenTypes.v1") private var hiddenTypeStorage = "[]"
+    @State private var isVisibilitySettingsPresented = false
+    @State private var heldPreviewDocument: BusinessDocument?
+    @State private var heldPreviewImage: UIImage?
+    @State private var heldPreviewFailed = false
+    private let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+    private let iconSize = AppFontMetrics.homeIconSize
+    private let verticalPadding = AppFontMetrics.homeVerticalPadding
+
+    var body: some View {
+        ManagementScroll(
+            title: localized(japanese: "帳票を作成", chinese: "建立表单", english: "Create Form"),
+            subtitle: localized(
+                japanese: "右側で作成する帳票を選び、下のリストから最近の案件と帳票をすぐに開けます。",
+                chinese: "在右侧选择要建立的表单，也可以从下方列表快速打开最近项目与文件。",
+                english: "Choose a form to create, or open recent projects and files below."
+            ),
+            actionTitle: localized(japanese: "表示する帳票", chinese: "显示表单", english: "Visible Forms"),
+            actionSystemImage: "slider.horizontal.3",
+            action: { isVisibilitySettingsPresented = true }
+        ) {
+            formDirectionSection(direction: .customer)
+            formDirectionSection(direction: .vendor)
+            recentPreviewStripSection(
+                title: localized(japanese: "顧客向け 最近の帳票", chinese: "客户最近表单", english: "Recent Customer Forms"),
+                documents: recentDocuments(for: .customer)
+            )
+            recentPreviewStripSection(
+                title: localized(japanese: "仕入先向け 最近の帳票", chinese: "厂商最近表单", english: "Recent Vendor Forms"),
+                documents: recentDocuments(for: .vendor)
+            )
+        }
+        .overlay {
+            if let heldPreviewDocument {
+                heldDocumentPreviewOverlay(document: heldPreviewDocument)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            }
+        }
+        .animation(.easeOut(duration: 0.16), value: heldPreviewDocument?.id)
+        .sheet(isPresented: $isVisibilitySettingsPresented) {
+            FormVisibilitySettingsSheet(hiddenTypeStorage: $hiddenTypeStorage, language: language)
+        }
+    }
+
+    private func formDirectionSection(direction: ProjectDirection) -> some View {
+        SectionCard(title: createFormSectionTitle(for: direction), titleWeight: .regular) {
+            VStack(alignment: .leading, spacing: 12) {
+                Label(createFormSectionTitle(for: direction), systemImage: direction == .customer ? "person.crop.circle" : "shippingbox")
+                    .font(AppFont.sectionTitle(.semibold))
+                    .foregroundColor(.appMuted)
+
+                let visibleTypes = visibleTypes(for: direction)
+                if visibleTypes.isEmpty {
+                    EmptyManagementText(text: localized(
+                        japanese: "表示する帳票がありません。右上のボタンから表示する帳票を選択してください。",
+                        chinese: "目前没有显示的表单。请点右上角按钮选择要显示的表单。",
+                        english: "No forms are visible. Use the top-right button to choose forms to show."
+                    ))
+                } else {
+                    LazyVGrid(columns: columns, spacing: 10) {
+                        ForEach(visibleTypes) { type in
+                            formTypeButton(type)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func recentPreviewStripSection(title: String, documents: [BusinessDocument]) -> some View {
+        SectionCard(title: title, titleWeight: .regular) {
+            if documents.isEmpty {
+                EmptyManagementText(text: localized(japanese: "最近の帳票はありません。", chinese: "没有最近表单。", english: "No recent forms."))
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: 12) {
+                        ForEach(documents) { document in
+                            iPadHomeDocumentPreviewCard(
+                                document: document,
+                                language: language,
+                                onPreviewHold: { document, image in
+                                    showHeldPreview(for: document, image: image)
+                                },
+                                onPreviewRelease: {
+                                    hideHeldPreview()
+                                }
+                            ) {
+                                onOpenDocument(document)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+    }
+
+    private func formTypeButton(_ type: DocumentType) -> some View {
+        Button {
+            onSelectForm(type)
+        } label: {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: iconName(for: type))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(accentColor(for: type))
+                    .frame(width: iconSize, height: iconSize)
+                    .background(accentColor(for: type).opacity(0.12))
+                    .clipShape(Circle())
+
+                Text(type.localizedTitle(language))
+                    .font(AppFont.cardTitle(.semibold))
+                    .foregroundColor(.appInk)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, verticalPadding)
+            .frame(maxWidth: .infinity, minHeight: iconSize + verticalPadding * 2, alignment: .leading)
+            .background(Color.appSidebarCard)
+            .cornerRadius(8)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appDivider))
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private func recentDocuments(for direction: ProjectDirection) -> [BusinessDocument] {
+        Array(store.documents.filter { direction.requiredTypes.contains($0.type) }.sorted { $0.updatedAt > $1.updatedAt }.prefix(10))
+    }
+
+    private func showHeldPreview(for document: BusinessDocument, image: UIImage?) {
+        heldPreviewDocument = document
+        heldPreviewFailed = false
+        if let image {
+            heldPreviewImage = image
+        }
+
+        do {
+            heldPreviewImage = try DocumentPDFExporter.previewImage(for: document, language: language, scale: 2)
+        } catch {
+            if heldPreviewImage == nil {
+                heldPreviewImage = nil
+            }
+            heldPreviewFailed = true
+        }
+    }
+
+    private func hideHeldPreview() {
+        heldPreviewDocument = nil
+        heldPreviewImage = nil
+        heldPreviewFailed = false
+    }
+
+    private func heldDocumentPreviewOverlay(document: BusinessDocument) -> some View {
+        GeometryReader { proxy in
+            let previewHeight = proxy.size.height * 0.7
+            let previewWidth = min(proxy.size.width * 0.9, previewHeight / 1.414)
+            ZStack {
+                Color.black.opacity(0.42)
+                    .ignoresSafeArea()
+
+                Group {
+                    if let heldPreviewImage {
+                        Image(uiImage: heldPreviewImage)
+                            .resizable()
+                            .scaledToFit()
+                    } else if heldPreviewFailed {
+                        VStack(spacing: 10) {
+                            Image(systemName: iconName(for: document.type))
+                                .font(.largeTitle.weight(.semibold))
+                                .foregroundColor(accentColor(for: document.type))
+                            Text(document.type.localizedTitle(language))
+                                .font(AppFont.cardTitle(.semibold))
+                                .foregroundColor(.appInk)
+                        }
+                    } else {
+                        ProgressView()
+                    }
+                }
+                .frame(width: previewWidth, height: previewHeight)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+
+    private func visibleTypes(for direction: ProjectDirection) -> [DocumentType] {
+        let hiddenTypes = decodedHiddenTypes
+        return direction.requiredTypes.filter { !hiddenTypes.contains($0) }
+    }
+
+    private var decodedHiddenTypes: Set<DocumentType> {
+        guard let data = hiddenTypeStorage.data(using: .utf8),
+              let rawValues = try? JSONDecoder().decode([String].self, from: data) else {
+            return []
+        }
+        return Set(rawValues.compactMap(DocumentType.init(rawValue:)))
+    }
+
+    private func createFormSectionTitle(for direction: ProjectDirection) -> String {
+        switch direction {
+        case .customer:
+            return localized(japanese: "顧客", chinese: "客户", english: "Customer")
+        case .vendor:
+            return localized(japanese: "取引先", chinese: "供应商", english: "Vendor")
+        }
+    }
+
+    private func localized(japanese: String, chinese: String, english: String) -> String {
+        switch language {
+        case .japanese: return japanese
+        case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
+        case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
+        }
+    }
+
+    private func iconName(for type: DocumentType) -> String {
+        switch type {
+        case .estimate: return "doc.plaintext.fill"
+        case .customerOrder: return "person.text.rectangle.fill"
+        case .purchaseOrder: return "cart.fill"
+        case .delivery: return "shippingbox.fill"
+        case .invoice: return "doc.text.fill"
+        case .receipt: return "checkmark.seal.fill"
+        case .acceptance: return "tray.full.fill"
+        case .customerFiles: return "folder.fill"
+        case .vendorEstimate: return "doc.text.magnifyingglass"
+        case .vendorInvoice: return "doc.richtext.fill"
+        case .vendorReceipt: return "checkmark.rectangle.stack.fill"
+        case .paymentNotice: return "yensign.circle.fill"
+        }
+    }
+
+    private func accentColor(for type: DocumentType) -> Color {
+        switch type {
+        case .estimate: return Color(red: 0.929, green: 0.286, blue: 0.510)
+        case .customerOrder: return .appMint
+        case .purchaseOrder: return Color(red: 0.565, green: 0.435, blue: 0.898)
+        case .delivery: return Color(red: 0.922, green: 0.553, blue: 0.196)
+        case .invoice: return .appAccent
+        case .receipt: return .appBlue
+        case .acceptance: return Color(red: 0.212, green: 0.702, blue: 0.816)
+        case .customerFiles: return Color(red: 0.431, green: 0.533, blue: 0.678)
+        case .vendorEstimate: return Color(red: 0.145, green: 0.388, blue: 0.922)
+        case .vendorInvoice: return Color(red: 0.349, green: 0.435, blue: 0.898)
+        case .vendorReceipt: return Color(red: 0.212, green: 0.702, blue: 0.816)
+        case .paymentNotice: return Color(red: 0.431, green: 0.533, blue: 0.678)
+        }
+    }
+}
+
+private struct iPadHomeDocumentPreviewCard: View {
+    let document: BusinessDocument
+    let language: AppLanguage
+    let onPreviewHold: (BusinessDocument, UIImage?) -> Void
+    let onPreviewRelease: () -> Void
+    let onOpen: () -> Void
+
+    @State private var thumbnail: UIImage?
+    @State private var didFail = false
+    @State private var isPressingPreview = false
+    @State private var didTriggerHoldPreview = false
+    @State private var previewPressTask: Task<Void, Never>?
+    private let width: CGFloat = 186
+    private let height: CGFloat = 264
+
+    var body: some View {
+        Button(action: openIfNotPreviewHold) {
+            VStack(alignment: .leading, spacing: 6) {
+                ZStack {
+                    Color.white
+                    if let thumbnail {
+                        Image(uiImage: thumbnail)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: width, height: height)
+                    } else if didFail {
+                        VStack(spacing: 8) {
+                            Image(systemName: iconName(for: document.type))
+                                .font(.title3.weight(.semibold))
+                                .foregroundColor(accentColor(for: document.type))
+                            Text(document.type.localizedTitle(language))
+                                .font(AppFont.small(.semibold))
+                                .foregroundColor(.appInk)
+                                .multilineTextAlignment(.center)
+                                .lineLimit(2)
+                        }
+                        .padding(10)
+                    } else {
+                        ProgressView()
+                            .scaleEffect(0.75)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Spacer()
+                        Text(projectDisplayName)
+                            .font(.system(size: 16, weight: .semibold))
+                            .lineLimit(1)
+                        Text(createdDateText)
+                            .font(.system(size: 16, weight: .semibold))
+                            .lineLimit(1)
+                    }
+                    .foregroundColor(.appInk)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 6)
+                    .padding(.bottom, 6)
+                    .background(
+                        LinearGradient(
+                            colors: [Color.clear, Color.white.opacity(0.92)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: 64),
+                        alignment: .bottom
+                    )
+                }
+                .frame(width: width, height: height)
+                .background(Color.white)
+                .cornerRadius(8)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appDivider))
+                .shadow(color: Color.black.opacity(0.04), radius: 3, x: 0, y: 2)
+
+                Text(document.type.localizedTitle(language))
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.appInk)
+                    .lineLimit(1)
+                    .frame(width: width, alignment: .leading)
+            }
+        }
+        .buttonStyle(PlainButtonStyle())
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    beginPreviewPress()
+                }
+                .onEnded { _ in
+                    endPreviewPress()
+                }
+        )
+        .task(id: taskID) {
+            loadThumbnail()
+        }
+        .onDisappear {
+            endPreviewPress()
+        }
+    }
+
+    private var taskID: String {
+        "\(document.id.uuidString)-\(document.updatedAt.timeIntervalSince1970)-\(language.rawValue)"
+    }
+
+    private var projectDisplayName: String {
+        let projectName = document.projectName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !projectName.isEmpty {
+            return projectName
+        }
+
+        let customerName = document.customerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !customerName.isEmpty {
+            return customerName
+        }
+
+        return document.type.localizedTitle(language)
+    }
+
+    private var createdDateText: String {
+        AppFormatters.shortDate(document.issueDate)
+    }
+
+    private func loadThumbnail() {
+        guard thumbnail == nil else { return }
+        do {
+            thumbnail = try DocumentPDFExporter.previewImage(for: document, language: language, scale: 1)
+            didFail = false
+        } catch {
+            didFail = true
+        }
+    }
+
+    private func beginPreviewPress() {
+        guard !isPressingPreview else { return }
+        isPressingPreview = true
+        didTriggerHoldPreview = false
+        previewPressTask?.cancel()
+        previewPressTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled, isPressingPreview else { return }
+            didTriggerHoldPreview = true
+            onPreviewHold(document, thumbnail)
+        }
+    }
+
+    private func endPreviewPress() {
+        guard isPressingPreview || previewPressTask != nil else { return }
+        isPressingPreview = false
+        previewPressTask?.cancel()
+        previewPressTask = nil
+        onPreviewRelease()
+        resetHoldPreviewFlagSoon()
+    }
+
+    private func openIfNotPreviewHold() {
+        guard !didTriggerHoldPreview else {
+            didTriggerHoldPreview = false
+            return
+        }
+        onOpen()
+    }
+
+    private func resetHoldPreviewFlagSoon() {
+        guard didTriggerHoldPreview else { return }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 180_000_000)
+            didTriggerHoldPreview = false
+        }
+    }
+
+    private func iconName(for type: DocumentType) -> String {
+        switch type {
+        case .estimate: return "doc.plaintext.fill"
+        case .customerOrder: return "person.text.rectangle.fill"
+        case .purchaseOrder: return "cart.fill"
+        case .delivery: return "shippingbox.fill"
+        case .invoice: return "doc.text.fill"
+        case .receipt: return "checkmark.seal.fill"
+        case .acceptance: return "tray.full.fill"
+        case .customerFiles: return "folder.fill"
+        case .vendorEstimate: return "doc.text.magnifyingglass"
+        case .vendorInvoice: return "doc.richtext.fill"
+        case .vendorReceipt: return "checkmark.rectangle.stack.fill"
+        case .paymentNotice: return "yensign.circle.fill"
+        }
+    }
+
+    private func accentColor(for type: DocumentType) -> Color {
+        switch type {
+        case .estimate: return Color(red: 0.929, green: 0.286, blue: 0.510)
+        case .customerOrder: return .appMint
+        case .purchaseOrder: return Color(red: 0.565, green: 0.435, blue: 0.898)
+        case .delivery: return Color(red: 0.922, green: 0.553, blue: 0.196)
+        case .invoice: return .appAccent
+        case .receipt: return .appBlue
+        case .acceptance: return Color(red: 0.212, green: 0.702, blue: 0.816)
+        case .customerFiles: return Color(red: 0.431, green: 0.533, blue: 0.678)
+        case .vendorEstimate: return Color(red: 0.145, green: 0.388, blue: 0.922)
+        case .vendorInvoice: return Color(red: 0.349, green: 0.435, blue: 0.898)
+        case .vendorReceipt: return Color(red: 0.212, green: 0.702, blue: 0.816)
+        case .paymentNotice: return Color(red: 0.431, green: 0.533, blue: 0.678)
+        }
+    }
+}
+
+private struct DeleteFormConfirmationVideoView: View {
+    let onComplete: () -> Void
+
+    @State private var player: AVPlayer?
+    @State private var didComplete = false
+    @State private var overlayOpacity = 0.0
+    @State private var overlayScale = 1.0
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            if let player {
+                FullScreenAspectFillPlayerView(player: player)
+                    .ignoresSafeArea()
+            }
+        }
+        .opacity(overlayOpacity)
+        .scaleEffect(overlayScale, anchor: .center)
+        .onAppear {
+            withAnimation(.easeIn(duration: 0.3)) {
+                overlayOpacity = 1.0
+                overlayScale = 1.0
+            }
+
+            guard player == nil else {
+                player?.play()
+                return
+            }
+            guard let url = Bundle.main.url(forResource: "DeleteFormConfirmationVideo", withExtension: "mov") else {
+                completeOnce()
+                return
+            }
+            let newPlayer = AVPlayer(url: url)
+            player = newPlayer
+            newPlayer.play()
+        }
+        .onDisappear {
+            player?.pause()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)) { notification in
+            guard let currentItem = player?.currentItem,
+                  let endedItem = notification.object as? AVPlayerItem,
+                  endedItem === currentItem else { return }
+            completeOnce()
+        }
+    }
+
+    private func completeOnce() {
+        guard !didComplete else { return }
+        didComplete = true
+        player?.pause()
+        withAnimation(.easeOut(duration: 0.3)) {
+            overlayOpacity = 0.0
+            overlayScale = 0.5
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            onComplete()
+        }
+    }
+}
+
+private struct FullScreenAspectFillPlayerView: UIViewRepresentable {
+    let player: AVPlayer
+
+    func makeUIView(context: Context) -> PlayerLayerContainerView {
+        let view = PlayerLayerContainerView()
+        view.playerLayer.player = player
+        view.playerLayer.videoGravity = .resizeAspectFill
+        return view
+    }
+
+    func updateUIView(_ uiView: PlayerLayerContainerView, context: Context) {
+        uiView.playerLayer.player = player
+        uiView.playerLayer.videoGravity = .resizeAspectFill
+    }
+}
+
+private final class PlayerLayerContainerView: UIView {
+    override static var layerClass: AnyClass {
+        AVPlayerLayer.self
+    }
+
+    var playerLayer: AVPlayerLayer {
+        layer as! AVPlayerLayer
+    }
+}
+
+private struct FormVisibilitySettingsSheet: View {
+    @Binding var hiddenTypeStorage: String
+    let language: AppLanguage
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationView {
+            List {
+                Section {
+                    Button(localizedShowAllTitle) {
+                        hiddenTypes = []
+                    }
+                    Button(localizedHideAllTitle) {
+                        hiddenTypes = Set(allTypes)
+                    }
+                }
+
+                visibilitySection(direction: .customer)
+                visibilitySection(direction: .vendor)
+            }
+            .listStyle(InsetGroupedListStyle())
+            .navigationTitle(localizedTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(localizedDoneTitle) {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .navigationViewStyle(StackNavigationViewStyle())
+    }
+
+    private func visibilitySection(direction: ProjectDirection) -> some View {
+        Section(header: Text(visibilitySectionTitle(for: direction))) {
+            ForEach(direction.requiredTypes) { type in
+                Toggle(isOn: visibilityBinding(for: type)) {
+                    Label(visibilityTitle(for: type), systemImage: iconName(for: type))
+                }
+            }
+        }
+    }
+
+    private func visibilityBinding(for type: DocumentType) -> Binding<Bool> {
+        Binding(
+            get: { !hiddenTypes.contains(type) },
+            set: { isVisible in
+                var updatedHiddenTypes = hiddenTypes
+                if isVisible {
+                    updatedHiddenTypes.remove(type)
+                } else {
+                    updatedHiddenTypes.insert(type)
+                }
+                hiddenTypes = updatedHiddenTypes
+            }
+        )
+    }
+
+    private var allTypes: [DocumentType] {
+        ProjectDirection.customer.requiredTypes + ProjectDirection.vendor.requiredTypes
+    }
+
+    private var hiddenTypes: Set<DocumentType> {
+        get {
+            guard let data = hiddenTypeStorage.data(using: .utf8),
+                  let rawValues = try? JSONDecoder().decode([String].self, from: data) else {
+                return []
+            }
+            return Set(rawValues.compactMap(DocumentType.init(rawValue:)))
+        }
+        nonmutating set {
+            let rawValues = newValue.map(\.rawValue).sorted()
+            guard let data = try? JSONEncoder().encode(rawValues),
+                  let encoded = String(data: data, encoding: .utf8) else {
+                hiddenTypeStorage = "[]"
+                return
+            }
+            hiddenTypeStorage = encoded
+        }
+    }
+
+    private var localizedTitle: String {
+        localized(japanese: "表示する帳票", chinese: "显示表单", english: "Visible Forms")
+    }
+
+    private var localizedShowAllTitle: String {
+        localized(japanese: "すべて表示", chinese: "全部显示", english: "Show All")
+    }
+
+    private var localizedHideAllTitle: String {
+        localized(japanese: "すべて非表示", chinese: "全部隐藏", english: "Hide All")
+    }
+
+    private var localizedDoneTitle: String {
+        localized(japanese: "完了", chinese: "完成", english: "Done")
+    }
+
+    private func localized(japanese: String, chinese: String, english: String) -> String {
+        switch language {
+        case .japanese: return japanese
+        case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
+        case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
+        }
+    }
+
+    private func visibilitySectionTitle(for direction: ProjectDirection) -> String {
+        switch direction {
+        case .customer:
+            return localized(japanese: "顧客", chinese: "客户", english: "Customer")
+        case .vendor:
+            return localized(japanese: "取引先", chinese: "供应商", english: "Vendor")
+        }
+    }
+
+    private func visibilityTitle(for type: DocumentType) -> String {
+        switch type {
+        case .customerOrder:
+            return localized(japanese: "受注ファイル", chinese: "受注文件", english: "Order File")
+        case .vendorEstimate:
+            return localized(japanese: "見積書ファイル", chinese: "报价单文件", english: "Quote File")
+        case .vendorInvoice:
+            return localized(japanese: "請求書ファイル", chinese: "请款书文件", english: "Invoice File")
+        case .vendorReceipt:
+            return localized(japanese: "領収書ファイル", chinese: "收据文件", english: "Receipt File")
+        default:
+            return type.localizedTitle(language)
+        }
+    }
+
+    private func iconName(for type: DocumentType) -> String {
+        switch type {
+        case .estimate: return "doc.plaintext.fill"
+        case .customerOrder: return "person.text.rectangle.fill"
+        case .purchaseOrder: return "cart.fill"
+        case .delivery: return "shippingbox.fill"
+        case .invoice: return "doc.text.fill"
+        case .receipt: return "checkmark.seal.fill"
+        case .acceptance: return "tray.full.fill"
+        case .customerFiles: return "folder.fill"
+        case .vendorEstimate: return "doc.text.magnifyingglass"
+        case .vendorInvoice: return "doc.richtext.fill"
+        case .vendorReceipt: return "checkmark.rectangle.stack.fill"
+        case .paymentNotice: return "yensign.circle.fill"
+        }
+    }
+}
+
 private struct EmptyPDFPreviewScreen: View {
     let language: AppLanguage
     let onCreate: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1083,12 +2255,12 @@ private struct EmptyPDFPreviewScreen: View {
     private func blankPDFPage(width: CGFloat) -> some View {
         let pageWidth = max(220, min(width - 32, 430))
         return ZStack {
-            Color.white
+            previewPageBackground
 
             Image("EmptyPDFPreviewBackground")
                 .resizable()
                 .scaledToFill()
-                .opacity(0.42)
+                .opacity(backgroundImageOpacity)
 
             VStack(spacing: 16) {
                 Image(systemName: "doc.richtext")
@@ -1115,11 +2287,10 @@ private struct EmptyPDFPreviewScreen: View {
                     Label(localizedButtonTitle, systemImage: "plus.circle.fill")
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
-                        .minimumScaleFactor(0.75)
                         .padding(.horizontal, 18)
                         .frame(height: 44)
-                        .background(Color.appInk)
-                        .foregroundColor(.white)
+                        .background(primaryActionBackground)
+                        .foregroundColor(primaryActionForeground)
                         .clipShape(Capsule())
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -1129,10 +2300,26 @@ private struct EmptyPDFPreviewScreen: View {
         .frame(width: pageWidth)
         .aspectRatio(0.707, contentMode: .fit)
         .clipped()
-        .background(Color.white)
+        .background(previewPageBackground)
         .cornerRadius(2)
         .overlay(RoundedRectangle(cornerRadius: 2).stroke(Color.appDivider))
         .shadow(color: Color.black.opacity(0.08), radius: 10, x: 0, y: 4)
+    }
+
+    private var previewPageBackground: Color {
+        colorScheme == .dark ? Color.black : Color.white
+    }
+
+    private var backgroundImageOpacity: Double {
+        colorScheme == .dark ? 0.66 : 0.42
+    }
+
+    private var primaryActionBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.16) : Color.appInk
+    }
+
+    private var primaryActionForeground: Color {
+        colorScheme == .dark ? Color.white : Color.white
     }
 
     private var localizedTitle: String {
@@ -1155,7 +2342,10 @@ private struct EmptyPDFPreviewScreen: View {
         switch language {
         case .japanese: return japanese
         case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         }
     }
 }
@@ -1181,6 +2371,7 @@ private struct DataManagementHubScreen: View {
                     dataButton(title: AppText.value(.products, language), subtitle: localizedProductSubtitle, systemImage: "shippingbox", section: .products)
                     dataButton(title: localizedTemplateTitle, subtitle: localizedTemplateSubtitle, systemImage: "text.badge.plus", section: .templates)
                     dataButton(title: localizedStampTitle, subtitle: localizedStampSubtitle, systemImage: "seal", section: .stamp)
+                    dataButton(title: localizedReportTitle, subtitle: localizedReportSubtitle, systemImage: "square.and.arrow.up.on.square", section: .reports)
                 }
             }
         }
@@ -1203,7 +2394,6 @@ private struct DataManagementHubScreen: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundColor(.appInk)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.75)
                     Text(subtitle)
                         .font(.caption.weight(.semibold))
                         .foregroundColor(.appMuted)
@@ -1229,6 +2419,7 @@ private struct DataManagementHubScreen: View {
     private var localizedFileTitle: String { localized(japanese: "ファイル管理", chinese: "文件管理", english: "File Management") }
     private var localizedTemplateTitle: String { localized(japanese: "テンプレート", chinese: "模板", english: "Templates") }
     private var localizedStampTitle: String { localized(japanese: "印章管理", chinese: "印章管理", english: "Stamp Management") }
+    private var localizedReportTitle: String { localized(japanese: "レポート出力", chinese: "输出报告", english: "Export Reports") }
     private var localizedCompanySubtitle: String { localized(japanese: "自社情報、登録番号、連絡先", chinese: "公司信息、登记编号、联系人", english: "Company details and registration") }
     private var localizedFileSubtitle: String { localized(japanese: "保存済み帳票を取引先別に整理", chinese: "按客户/供应商整理已保存表单", english: "Browse saved forms by partner") }
     private var localizedProjectSubtitle: String { localized(japanese: "プロジェクト別の帳票進捗", chinese: "按项目管理表单进度", english: "Track forms by project") }
@@ -1236,12 +2427,1524 @@ private struct DataManagementHubScreen: View {
     private var localizedProductSubtitle: String { localized(japanese: "商品・項目の候補", chinese: "商品/品项候选资料", english: "Product and item profiles") }
     private var localizedTemplateSubtitle: String { localized(japanese: "振込、備考、条件文", chinese: "汇款、备注、条件文字", english: "Payment, notes, and terms") }
     private var localizedStampSubtitle: String { localized(japanese: "PDF押印用の初期印章", chinese: "PDF 盖章用默认印章", english: "Default stamp for PDF stamping") }
+    private var localizedReportSubtitle: String { localized(japanese: "帳票、案件、取引先の集計設計", chinese: "表单、项目、客户的汇总设计", english: "Report designs for forms, projects, and partners") }
 
     private func localized(japanese: String, chinese: String, english: String) -> String {
         switch language {
         case .japanese: return japanese
         case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
+        }
+    }
+}
+
+private struct ReportExportScreen: View {
+    @ObservedObject var store: DocumentStore
+    let language: AppLanguage
+    let onBack: () -> Void
+    @State private var selectedReport: ReportDesign?
+    @State private var selectedDataList: ReportDataListKind?
+
+    private var reports: [ReportDesign] {
+        ReportDesign.templates(language: language, store: store)
+    }
+
+    var body: some View {
+        ManagementScroll(title: localizedTitle, subtitle: localizedSubtitle, onBack: onBack) {
+            SectionCard(title: localizedOverviewTitle, titleWeight: .regular) {
+                VStack(spacing: 10) {
+                    Button {
+                        selectedDataList = .documents
+                    } label: {
+                        ReportDataSummaryRow(title: localizedFormsMetric, detail: localizedFormsDetail, value: "\(store.documents.count)", systemImage: "doc.text")
+                    }
+                    .buttonStyle(PlainButtonStyle())
+
+                    Button {
+                        selectedDataList = .projects
+                    } label: {
+                        ReportDataSummaryRow(title: localizedProjectsMetric, detail: localizedProjectsDetail, value: "\(store.projects.count)", systemImage: "folder")
+                    }
+                    .buttonStyle(PlainButtonStyle())
+
+                    Button {
+                        selectedDataList = .partners
+                    } label: {
+                        ReportDataSummaryRow(title: localizedPartnersMetric, detail: localizedPartnersDetail, value: "\(store.customers.count)", systemImage: "building.2")
+                    }
+                    .buttonStyle(PlainButtonStyle())
+
+                    Button {
+                        selectedDataList = .products
+                    } label: {
+                        ReportDataSummaryRow(title: localizedProductsMetric, detail: localizedProductsDetail, value: "\(store.products.count)", systemImage: "shippingbox")
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+
+            SectionCard(title: localizedListTitle, titleWeight: .regular) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(localizedListHelp)
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.appMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    ForEach(reports) { report in
+                        ReportDesignCard(report: report, language: language) {
+                            selectedReport = report
+                        }
+                    }
+                }
+            }
+        }
+        .sheet(item: $selectedReport) { report in
+            ReportConfigurationSheet(store: store, report: report, language: language)
+        }
+        .sheet(item: $selectedDataList) { listKind in
+            ReportDataListSheet(store: store, kind: listKind, language: language)
+        }
+    }
+
+    private var localizedTitle: String { localized(japanese: "レポート出力", chinese: "输出报告", english: "Export Reports") }
+    private var localizedSubtitle: String {
+        localized(
+            japanese: "Shoko Forms の業務データから作成できるレポート設計を確認します。",
+            chinese: "查看可根据 Shoko Forms 业务数据设计的报告清单。",
+            english: "Review report designs that can be generated from Shoko Forms business data."
+        )
+    }
+    private var localizedOverviewTitle: String { localized(japanese: "現在のデータ", chinese: "当前数据", english: "Current Data") }
+    private var localizedListTitle: String { localized(japanese: "設計できるレポート", chinese: "可设计的报告", english: "Report Designs") }
+    private var localizedListHelp: String {
+        localized(
+            japanese: "各レポートは期間、取引先、プロジェクト、帳票種類などで絞り込める想定です。CSV、PDF、表計算出力に拡張できます。",
+            chinese: "每个报告都可按期间、客户/供应商、项目、表单类型等条件筛选，后续可扩展为 CSV、PDF 或表格输出。",
+            english: "Each report can be filtered by period, partner, project, and form type, then expanded to CSV, PDF, or spreadsheet export."
+        )
+    }
+    private var localizedFormsMetric: String { localized(japanese: "保存済み帳票", chinese: "已保存表单", english: "Saved Forms") }
+    private var localizedProjectsMetric: String { localized(japanese: "プロジェクト", chinese: "项目", english: "Projects") }
+    private var localizedPartnersMetric: String { localized(japanese: "取引先候補", chinese: "客户/供应商", english: "Partner Profiles") }
+    private var localizedProductsMetric: String { localized(japanese: "商品候補", chinese: "商品", english: "Products") }
+    private var localizedFormsDetail: String {
+        localized(
+            japanese: "請求書、領収書、見積書、仕入先請求書など。売上、入金、未収、支払レポートの主データです。",
+            chinese: "请款书、收据、报价单、厂商请款书等，是收入、收款、未收与付款报告的主要资料。",
+            english: "Invoices, receipts, quotes, and vendor invoices used by revenue, payment, receivable, and payable reports."
+        )
+    }
+    private var localizedProjectsDetail: String {
+        localized(
+            japanese: "関連帳票を案件単位でまとめます。案件別収支、進捗、粗利の確認に使います。",
+            chinese: "把相关表单按项目归组，用于项目收支、进度和毛利确认。",
+            english: "Groups related forms by project for project income, cost, progress, and margin review."
+        )
+    }
+    private var localizedPartnersDetail: String {
+        localized(
+            japanese: "顧客・仕入先の候補データ。取引先別の請求、入金、支払集計に使います。",
+            chinese: "客户与厂商候选资料，用于按交易对象汇总请款、收款和付款。",
+            english: "Customer and vendor candidates used for partner-based billing, payment, and collection summaries."
+        )
+    }
+    private var localizedProductsDetail: String {
+        localized(
+            japanese: "帳票明細で使う商品・項目候補。カテゴリ別、商品別の集計に使います。",
+            chinese: "表单明细使用的商品/品项候选资料，用于类别或商品别汇总。",
+            english: "Product and item candidates used by category and product summaries."
+        )
+    }
+
+    private func localized(japanese: String, chinese: String, english: String) -> String {
+        switch language {
+        case .japanese: return japanese
+        case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
+        case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
+        }
+    }
+}
+
+private struct ReportDesign: Identifiable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let source: String
+    let filters: [String]
+    let columns: [String]
+    let recordCount: Int
+
+    static func templates(language: AppLanguage, store: DocumentStore) -> [ReportDesign] {
+        let customerRevenueTypes: Set<DocumentType> = [.estimate, .customerOrder, .delivery, .invoice, .receipt]
+        let vendorCostTypes: Set<DocumentType> = [.vendorEstimate, .purchaseOrder, .acceptance, .vendorInvoice, .vendorReceipt]
+
+        return [
+            ReportDesign(
+                id: "customer-payment-history",
+                title: localized(language, japanese: "顧客別入金・未収レポート", chinese: "客户别收款与未收报告", english: "Customer Payment and Receivables Report"),
+                subtitle: localized(language, japanese: "指定期間と顧客を選び、請求済み・入金済み・未収の記録を確認します。", chinese: "选择某段时间和某一个客户，查看已请款、已收款、未收款纪录。", english: "Choose a period and customer to review invoiced, paid, and unpaid records."),
+                systemImage: "person.crop.circle.badge.checkmark",
+                source: localized(language, japanese: "請求書・領収書", chinese: "请款书与收据", english: "Invoices and receipts"),
+                filters: customerPaymentFilters(language),
+                columns: [
+                    localized(language, japanese: "請求日", chinese: "请款日", english: "Invoice date"),
+                    localized(language, japanese: "入金日", chinese: "收款日", english: "Payment date"),
+                    localized(language, japanese: "取引先", chinese: "客户", english: "Customer"),
+                    localized(language, japanese: "帳票番号", chinese: "表单编号", english: "Form number"),
+                    localized(language, japanese: "請求額", chinese: "请款金额", english: "Invoice amount"),
+                    localized(language, japanese: "入金状態", chinese: "收款状态", english: "Payment status")
+                ],
+                recordCount: store.documents.filter { $0.type == .invoice || $0.type == .receipt }.count
+            ),
+            ReportDesign(
+                id: "all-customer-income",
+                title: localized(language, japanese: "全顧客売上・入金集計", chinese: "全部客户收入与收款汇总", english: "All Customer Revenue and Payments"),
+                subtitle: localized(language, japanese: "指定期間の全顧客について、売上、請求、入金、未収を顧客別・月別に集計します。", chinese: "汇总某段时间全部客户的收入、请款、收款和未收，可按客户或月份查看。", english: "Summarizes revenue, invoicing, payments, and receivables for all customers over a period."),
+                systemImage: "chart.bar.xaxis",
+                source: localized(language, japanese: "顧客向け帳票", chinese: "客户向表单", english: "Customer-facing forms"),
+                filters: periodCategoryFilters(language) + [localized(language, japanese: "集計単位", chinese: "汇总单位", english: "Group by")],
+                columns: [
+                    localized(language, japanese: "取引先", chinese: "客户", english: "Customer"),
+                    localized(language, japanese: "期間", chinese: "期间", english: "Period"),
+                    localized(language, japanese: "売上額", chinese: "收入金额", english: "Revenue"),
+                    localized(language, japanese: "請求額", chinese: "请款金额", english: "Billed"),
+                    localized(language, japanese: "入金額", chinese: "收款金额", english: "Received"),
+                    localized(language, japanese: "未収額", chinese: "未收金额", english: "Outstanding")
+                ],
+                recordCount: store.documents.filter { customerRevenueTypes.contains($0.type) }.count
+            ),
+            ReportDesign(
+                id: "vendor-billing-payment",
+                title: localized(language, japanese: "仕入先請求・支払レポート", chinese: "厂商请款与付款报告", english: "Vendor Billing and Payment Report"),
+                subtitle: localized(language, japanese: "指定期間と仕入先を選び、仕入先からの請求、支払済み、未払を確認します。", chinese: "选择某段时间和某个厂商，查看厂商请款、已付款和未付款纪录。", english: "Choose a period and vendor to review vendor invoices, paid amounts, and unpaid payables."),
+                systemImage: "building.2.crop.circle",
+                source: localized(language, japanese: "仕入先請求書・領収書", chinese: "厂商请款书与收据", english: "Vendor invoices and receipts"),
+                filters: vendorPaymentFilters(language),
+                columns: [
+                    localized(language, japanese: "請求日", chinese: "请款日", english: "Invoice date"),
+                    localized(language, japanese: "支払日", chinese: "付款日", english: "Payment date"),
+                    localized(language, japanese: "仕入先", chinese: "供应商", english: "Vendor"),
+                    localized(language, japanese: "請求番号", chinese: "请款编号", english: "Invoice number"),
+                    localized(language, japanese: "請求額", chinese: "请款金额", english: "Billed"),
+                    localized(language, japanese: "支払状態", chinese: "付款状态", english: "Payment status")
+                ],
+                recordCount: store.documents.filter { $0.type == .vendorInvoice || $0.type == .vendorReceipt }.count
+            ),
+            ReportDesign(
+                id: "all-vendor-payables",
+                title: localized(language, japanese: "全仕入先請求・支払集計", chinese: "全部厂商请款与付款汇总", english: "All Vendor Billing and Payables"),
+                subtitle: localized(language, japanese: "指定期間の全仕入先について、請求、支払、未払を仕入先別・月別に集計します。", chinese: "汇总某段时间全部厂商的请款、付款和未付款，可按厂商或月份查看。", english: "Summarizes vendor billing, payments, and unpaid payables for all vendors over a period."),
+                systemImage: "chart.pie",
+                source: localized(language, japanese: "仕入先向け帳票", chinese: "供应商向表单", english: "Vendor-facing forms"),
+                filters: periodCategoryFilters(language) + [localized(language, japanese: "集計単位", chinese: "汇总单位", english: "Group by")],
+                columns: [
+                    localized(language, japanese: "仕入先", chinese: "供应商", english: "Vendor"),
+                    localized(language, japanese: "期間", chinese: "期间", english: "Period"),
+                    localized(language, japanese: "仕入額", chinese: "采购金额", english: "Purchase amount"),
+                    localized(language, japanese: "請求額", chinese: "请款金额", english: "Billed"),
+                    localized(language, japanese: "支払額", chinese: "付款金额", english: "Paid"),
+                    localized(language, japanese: "未払額", chinese: "未付款金额", english: "Unpaid")
+                ],
+                recordCount: store.documents.filter { vendorCostTypes.contains($0.type) }.count
+            ),
+            ReportDesign(
+                id: "category-cashflow",
+                title: localized(language, japanese: "カテゴリ別入出金レポート", chinese: "类别别收入与支出报告", english: "Category Cashflow Report"),
+                subtitle: localized(language, japanese: "帳票種類、商品カテゴリ、案件カテゴリなどの分類で、入金・支払の有無と金額を確認します。", chinese: "按表单类型、商品类别或项目类别，查看是否有收款/付款纪录和金额。", english: "Checks payment presence and amounts by form type, product category, or project category."),
+                systemImage: "square.grid.2x2",
+                source: localized(language, japanese: "帳票・明細・プロジェクト", chinese: "表单、明细与项目", english: "Forms, line items, and projects"),
+                filters: periodCategoryFilters(language) + [
+                    localized(language, japanese: "カテゴリ種類", chinese: "类别种类", english: "Category type"),
+                    localized(language, japanese: "入出金状態", chinese: "收付款状态", english: "Cashflow status")
+                ],
+                columns: [
+                    localized(language, japanese: "カテゴリ", chinese: "类别", english: "Category"),
+                    localized(language, japanese: "件数", chinese: "件数", english: "Count"),
+                    localized(language, japanese: "入金額", chinese: "收款金额", english: "Received"),
+                    localized(language, japanese: "支払額", chinese: "付款金额", english: "Paid"),
+                    localized(language, japanese: "差額", chinese: "差额", english: "Net amount")
+                ],
+                recordCount: store.documents.count
+            ),
+            ReportDesign(
+                id: "unpaid-unreceived",
+                title: localized(language, japanese: "未収・未払リスト", chinese: "未收与未付款列表", english: "Outstanding Receivables and Payables"),
+                subtitle: localized(language, japanese: "期間内または期限超過の未収金、仕入先への未払金を一覧で確認します。", chinese: "列出某段时间内或已过期的未收款，以及对厂商的未付款。", english: "Lists unpaid customer receivables and unpaid vendor payables within or past a period."),
+                systemImage: "exclamationmark.circle",
+                source: localized(language, japanese: "請求書・仕入先請求書", chinese: "请款书与厂商请款书", english: "Customer and vendor invoices"),
+                filters: [
+                    localized(language, japanese: "期間", chinese: "期间", english: "Period"),
+                    localized(language, japanese: "期限超過のみ", chinese: "只看逾期", english: "Overdue only"),
+                    localized(language, japanese: "顧客/仕入先", chinese: "客户/厂商", english: "Customer/vendor"),
+                    localized(language, japanese: "金額範囲", chinese: "金额范围", english: "Amount range"),
+                    localized(language, japanese: "出力形式", chinese: "输出格式", english: "Export format")
+                ],
+                columns: [
+                    localized(language, japanese: "区分", chinese: "区分", english: "Type"),
+                    localized(language, japanese: "期限", chinese: "期限", english: "Due date"),
+                    localized(language, japanese: "取引先", chinese: "客户/厂商", english: "Partner"),
+                    localized(language, japanese: "帳票番号", chinese: "表单编号", english: "Form number"),
+                    localized(language, japanese: "未決済額", chinese: "未结算金额", english: "Outstanding amount")
+                ],
+                recordCount: store.documents.filter { $0.type == .invoice || $0.type == .vendorInvoice }.count
+            ),
+            ReportDesign(
+                id: "project-profit",
+                title: localized(language, japanese: "案件別収支レポート", chinese: "项目别收支报告", english: "Project Income and Cost Report"),
+                subtitle: localized(language, japanese: "案件ごとに顧客からの入金、仕入先への支払、粗利を比較します。", chinese: "按项目比较客户收入、厂商支出和毛利。", english: "Compares customer income, vendor costs, and gross margin by project."),
+                systemImage: "folder.badge.gearshape",
+                source: localized(language, japanese: "プロジェクト帳票", chinese: "项目表单", english: "Project forms"),
+                filters: periodCategoryFilters(language) + [
+                    localized(language, japanese: "案件", chinese: "项目", english: "Project"),
+                    localized(language, japanese: "収支状態", chinese: "收支状态", english: "Profit status")
+                ],
+                columns: [
+                    localized(language, japanese: "案件名", chinese: "项目名", english: "Project name"),
+                    localized(language, japanese: "顧客入金", chinese: "客户收款", english: "Customer received"),
+                    localized(language, japanese: "仕入支払", chinese: "厂商付款", english: "Vendor paid"),
+                    localized(language, japanese: "未収・未払", chinese: "未收/未付", english: "Outstanding"),
+                    localized(language, japanese: "粗利", chinese: "毛利", english: "Gross margin")
+                ],
+                recordCount: store.projects.count
+            ),
+            ReportDesign(
+                id: "form-type-summary",
+                title: localized(language, japanese: "帳票種類別集計", chinese: "表单类别汇总", english: "Form Type Summary"),
+                subtitle: localized(language, japanese: "見積、請求、領収、仕入先請求など、帳票カテゴリごとの件数と金額を指定期間で確認します。", chinese: "按报价、请款、收据、厂商请款等表单类别，查看某段时间的件数和金额。", english: "Reviews counts and amounts by form category, such as quotes, invoices, receipts, and vendor invoices."),
+                systemImage: "doc.on.doc",
+                source: localized(language, japanese: "すべての帳票", chinese: "全部表单", english: "All forms"),
+                filters: periodCategoryFilters(language) + [
+                    localized(language, japanese: "帳票種類", chinese: "表单类型", english: "Form type"),
+                    localized(language, japanese: "顧客/仕入先", chinese: "客户/厂商", english: "Customer/vendor")
+                ],
+                columns: [
+                    localized(language, japanese: "帳票種類", chinese: "表单类型", english: "Form type"),
+                    localized(language, japanese: "件数", chinese: "件数", english: "Count"),
+                    localized(language, japanese: "税抜合計", chinese: "未税合计", english: "Subtotal"),
+                    localized(language, japanese: "税込合計", chinese: "含税合计", english: "Total"),
+                    localized(language, japanese: "決済状態", chinese: "结算状态", english: "Settlement status")
+                ],
+                recordCount: store.documents.count
+            )
+        ]
+    }
+
+    private static func customerPaymentFilters(_ language: AppLanguage) -> [String] {
+        [
+            localized(language, japanese: "期間", chinese: "期间", english: "Period"),
+            localized(language, japanese: "顧客", chinese: "客户", english: "Customer"),
+            localized(language, japanese: "帳票カテゴリ", chinese: "表单类别", english: "Form category"),
+            localized(language, japanese: "入金状態", chinese: "收款状态", english: "Payment status"),
+            localized(language, japanese: "出力形式", chinese: "输出格式", english: "Export format")
+        ]
+    }
+
+    private static func vendorPaymentFilters(_ language: AppLanguage) -> [String] {
+        [
+            localized(language, japanese: "期間", chinese: "期间", english: "Period"),
+            localized(language, japanese: "仕入先", chinese: "厂商", english: "Vendor"),
+            localized(language, japanese: "帳票カテゴリ", chinese: "表单类别", english: "Form category"),
+            localized(language, japanese: "支払状態", chinese: "付款状态", english: "Payment status"),
+            localized(language, japanese: "出力形式", chinese: "输出格式", english: "Export format")
+        ]
+    }
+
+    private static func periodCategoryFilters(_ language: AppLanguage) -> [String] {
+        [
+            localized(language, japanese: "期間", chinese: "期间", english: "Period"),
+            localized(language, japanese: "顧客/仕入先", chinese: "客户/厂商", english: "Customer/vendor"),
+            localized(language, japanese: "カテゴリ", chinese: "类别", english: "Category"),
+            localized(language, japanese: "出力言語", chinese: "输出语言", english: "Output language"),
+            localized(language, japanese: "出力形式", chinese: "输出格式", english: "Export format")
+        ]
+    }
+
+    private static func localized(_ language: AppLanguage, japanese: String, chinese: String, english: String) -> String {
+        switch language {
+        case .japanese: return japanese
+        case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
+        case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
+        }
+    }
+}
+
+private extension ReportDesign {
+    var isVendorReport: Bool {
+        id == "vendor-billing-payment" || id == "all-vendor-payables"
+    }
+
+    var supportsGrouping: Bool {
+        id == "all-customer-income" ||
+            id == "all-vendor-payables" ||
+            id == "category-cashflow" ||
+            id == "project-profit" ||
+            id == "form-type-summary"
+    }
+
+    func matches(_ document: BusinessDocument) -> Bool {
+        switch id {
+        case "customer-payment-history":
+            return document.type == .invoice || document.type == .receipt
+        case "all-customer-income":
+            return Set<DocumentType>([.estimate, .customerOrder, .delivery, .invoice, .receipt]).contains(document.type)
+        case "vendor-billing-payment":
+            return document.type == .vendorInvoice || document.type == .vendorReceipt
+        case "all-vendor-payables":
+            return Set<DocumentType>([.vendorEstimate, .purchaseOrder, .acceptance, .vendorInvoice, .vendorReceipt]).contains(document.type)
+        case "category-cashflow", "form-type-summary":
+            return true
+        case "unpaid-unreceived":
+            return document.type == .invoice || document.type == .vendorInvoice
+        case "project-profit":
+            return document.projectId != nil
+        default:
+            return true
+        }
+    }
+}
+
+private struct ReportMetricRow: View {
+    let title: String
+    let value: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.appInk)
+                .frame(width: 36, height: 36)
+                .background(Color.appInputBackground)
+                .clipShape(Circle())
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.appInk)
+            Spacer()
+            Text(value)
+                .font(.headline.weight(.semibold))
+                .foregroundColor(.appInk)
+        }
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+        .background(Color.appPanel)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appDivider))
+        .cornerRadius(8)
+    }
+}
+
+private struct ReportDataSummaryRow: View {
+    let title: String
+    let detail: String
+    let value: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.appInk)
+                .frame(width: 36, height: 36)
+                .background(Color.appInputBackground)
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.appInk)
+                        .lineLimit(1)
+                    Spacer(minLength: 8)
+                    Text(value)
+                        .font(.title3.weight(.semibold))
+                        .foregroundColor(.appInk)
+                        .lineLimit(1)
+                }
+
+                Text(detail)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.appMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.appPanel)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appDivider))
+        .cornerRadius(8)
+    }
+}
+
+private enum ReportDataListKind: String, Identifiable {
+    case documents
+    case projects
+    case partners
+    case products
+
+    var id: String { rawValue }
+}
+
+private struct ReportDataListSheet: View {
+    @ObservedObject var store: DocumentStore
+    let kind: ReportDataListKind
+    let language: AppLanguage
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                SectionCard(title: localizedCountTitle, titleWeight: .regular) {
+                    VStack(spacing: 10) {
+                        content
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 18)
+            }
+            .background(Color.appBackground.edgesIgnoringSafeArea(.all))
+            .navigationTitle(localizedTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(localizedDoneTitle) {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch kind {
+        case .documents:
+            if store.documents.isEmpty {
+                EmptyManagementText(text: localizedEmptyText)
+            } else {
+                ForEach(store.documents.sorted { $0.updatedAt > $1.updatedAt }) { document in
+                    ReportDataListRow(
+                        systemImage: document.type.isVendorForm ? "building.2" : "doc.text",
+                        title: documentTitle(document),
+                        subtitle: documentSubtitle(document),
+                        value: AppFormatters.yen(document.total, language: language)
+                    )
+                }
+            }
+        case .projects:
+            if store.projects.isEmpty {
+                EmptyManagementText(text: localizedEmptyText)
+            } else {
+                ForEach(store.projects) { project in
+                    ReportDataListRow(
+                        systemImage: "folder",
+                        title: project.name,
+                        subtitle: projectSubtitle(project),
+                        value: "\(project.documents.count)"
+                    )
+                }
+            }
+        case .partners:
+            if store.customers.isEmpty {
+                EmptyManagementText(text: localizedEmptyText)
+            } else {
+                ForEach(store.customers.sorted { $0.updatedAt > $1.updatedAt }) { customer in
+                    ReportDataListRow(
+                        systemImage: "building.2",
+                        title: customer.name,
+                        subtitle: partnerSubtitle(customer),
+                        value: AppFormatters.shortDate(customer.updatedAt)
+                    )
+                }
+            }
+        case .products:
+            if store.products.isEmpty {
+                EmptyManagementText(text: localizedEmptyText)
+            } else {
+                ForEach(store.products.sorted { $0.updatedAt > $1.updatedAt }) { product in
+                    ReportDataListRow(
+                        systemImage: "shippingbox",
+                        title: product.name,
+                        subtitle: productSubtitle(product),
+                        value: AppFormatters.yen(product.unitPrice, language: language)
+                    )
+                }
+            }
+        }
+    }
+
+    private var localizedTitle: String {
+        switch kind {
+        case .documents: return localized(japanese: "保存済み帳票", chinese: "已保存表单", english: "Saved Forms")
+        case .projects: return localized(japanese: "プロジェクト", chinese: "项目", english: "Projects")
+        case .partners: return localized(japanese: "取引先候補", chinese: "客户/供应商", english: "Partner Profiles")
+        case .products: return localized(japanese: "商品候補", chinese: "商品", english: "Products")
+        }
+    }
+
+    private var localizedCountTitle: String {
+        localized(japanese: "全部リスト（\(recordCount)件）", chinese: "全部列表（\(recordCount) 件）", english: "Full List (\(recordCount))")
+    }
+
+    private var localizedEmptyText: String {
+        localized(japanese: "表示できるデータがありません。", chinese: "没有可显示的数据。", english: "No data to show.")
+    }
+
+    private var localizedDoneTitle: String {
+        localized(japanese: "完了", chinese: "完成", english: "Done")
+    }
+
+    private var recordCount: Int {
+        switch kind {
+        case .documents: return store.documents.count
+        case .projects: return store.projects.count
+        case .partners: return store.customers.count
+        case .products: return store.products.count
+        }
+    }
+
+    private func documentTitle(_ document: BusinessDocument) -> String {
+        let number = document.number.trimmingCharacters(in: .whitespacesAndNewlines)
+        let type = document.type.localizedTitle(language)
+        return number.isEmpty ? type : "\(type) \(number)"
+    }
+
+    private func documentSubtitle(_ document: BusinessDocument) -> String {
+        let partner = document.customerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let partnerText = partner.isEmpty ? localized(japanese: "取引先未入力", chinese: "未填写客户/供应商", english: "No partner") : partner
+        return "\(AppFormatters.shortDate(document.issueDate)) / \(partnerText)"
+    }
+
+    private func projectSubtitle(_ project: ProjectArchive) -> String {
+        let partner = project.customerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let partnerText = partner.isEmpty ? localized(japanese: "取引先未入力", chinese: "未填写客户/供应商", english: "No partner") : partner
+        return "\(project.direction.localizedTitle(language)) / \(partnerText) / \(AppFormatters.shortDate(project.updatedAt))"
+    }
+
+    private func partnerSubtitle(_ customer: CustomerProfile) -> String {
+        [customer.contact, customer.phone ?? "", customer.email ?? "", customer.address]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " / ")
+    }
+
+    private func productSubtitle(_ product: ProductProfile) -> String {
+        [product.model, product.specification]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " / ")
+    }
+
+    private func localized(japanese: String, chinese: String, english: String) -> String {
+        switch language {
+        case .japanese: return japanese
+        case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
+        case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
+        }
+    }
+}
+
+private struct ReportDataListRow: View {
+    let systemImage: String
+    let title: String
+    let subtitle: String
+    let value: String
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.appInk)
+                .frame(width: 36, height: 36)
+                .background(Color.appInputBackground)
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title.isEmpty ? "-" : title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.appInk)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.appMuted)
+                        .lineLimit(2)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.appInk)
+                .lineLimit(1)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+        .background(Color.appPanel)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appDivider))
+        .cornerRadius(8)
+    }
+}
+
+private struct ReportDesignCard: View {
+    let report: ReportDesign
+    let language: AppLanguage
+    let onAdjustSettings: () -> Void
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: report.systemImage)
+                            .font(.headline.weight(.semibold))
+                            .foregroundColor(.appInk)
+                            .frame(width: 44, height: 44)
+                            .background(Color.appInputBackground)
+                            .clipShape(Circle())
+
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(report.title)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(.appInk)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(report.subtitle)
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(.appMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        Spacer(minLength: 8)
+
+                        Image(systemName: isExpanded ? "chevron.up.circle.fill" : "chevron.down.circle")
+                            .font(.headline.weight(.semibold))
+                            .foregroundColor(.appMuted)
+                    }
+
+                    HStack(spacing: 8) {
+                        ReportPill(title: localizedSourceTitle, value: report.source)
+                        ReportPill(title: localizedRecordTitle, value: "\(report.recordCount)")
+                    }
+                }
+            }
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel(Text(isExpanded ? localizedCollapseTitle : localizedExpandTitle))
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 12) {
+                    ReportTagGroup(title: localizedFilterTitle, values: report.filters)
+                    ReportTagGroup(title: localizedColumnTitle, values: report.columns)
+
+                    Button {
+                        onAdjustSettings()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Spacer()
+                            Text(localizedOpenTitle)
+                                .font(.caption.weight(.semibold))
+                            Image(systemName: "slider.horizontal.3")
+                                .font(.caption.weight(.bold))
+                        }
+                        .foregroundColor(.appInk)
+                        .frame(maxWidth: .infinity, minHeight: 40)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .accessibilityLabel(Text(localizedOpenTitle))
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.appPanel)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appDivider))
+        .cornerRadius(8)
+    }
+
+    private var localizedSourceTitle: String { localized(japanese: "資料源", chinese: "资料源", english: "Source") }
+    private var localizedRecordTitle: String { localized(japanese: "対象件数", chinese: "对象件数", english: "Records") }
+    private var localizedFilterTitle: String { localized(japanese: "可設定フィルター", chinese: "可设置筛选", english: "Configurable Filters") }
+    private var localizedColumnTitle: String { localized(japanese: "出力項目", chinese: "输出项目", english: "Output Columns") }
+    private var localizedOpenTitle: String { localized(japanese: "設定を調整", chinese: "调整设置", english: "Adjust Settings") }
+    private var localizedExpandTitle: String { localized(japanese: "詳細を表示", chinese: "展开详细", english: "Show Details") }
+    private var localizedCollapseTitle: String { localized(japanese: "詳細を閉じる", chinese: "收起详细", english: "Hide Details") }
+
+    private func localized(japanese: String, chinese: String, english: String) -> String {
+        switch language {
+        case .japanese: return japanese
+        case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
+        case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
+        }
+    }
+}
+
+private struct ReportConfigurationSheet: View {
+    @ObservedObject var store: DocumentStore
+    let report: ReportDesign
+    let language: AppLanguage
+    @Environment(\.dismiss) private var dismiss
+    @State private var startDate = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
+    @State private var endDate = Date()
+    @State private var selectedPartner = ReportAllChoice
+    @State private var selectedCategory = ReportAllChoice
+    @State private var selectedStatus = ReportAllChoice
+    @State private var selectedGroup = "partner"
+    @State private var selectedOutputLanguage = ""
+    @State private var selectedFormat = "csv"
+    @State private var overdueOnly = false
+    @State private var minAmount = ""
+    @State private var maxAmount = ""
+    @State private var statusMessage = ""
+    @State private var sharePayload: SharePayload?
+
+    private var partnerOptions: [ReportChoice] {
+        [ReportChoice(id: ReportAllChoice, title: localizedAllPartnersTitle)] + partnerNames.map { ReportChoice(id: $0, title: $0) }
+    }
+
+    private var categoryOptions: [ReportChoice] {
+        [ReportChoice(id: ReportAllChoice, title: localizedAllCategoriesTitle)] + DocumentType.allCases.map {
+            ReportChoice(id: $0.rawValue, title: $0.localizedTitle(language))
+        }
+    }
+
+    private var statusOptions: [ReportChoice] {
+        [
+            ReportChoice(id: ReportAllChoice, title: localizedAllStatusesTitle),
+            ReportChoice(id: "billed", title: localized(japanese: "請求済み", chinese: "已请款", english: "Billed")),
+            ReportChoice(id: "paid", title: report.isVendorReport ? localized(japanese: "支払済み", chinese: "已付款", english: "Paid") : localized(japanese: "入金済み", chinese: "已收款", english: "Received")),
+            ReportChoice(id: "unpaid", title: report.isVendorReport ? localized(japanese: "未払", chinese: "未付款", english: "Unpaid") : localized(japanese: "未収", chinese: "未收款", english: "Unpaid")),
+            ReportChoice(id: "overdue", title: localized(japanese: "期限超過", chinese: "逾期", english: "Overdue"))
+        ]
+    }
+
+    private var groupOptions: [ReportChoice] {
+        [
+            ReportChoice(id: "partner", title: localized(japanese: "取引先別", chinese: "按客户/厂商", english: "By partner")),
+            ReportChoice(id: "month", title: localized(japanese: "月別", chinese: "按月份", english: "By month")),
+            ReportChoice(id: "category", title: localized(japanese: "カテゴリ別", chinese: "按类别", english: "By category")),
+            ReportChoice(id: "project", title: localized(japanese: "案件別", chinese: "按项目", english: "By project"))
+        ]
+    }
+
+    private var outputLanguageOptions: [ReportChoice] {
+        AppLanguage.allCases.map { ReportChoice(id: $0.rawValue, title: $0.nativeTitle) }
+    }
+
+    private var formatOptions: [ReportChoice] {
+        [
+            ReportChoice(id: "csv", title: "CSV"),
+            ReportChoice(id: "pdf", title: "PDF"),
+            ReportChoice(id: "xlsx", title: localized(japanese: "表計算", chinese: "电子表格", english: "Spreadsheet"))
+        ]
+    }
+
+    private var quickRangeOptions: [ReportChoice] {
+        [
+            ReportChoice(id: "last30", title: localized(japanese: "直近30日", chinese: "最近30天", english: "Last 30 Days")),
+            ReportChoice(id: "thisMonth", title: localized(japanese: "今月", chinese: "本月", english: "This Month")),
+            ReportChoice(id: "lastMonth", title: localized(japanese: "先月", chinese: "上月", english: "Last Month")),
+            ReportChoice(id: "thisYear", title: localized(japanese: "今年", chinese: "今年", english: "This Year"))
+        ]
+    }
+
+    private var partnerNames: [String] {
+        let profileNames = store.customers.map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let documentNames = store.documents.map { $0.customerName.trimmingCharacters(in: .whitespacesAndNewlines) }
+        return Array(Set((profileNames + documentNames).filter { !$0.isEmpty })).sorted {
+            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        }
+    }
+
+    private var matchingDocuments: [BusinessDocument] {
+        let earlierDate = min(startDate, endDate)
+        let laterDate = max(startDate, endDate)
+        let start = Calendar.current.startOfDay(for: earlierDate)
+        let end = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: laterDate)) ?? laterDate
+        return store.documents.filter { document in
+            guard report.matches(document) else { return false }
+            guard document.issueDate >= start && document.issueDate < end else { return false }
+            if selectedPartner != ReportAllChoice,
+               document.customerName.trimmingCharacters(in: .whitespacesAndNewlines) != selectedPartner {
+                return false
+            }
+            if selectedCategory != ReportAllChoice,
+               document.type.rawValue != selectedCategory {
+                return false
+            }
+            if !matchesStatus(document) {
+                return false
+            }
+            if overdueOnly, document.dueDate >= Date() {
+                return false
+            }
+            if let minimum = Double(minAmount), document.total < minimum {
+                return false
+            }
+            if let maximum = Double(maxAmount), document.total > maximum {
+                return false
+            }
+            return true
+        }
+    }
+
+    private var totalAmount: Double {
+        matchingDocuments.reduce(0) { $0 + $1.total }
+    }
+
+    private var previewDocuments: [BusinessDocument] {
+        Array(matchingDocuments.sorted { $0.issueDate > $1.issueDate }.prefix(5))
+    }
+
+    private var activeFilterChips: [String] {
+        [
+            localized(japanese: "\(AppFormatters.shortDate(startDate))〜\(AppFormatters.shortDate(endDate))", chinese: "\(AppFormatters.shortDate(startDate)) 至 \(AppFormatters.shortDate(endDate))", english: "\(AppFormatters.shortDate(startDate)) to \(AppFormatters.shortDate(endDate))"),
+            title(for: selectedPartner, in: partnerOptions),
+            title(for: selectedCategory, in: categoryOptions),
+            title(for: selectedStatus, in: statusOptions),
+            title(for: selectedFormat, in: formatOptions)
+        ]
+    }
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    SectionCard(title: localizedReportScopeTitle, titleWeight: .regular) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            reportHeader
+                            ReportDateRangeEditor(
+                                startDate: $startDate,
+                                endDate: $endDate,
+                                startTitle: localizedStartDateTitle,
+                                endTitle: localizedEndDateTitle
+                            )
+                            ReportQuickRangeButtons(title: localizedQuickRangeTitle, choices: quickRangeOptions, onSelect: applyQuickRange)
+                            ReportChoicePicker(title: localizedPartnerTitle, selection: $selectedPartner, choices: partnerOptions)
+                            ReportChoicePicker(title: localizedCategoryTitle, selection: $selectedCategory, choices: categoryOptions)
+                            ReportChoicePicker(title: localizedStatusTitle, selection: $selectedStatus, choices: statusOptions)
+                            if report.supportsGrouping {
+                                ReportChoicePicker(title: localizedGroupTitle, selection: $selectedGroup, choices: groupOptions)
+                            }
+                            Toggle(localizedOverdueOnlyTitle, isOn: $overdueOnly)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(.appInk)
+                        }
+                    }
+
+                    SectionCard(title: localizedOutputTitle, titleWeight: .regular) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            ReportChoicePicker(title: localizedOutputLanguageTitle, selection: $selectedOutputLanguage, choices: outputLanguageOptions)
+                            ReportChoicePicker(title: localizedFormatTitle, selection: $selectedFormat, choices: formatOptions)
+                            HStack(spacing: 10) {
+                                ReportTextInput(title: localizedMinAmountTitle, text: $minAmount)
+                                ReportTextInput(title: localizedMaxAmountTitle, text: $maxAmount)
+                            }
+                        }
+                    }
+
+                    SectionCard(title: localizedPreviewTitle, titleWeight: .regular) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            ReportMetricRow(title: localizedMatchedRowsTitle, value: "\(matchingDocuments.count)", systemImage: "line.3.horizontal.decrease.circle")
+                            ReportMetricRow(title: localizedMatchedAmountTitle, value: AppFormatters.yen(totalAmount, language: language), systemImage: "yensign.circle")
+                            ReportTagGroup(title: localizedOutputColumnsTitle, values: report.columns)
+                            ReportTagGroup(title: localizedActiveFiltersTitle, values: activeFilterChips)
+                            if previewDocuments.isEmpty {
+                                EmptyManagementText(text: localizedNoPreviewRowsText)
+                            } else {
+                                VStack(spacing: 8) {
+                                    ForEach(previewDocuments) { document in
+                                        ReportPreviewDocumentRow(document: document, language: language)
+                                    }
+                                }
+                            }
+                            if !statusMessage.isEmpty {
+                                BackupStatusMessage(text: statusMessage)
+                            }
+                            HStack(spacing: 10) {
+                                Button {
+                                    resetSettings()
+                                } label: {
+                                    Label(localizedResetTitle, systemImage: "arrow.counterclockwise")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(CompanyOutlineButtonStyle())
+
+                                Button {
+                                    exportReportFile()
+                                } label: {
+                                    Label(localizedExportTitle, systemImage: "square.and.arrow.up")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(CompanyFilledButtonStyle())
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 18)
+            }
+            .background(Color.appBackground.edgesIgnoringSafeArea(.all))
+            .navigationTitle(localizedNavigationTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(localizedDoneTitle) {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .sheet(item: $sharePayload) { payload in
+            ShareSheet(url: payload.url)
+        }
+        .onAppear {
+            if selectedOutputLanguage.isEmpty {
+                selectedOutputLanguage = language.rawValue
+            }
+        }
+    }
+
+    private var reportHeader: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: report.systemImage)
+                .font(.headline.weight(.semibold))
+                .foregroundColor(.appInk)
+                .frame(width: 44, height: 44)
+                .background(Color.appInputBackground)
+                .clipShape(Circle())
+            VStack(alignment: .leading, spacing: 5) {
+                Text(report.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.appInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(report.subtitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.appMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func matchesStatus(_ document: BusinessDocument) -> Bool {
+        switch selectedStatus {
+        case ReportAllChoice:
+            return true
+        case "billed":
+            return document.type == .invoice || document.type == .vendorInvoice
+        case "paid":
+            return document.type == .receipt || document.type == .vendorReceipt
+        case "unpaid":
+            return document.type == .invoice || document.type == .vendorInvoice
+        case "overdue":
+            return (document.type == .invoice || document.type == .vendorInvoice) && document.dueDate < Date()
+        default:
+            return true
+        }
+    }
+
+    private func resetSettings() {
+        startDate = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
+        endDate = Date()
+        selectedPartner = ReportAllChoice
+        selectedCategory = ReportAllChoice
+        selectedStatus = ReportAllChoice
+        selectedGroup = "partner"
+        selectedOutputLanguage = language.rawValue
+        selectedFormat = "csv"
+        overdueOnly = false
+        minAmount = ""
+        maxAmount = ""
+        statusMessage = localized(japanese: "設定を初期値に戻しました。", chinese: "已恢复默认设置。", english: "Settings were reset.")
+    }
+
+    private func exportReportFile() {
+        do {
+            let url = try makeReportFileURL()
+            sharePayload = SharePayload(url: url)
+            statusMessage = localized(
+                japanese: "\(matchingDocuments.count)件のレポートファイルを作成しました。",
+                chinese: "已建立包含 \(matchingDocuments.count) 条记录的报告文件。",
+                english: "Created a report file with \(matchingDocuments.count) records."
+            )
+        } catch {
+            statusMessage = localized(
+                japanese: "レポートファイルを作成できませんでした。",
+                chinese: "无法建立报告文件。",
+                english: "Could not create the report file."
+            )
+        }
+    }
+
+    private func makeReportFileURL() throws -> URL {
+        switch selectedFormat {
+        case "pdf":
+            return try makePDFReportURL()
+        case "xlsx":
+            return try makeSpreadsheetReportURL()
+        default:
+            return try makeCSVReportURL()
+        }
+    }
+
+    private func makeCSVReportURL() throws -> URL {
+        let csv = reportRows.map { row in
+            row.map(csvEscape).joined(separator: ",")
+        }.joined(separator: "\n")
+        let data = Data(("\u{FEFF}" + csv + "\n").utf8)
+        let url = reportTemporaryURL(extension: "csv")
+        try data.write(to: url, options: .atomic)
+        return url
+    }
+
+    private func makeSpreadsheetReportURL() throws -> URL {
+        let rows = reportRows.map { row in
+            "<tr>" + row.map { "<td>\(htmlEscape($0))</td>" }.joined() + "</tr>"
+        }.joined(separator: "\n")
+        let html = """
+        <html>
+        <head><meta charset="utf-8"></head>
+        <body>
+        <table border="1">
+        \(rows)
+        </table>
+        </body>
+        </html>
+        """
+        let url = reportTemporaryURL(extension: "xls")
+        try Data(html.utf8).write(to: url, options: .atomic)
+        return url
+    }
+
+    private func makePDFReportURL() throws -> URL {
+        let url = reportTemporaryURL(extension: "pdf")
+        let pageBounds = CGRect(x: 0, y: 0, width: 595, height: 842)
+        let renderer = UIGraphicsPDFRenderer(bounds: pageBounds)
+        try renderer.writePDF(to: url) { context in
+            context.beginPage()
+            let margin: CGFloat = 36
+            var y: CGFloat = margin
+            y = drawPDFText(report.title, x: margin, y: y, width: pageBounds.width - margin * 2, font: .boldSystemFont(ofSize: 18))
+            y = drawPDFText(activeFilterChips.joined(separator: " / "), x: margin, y: y + 8, width: pageBounds.width - margin * 2, font: .systemFont(ofSize: 10), color: .darkGray)
+            y += 10
+            let headers = reportRows.first ?? []
+            let rows = Array(reportRows.dropFirst())
+            y = drawPDFRow(headers, x: margin, y: y, pageWidth: pageBounds.width - margin * 2, isHeader: true)
+            for row in rows {
+                if y > pageBounds.height - 70 {
+                    context.beginPage()
+                    y = margin
+                    y = drawPDFRow(headers, x: margin, y: y, pageWidth: pageBounds.width - margin * 2, isHeader: true)
+                }
+                y = drawPDFRow(row, x: margin, y: y, pageWidth: pageBounds.width - margin * 2, isHeader: false)
+            }
+        }
+        return url
+    }
+
+    private var reportRows: [[String]] {
+        [reportHeaders] + matchingDocuments.sorted { $0.issueDate > $1.issueDate }.map { document in
+            [
+                AppFormatters.shortDate(document.issueDate),
+                paymentDateText(for: document),
+                document.customerName.trimmingCharacters(in: .whitespacesAndNewlines),
+                document.type.localizedTitle(language),
+                document.number,
+                AppFormatters.yen(document.subtotal, language: language),
+                AppFormatters.yen(document.tax, language: language),
+                AppFormatters.yen(document.total, language: language),
+                settlementStatusText(for: document)
+            ]
+        }
+    }
+
+    private var reportHeaders: [String] {
+        [
+            localized(japanese: "発行日", chinese: "发行日", english: "Issue Date"),
+            report.isVendorReport ? localized(japanese: "支払日", chinese: "付款日", english: "Payment Date") : localized(japanese: "入金日", chinese: "收款日", english: "Payment Date"),
+            localized(japanese: "取引先", chinese: "客户/厂商", english: "Partner"),
+            localized(japanese: "帳票種類", chinese: "表单类型", english: "Form Type"),
+            localized(japanese: "帳票番号", chinese: "表单编号", english: "Form Number"),
+            localized(japanese: "税抜合計", chinese: "未税合计", english: "Subtotal"),
+            localized(japanese: "税額", chinese: "税额", english: "Tax"),
+            localized(japanese: "税込合計", chinese: "含税合计", english: "Total"),
+            localized(japanese: "決済状態", chinese: "结算状态", english: "Settlement Status")
+        ]
+    }
+
+    private func paymentDateText(for document: BusinessDocument) -> String {
+        if document.type == .receipt || document.type == .vendorReceipt {
+            return AppFormatters.shortDate(document.issueDate)
+        }
+        if let proofDate = document.paymentProofDate {
+            return AppFormatters.shortDate(proofDate)
+        }
+        return ""
+    }
+
+    private func settlementStatusText(for document: BusinessDocument) -> String {
+        if document.type == .receipt || document.type == .vendorReceipt {
+            return report.isVendorReport ? localized(japanese: "支払済み", chinese: "已付款", english: "Paid") : localized(japanese: "入金済み", chinese: "已收款", english: "Received")
+        }
+        if document.type == .invoice || document.type == .vendorInvoice {
+            if document.dueDate < Date() {
+                return localized(japanese: "期限超過", chinese: "逾期", english: "Overdue")
+            }
+            return report.isVendorReport ? localized(japanese: "未払", chinese: "未付款", english: "Unpaid") : localized(japanese: "未収", chinese: "未收款", english: "Unpaid")
+        }
+        return localized(japanese: "対象", chinese: "对象", english: "Included")
+    }
+
+    private func reportTemporaryURL(extension fileExtension: String) -> URL {
+        let name = sanitizedFileName(report.title)
+        let stamp = Self.fileNameDateFormatter.string(from: Date())
+        return FileManager.default.temporaryDirectory.appendingPathComponent("\(name)-\(stamp).\(fileExtension)")
+    }
+
+    private func sanitizedFileName(_ value: String) -> String {
+        let invalid = CharacterSet(charactersIn: "/\\?%*|\"<>:")
+        let cleaned = value.components(separatedBy: invalid).joined(separator: "-")
+        return cleaned.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "shoko-report" : cleaned
+    }
+
+    private func csvEscape(_ value: String) -> String {
+        let escaped = value.replacingOccurrences(of: "\"", with: "\"\"")
+        return "\"\(escaped)\""
+    }
+
+    private func htmlEscape(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+    }
+
+    @discardableResult
+    private func drawPDFText(_ text: String, x: CGFloat, y: CGFloat, width: CGFloat, font: UIFont, color: UIColor = .black) -> CGFloat {
+        let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
+        let rect = CGRect(x: x, y: y, width: width, height: 1000)
+        let used = (text as NSString).boundingRect(with: rect.size, options: [.usesLineFragmentOrigin], attributes: attributes, context: nil)
+        (text as NSString).draw(with: CGRect(x: x, y: y, width: width, height: ceil(used.height)), options: [.usesLineFragmentOrigin], attributes: attributes, context: nil)
+        return y + ceil(used.height)
+    }
+
+    @discardableResult
+    private func drawPDFRow(_ row: [String], x: CGFloat, y: CGFloat, pageWidth: CGFloat, isHeader: Bool) -> CGFloat {
+        let font = isHeader ? UIFont.boldSystemFont(ofSize: 8) : UIFont.systemFont(ofSize: 8)
+        let columns = max(row.count, 1)
+        let columnWidth = pageWidth / CGFloat(columns)
+        let rowHeight: CGFloat = 28
+        for (index, value) in row.enumerated() {
+            let rect = CGRect(x: x + CGFloat(index) * columnWidth, y: y, width: columnWidth, height: rowHeight)
+            UIColor(white: isHeader ? 0.92 : 1.0, alpha: 1).setFill()
+            UIRectFill(rect)
+            UIColor(white: 0.82, alpha: 1).setStroke()
+            UIRectFrame(rect)
+            let textRect = rect.insetBy(dx: 3, dy: 5)
+            (value as NSString).draw(with: textRect, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], attributes: [.font: font, .foregroundColor: UIColor.black], context: nil)
+        }
+        return y + rowHeight
+    }
+
+    private static let fileNameDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter
+    }()
+
+    private func title(for id: String, in choices: [ReportChoice]) -> String {
+        choices.first { $0.id == id }?.title ?? id
+    }
+
+    private func applyQuickRange(_ id: String) {
+        let calendar = Calendar.current
+        let now = Date()
+        switch id {
+        case "last30":
+            startDate = calendar.date(byAdding: .day, value: -29, to: now) ?? now
+            endDate = now
+        case "thisMonth":
+            startDate = calendar.date(from: calendar.dateComponents([.year, .month], from: now)) ?? now
+            endDate = now
+        case "lastMonth":
+            let thisMonthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: now)) ?? now
+            let lastMonthStart = calendar.date(byAdding: .month, value: -1, to: thisMonthStart) ?? thisMonthStart
+            startDate = lastMonthStart
+            endDate = calendar.date(byAdding: .day, value: -1, to: thisMonthStart) ?? now
+        case "thisYear":
+            startDate = calendar.date(from: calendar.dateComponents([.year], from: now)) ?? now
+            endDate = now
+        default:
+            break
+        }
+        statusMessage = ""
+    }
+
+    private var localizedNavigationTitle: String { localized(japanese: "レポート設定", chinese: "报告设置", english: "Report Settings") }
+    private var localizedDoneTitle: String { localized(japanese: "完了", chinese: "完成", english: "Done") }
+    private var localizedReportScopeTitle: String { localized(japanese: "条件設定", chinese: "条件设置", english: "Filter Settings") }
+    private var localizedStartDateTitle: String { localized(japanese: "開始日", chinese: "开始日", english: "Start Date") }
+    private var localizedEndDateTitle: String { localized(japanese: "終了日", chinese: "结束日", english: "End Date") }
+    private var localizedQuickRangeTitle: String { localized(japanese: "常用期間", chinese: "常用期间", english: "Quick Ranges") }
+    private var localizedPartnerTitle: String { report.isVendorReport ? localized(japanese: "仕入先", chinese: "厂商", english: "Vendor") : localized(japanese: "顧客/仕入先", chinese: "客户/厂商", english: "Customer/Vendor") }
+    private var localizedCategoryTitle: String { localized(japanese: "帳票カテゴリ", chinese: "表单类别", english: "Form Category") }
+    private var localizedStatusTitle: String { report.isVendorReport ? localized(japanese: "支払状態", chinese: "付款状态", english: "Payment Status") : localized(japanese: "入金状態", chinese: "收款状态", english: "Payment Status") }
+    private var localizedGroupTitle: String { localized(japanese: "集計単位", chinese: "汇总单位", english: "Group By") }
+    private var localizedOverdueOnlyTitle: String { localized(japanese: "期限超過のみ", chinese: "只看逾期", english: "Overdue only") }
+    private var localizedOutputTitle: String { localized(japanese: "出力設定", chinese: "输出设置", english: "Output Settings") }
+    private var localizedOutputLanguageTitle: String { localized(japanese: "出力言語", chinese: "输出语言", english: "Output Language") }
+    private var localizedFormatTitle: String { localized(japanese: "出力形式", chinese: "输出格式", english: "Export Format") }
+    private var localizedMinAmountTitle: String { localized(japanese: "最小金額", chinese: "最小金额", english: "Min Amount") }
+    private var localizedMaxAmountTitle: String { localized(japanese: "最大金額", chinese: "最大金额", english: "Max Amount") }
+    private var localizedPreviewTitle: String { localized(japanese: "プレビュー", chinese: "预览", english: "Preview") }
+    private var localizedMatchedRowsTitle: String { localized(japanese: "対象件数", chinese: "对象件数", english: "Matching Records") }
+    private var localizedMatchedAmountTitle: String { localized(japanese: "対象金額", chinese: "对象金额", english: "Matching Amount") }
+    private var localizedOutputColumnsTitle: String { localized(japanese: "出力項目", chinese: "输出项目", english: "Output Columns") }
+    private var localizedActiveFiltersTitle: String { localized(japanese: "適用中の条件", chinese: "当前条件", english: "Active Filters") }
+    private var localizedNoPreviewRowsText: String { localized(japanese: "この条件に一致する帳票はありません。期間、取引先、状態を変更してください。", chinese: "没有符合当前条件的表单。请调整期间、客户/厂商或状态。", english: "No forms match these filters. Adjust period, partner, or status.") }
+    private var localizedResetTitle: String { localized(japanese: "リセット", chinese: "重置", english: "Reset") }
+    private var localizedExportTitle: String { localized(japanese: "ファイル出力", chinese: "输出文件", english: "Export File") }
+    private var localizedAllPartnersTitle: String { localized(japanese: "すべて", chinese: "全部", english: "All") }
+    private var localizedAllCategoriesTitle: String { localized(japanese: "すべてのカテゴリ", chinese: "全部类别", english: "All Categories") }
+    private var localizedAllStatusesTitle: String { localized(japanese: "すべての状態", chinese: "全部状态", english: "All Statuses") }
+
+    private func localized(japanese: String, chinese: String, english: String) -> String {
+        switch language {
+        case .japanese: return japanese
+        case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
+        case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
+        }
+    }
+}
+
+private let ReportAllChoice = "__all__"
+
+private struct ReportChoice: Identifiable {
+    let id: String
+    let title: String
+}
+
+private struct ReportDateRangeEditor: View {
+    @Binding var startDate: Date
+    @Binding var endDate: Date
+    let startTitle: String
+    let endTitle: String
+
+    var body: some View {
+        VStack(spacing: 10) {
+            DatePicker(startTitle, selection: $startDate, displayedComponents: .date)
+                .datePickerStyle(CompactDatePickerStyle())
+            DatePicker(endTitle, selection: $endDate, displayedComponents: .date)
+                .datePickerStyle(CompactDatePickerStyle())
+        }
+        .font(.subheadline.weight(.semibold))
+        .foregroundColor(.appInk)
+    }
+}
+
+private struct ReportQuickRangeButtons: View {
+    let title: String
+    let choices: [ReportChoice]
+    let onSelect: (String) -> Void
+    private let columns = [GridItem(.adaptive(minimum: 118), spacing: 8)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.appMuted)
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                ForEach(choices) { choice in
+                    Button {
+                        onSelect(choice.id)
+                    } label: {
+                        Text(choice.title)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(CompanyMiniButtonStyle())
+                }
+            }
+        }
+    }
+}
+
+private struct ReportPreviewDocumentRow: View {
+    let document: BusinessDocument
+    let language: AppLanguage
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: document.type.isVendorForm ? "building.2" : "person.crop.square")
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.appInk)
+                .frame(width: 34, height: 34)
+                .background(Color.appInputBackground)
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(rowTitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.appInk)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(rowSubtitle)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundColor(.appMuted)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            Spacer(minLength: 8)
+
+            Text(AppFormatters.yen(document.total, language: language))
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.appInk)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+        .background(Color.appInputBackground)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appDivider.opacity(0.8)))
+        .cornerRadius(8)
+    }
+
+    private var rowTitle: String {
+        let number = document.number.trimmingCharacters(in: .whitespacesAndNewlines)
+        let type = document.type.localizedTitle(language)
+        return number.isEmpty ? type : "\(type) \(number)"
+    }
+
+    private var rowSubtitle: String {
+        let partner = document.customerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let partnerText = partner.isEmpty ? fallbackPartnerTitle : partner
+        return "\(AppFormatters.shortDate(document.issueDate)) / \(partnerText)"
+    }
+
+    private var fallbackPartnerTitle: String {
+        switch language {
+        case .japanese: return "取引先未入力"
+        case .simplifiedChinese, .traditionalChinese: return "未填写客户/厂商"
+        case .english, .korean, .nepali, .french, .vietnamese: return "No partner"
+        }
+    }
+}
+
+private struct ReportChoicePicker: View {
+    let title: String
+    @Binding var selection: String
+    let choices: [ReportChoice]
+
+    var body: some View {
+        Picker(title, selection: $selection) {
+            ForEach(choices) { choice in
+                Text(choice.title).tag(choice.id)
+            }
+        }
+        .pickerStyle(MenuPickerStyle())
+        .font(.subheadline.weight(.semibold))
+        .foregroundColor(.appInk)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .padding(.horizontal, 12)
+        .background(Color.appInputBackground)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appDivider))
+        .cornerRadius(8)
+    }
+}
+
+private struct ReportTextInput: View {
+    let title: String
+    @Binding var text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.appMuted)
+            TextField("0", text: $text)
+                .keyboardType(.decimalPad)
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.appInk)
+                .padding(.horizontal, 12)
+                .frame(height: 44)
+                .background(Color.appInputBackground)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appDivider))
+                .cornerRadius(8)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+private struct ReportPill: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundColor(.appMuted)
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.appInk)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.appInputBackground)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appDivider.opacity(0.8)))
+        .cornerRadius(8)
+    }
+}
+
+private struct ReportTagGroup: View {
+    let title: String
+    let values: [String]
+    private let columns = [GridItem(.adaptive(minimum: 92), spacing: 6, alignment: .leading)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.appMuted)
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 6) {
+                ForEach(values, id: \.self) { value in
+                    Text(value)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(.appInk)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
+                        .background(Color.appInputBackground)
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appDivider.opacity(0.8)))
+                        .cornerRadius(8)
+                }
+            }
         }
     }
 }
@@ -1282,7 +3985,10 @@ private struct StampManagementScreen: View {
         switch language {
         case .japanese: return japanese
         case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         }
     }
 }
@@ -1306,6 +4012,7 @@ struct AccountManagementScreen: View {
     @State private var cloudBackupPackages: [GoogleDriveCloudBackupFile] = []
     @State private var selectedCloudBackupFileIDs: Set<String> = []
     @State private var isCloudSyncConfirmationPresented = false
+    @State private var isCloudUploadOverwriteConfirmationPresented = false
     @State private var isCloudBackupManagerPresented = false
     @State private var isCloudBackupImportOptionsPresented = false
     @State private var isDSASettingsPresented = false
@@ -1363,30 +4070,16 @@ struct AccountManagementScreen: View {
             }
 
             SectionCard(title: AppText.value(.tableColor, language), titleWeight: .regular) {
-                VStack(alignment: .leading, spacing: 14) {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 10)], spacing: 10) {
-                        ForEach(DocumentColorTemplate.allCases) { template in
-                            Button {
-                                store.applyDefaultColorTemplate(template.rawValue)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(template.swiftUIColor)
-                                        .frame(height: 18)
-                                    Text(template.title)
-                                        .font(.caption2.weight(.semibold))
-                                        .foregroundColor(.appInk)
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.82)
-                                }
-                                .padding(10)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.appInputBackground)
-                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(store.defaultColorTemplateId == template.rawValue ? buttonAccent : Color.appDivider))
-                                .cornerRadius(8)
-                            }
-                            .buttonStyle(PlainButtonStyle())
+                LazyVGrid(columns: colorTemplateColumns, alignment: .leading, spacing: 10) {
+                    ForEach(DocumentColorTemplate.allCases) { template in
+                        Button {
+                            store.applyDefaultColorTemplate(template.rawValue)
+                        } label: {
+                            colorTemplateCircle(template)
                         }
+                        .buttonStyle(PlainButtonStyle())
+                        .accessibilityLabel(Text(template.title))
+                        .accessibilityAddTraits(store.defaultColorTemplateId == template.rawValue ? [.isSelected] : [])
                     }
                 }
             }
@@ -1454,6 +4147,14 @@ struct AccountManagementScreen: View {
             Button(localizedCancelTitle, role: .cancel) {}
         } message: {
             Text(localizedCloudSyncConfirmMessage)
+        }
+        .confirmationDialog(localizedCloudUploadOverwriteTitle, isPresented: $isCloudUploadOverwriteConfirmationPresented, titleVisibility: .visible) {
+            Button(localizedCloudUploadOverwriteActionTitle, role: .destructive) {
+                uploadCloudBackup()
+            }
+            Button(localizedCancelTitle, role: .cancel) {}
+        } message: {
+            Text(localizedCloudUploadOverwriteMessage)
         }
         .sheet(isPresented: $isCloudBackupManagerPresented) {
             CloudBackupPackageSelectionSheet(
@@ -1640,7 +4341,6 @@ struct AccountManagementScreen: View {
                         Text(localizedClearDataActionTitle)
                             .font(.subheadline.weight(.semibold))
                             .lineLimit(1)
-                            .minimumScaleFactor(0.82)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.caption.weight(.bold))
@@ -1716,14 +4416,12 @@ struct AccountManagementScreen: View {
                     .font(.caption.weight(.semibold))
                     .foregroundColor(.appMuted)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.75)
 
                 HStack(spacing: 6) {
                     Text(AppLanguage.from(selection.wrappedValue).nativeTitle)
                         .font(.subheadline.weight(.semibold))
                         .foregroundColor(buttonAccent)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.75)
 
                     Spacer(minLength: 0)
 
@@ -1762,6 +4460,32 @@ struct AccountManagementScreen: View {
             get: { store.defaultColorTemplateId },
             set: { store.applyDefaultColorTemplate($0) }
         )
+    }
+
+    private var colorTemplateColumns: [GridItem] {
+        [GridItem(.adaptive(minimum: 44), spacing: 12)]
+    }
+
+    private func colorTemplateCircle(_ template: DocumentColorTemplate) -> some View {
+        let isSelected = store.defaultColorTemplateId == template.rawValue
+        return Circle()
+            .fill(template.swiftUIColor)
+            .frame(width: 30, height: 30)
+            .overlay {
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(.white)
+                        .shadow(color: .black.opacity(0.28), radius: 2, x: 0, y: 1)
+                }
+            }
+            .overlay(
+                Circle()
+                    .stroke(isSelected ? Color.appInk.opacity(0.82) : Color.appDivider, lineWidth: isSelected ? 2 : 1)
+                    .frame(width: isSelected ? 40 : 34, height: isSelected ? 40 : 34)
+            )
+            .frame(width: 44, height: 44)
+            .contentShape(Circle())
     }
 
     private var googleDriveSyncSection: some View {
@@ -1832,7 +4556,7 @@ struct AccountManagementScreen: View {
                                 isProminent: true,
                                 action: {
                                     if purchaseService.hasProAccess {
-                                        uploadCloudBackup()
+                                        requestCloudBackupUpload()
                                     } else {
                                         showProForGoogleDrive()
                                     }
@@ -1962,7 +4686,6 @@ struct AccountManagementScreen: View {
             Label(title, systemImage: systemImage)
                 .font(.caption.weight(.semibold))
                 .lineLimit(2)
-                .minimumScaleFactor(0.78)
                 .frame(maxWidth: .infinity, minHeight: 48)
                 .padding(.horizontal, 10)
                 .background(isProminent ? buttonAccent : buttonAccent.opacity(0.1))
@@ -2036,6 +4759,14 @@ struct AccountManagementScreen: View {
                 googleDriveStatus = googleDriveErrorMessage(error)
             }
         }
+    }
+
+    private func requestCloudBackupUpload() {
+        guard googleDriveCloudBackupFileID.isEmpty else {
+            isCloudUploadOverwriteConfirmationPresented = true
+            return
+        }
+        uploadCloudBackup()
     }
 
     private func uploadCloudBackup() {
@@ -2244,8 +4975,8 @@ struct AccountManagementScreen: View {
     private var localizedProStatusText: String {
         switch language {
         case .japanese: return purchaseService.hasProAccess ? "有効" : "プレビュー共有、Google Driveバックアップ"
-        case .simplifiedChinese: return purchaseService.hasProAccess ? "已启用" : "预览分享与 Google Drive 备份"
-        case .english: return purchaseService.hasProAccess ? "Active" : "Preview sharing and Google Drive backup"
+        case .simplifiedChinese, .traditionalChinese: return purchaseService.hasProAccess ? "已启用" : "预览分享与 Google Drive 备份"
+        case .english, .korean, .nepali, .french, .vietnamese: return purchaseService.hasProAccess ? "Active" : "Preview sharing and Google Drive backup"
         }
     }
     private var localizedPreservationNoticeTitle: String { localized(japanese: "帳票保存サポート", chinese: "表单保存支持", english: "Form Preservation Support") }
@@ -2323,7 +5054,7 @@ struct AccountManagementScreen: View {
     private var localizedBackupImportModeTitle: String { localized(japanese: "バックアップの読み込み方法", chinese: "备份导入方式", english: "Backup Import Method") }
     private var localizedMergeBackupTitle: String { localized(japanese: "既存データに結合", chinese: "合并到现有数据", english: "Merge with Existing Data") }
     private var localizedReplaceBackupTitle: String { localized(japanese: "バックアップから新規作成", chinese: "用备份重新建立", english: "Replace with Backup") }
-    private var localizedBackupImportModeMessage: String { localized(japanese: "結合では既存データを上書きしません。新規作成ではバックアップファイルの内容からデータを作成します。", chinese: "合并不会覆盖本机现有数据；重新建立会使用备份文件内容创建数据。", english: "Merge will not overwrite existing local data. Replace creates data from the backup file.") }
+    private var localizedBackupImportModeMessage: String { localized(japanese: "結合では既存データを上書きしません。置き換えではこの端末の既存データがバックアップ内容で上書きされ、App からは復元できません。", chinese: "合并不会覆盖本机现有数据；替换会用备份内容覆盖本机既有资料，覆盖后无法从 App 内恢复。", english: "Merge will not overwrite existing local data. Replace overwrites this device's existing data with the backup and cannot be restored from the app.") }
     private var localizedBackupCreatedStatus: String { localized(japanese: "バックアップファイルを作成しました。", chinese: "已创建备份文件。", english: "Backup file created.") }
     private var localizedBackupCreateFailedStatus: String { localized(japanese: "バックアップファイルを作成できませんでした。", chinese: "无法创建备份文件。", english: "Could not create the backup file.") }
     private var localizedBackupReadFailedStatus: String { localized(japanese: "バックアップファイルを読み込めませんでした。", chinese: "无法读取备份文件。", english: "Could not read the backup file.") }
@@ -2337,30 +5068,30 @@ struct AccountManagementScreen: View {
     private var localizedClearDataActionTitle: String { localized(japanese: "この端末の App 資料を削除", chinese: "清除本机 App 资料", english: "Clear This Device's App Data") }
     private var localizedClearDataWarningText: String {
         localized(
-            japanese: "保存済み帳票、編集中の下書き、会社・取引先・商品・テンプレート、印章をこの端末から削除します。作成済みのバックアップファイルや Google Drive 内のバックアップは削除しません。",
-            chinese: "将从本机删除已保存表单、编辑中的草稿、公司/客户/商品/模板与印章。已经导出的备份文件和 Google Drive 里的备份不会被删除。",
-            english: "Deletes saved forms, the current draft, company, customer, product, template, and stamp data from this device. Exported backup files and Google Drive backups are not deleted."
+            japanese: "保存済み帳票、削除履歴、編集中の下書き、会社・取引先・商品・テンプレート、印章をこの端末から削除します。作成済みのバックアップファイルや Google Drive 内のバックアップは削除しません。",
+            chinese: "将从本机删除已保存表单、删除文件、编辑中的草稿、公司/客户/商品/模板与印章。已经导出的备份文件和 Google Drive 里的备份不会被删除。",
+            english: "Deletes saved forms, Deleted Files, the current draft, company, customer, product, template, and stamp data from this device. Exported backup files and Google Drive backups are not deleted."
         )
     }
     private var localizedClearDataFirstConfirmTitle: String { localized(japanese: "App 資料を削除しますか？", chinese: "要清除 App 资料吗？", english: "Clear App Data?") }
     private var localizedClearDataFirstConfirmMessage: String {
         localized(
-            japanese: "この操作はこの端末内の帳票と管理資料を削除します。バックアップが必要な場合は先に作成してください。",
-            chinese: "此操作会删除本机内的表单和管理资料。如需保留，请先建立备份。",
-            english: "This deletes forms and management data on this device. Create a backup first if you need to keep them."
+            japanese: "この操作はこの端末内の帳票、削除履歴、管理資料を削除し、Appを空白状態に戻します。バックアップが必要な場合は先に作成してください。",
+            chinese: "此操作会删除本机内的表单、删除文件和管理资料，并将 App 还原为空白状态。如需保留，请先建立备份。",
+            english: "This deletes forms, Deleted Files, and management data on this device, returning the app to a blank state. Create a backup first if you need to keep them."
         )
     }
     private var localizedClearDataContinueTitle: String { localized(japanese: "次へ", chinese: "继续", english: "Continue") }
     private var localizedClearDataFinalConfirmTitle: String { localized(japanese: "最終確認", chinese: "最终确认", english: "Final Confirmation") }
     private var localizedClearDataFinalConfirmMessage: String {
         localized(
-            japanese: "削除後はこの端末から復元できません。バックアップがない場合、資料は失われます。本当に削除しますか？",
-            chinese: "删除后无法从本机复原。如果没有备份，资料会永久遗失。确定要删除吗？",
-            english: "After deletion, this device cannot restore the data. Without a backup, the data will be lost. Are you sure?"
+            japanese: "削除後は削除履歴にも残らず、この端末から復元できません。バックアップがない場合、資料は失われます。本当に削除しますか？",
+            chinese: "删除后不会保留在删除文件里，也无法从本机复原。如果没有备份，资料会永久遗失。确定要删除吗？",
+            english: "After deletion, nothing remains in Deleted Files and this device cannot restore the data. Without a backup, the data will be lost. Are you sure?"
         )
     }
     private var localizedClearDataFinalActionTitle: String { localized(japanese: "完全に削除", chinese: "彻底删除", english: "Delete Permanently") }
-    private var localizedClearDataCompleteStatus: String { localized(japanese: "この端末の App 資料を削除しました。バックアップは削除していません。", chinese: "已清除本机 App 资料。备份没有被删除。", english: "App data on this device was cleared. Backups were not deleted.") }
+    private var localizedClearDataCompleteStatus: String { localized(japanese: "この端末の App 資料と削除履歴を削除しました。バックアップは削除していません。", chinese: "已清除本机 App 资料和删除文件。备份没有被删除。", english: "App data and Deleted Files on this device were cleared. Backups were not deleted.") }
     private var localizedCloudBackupTitle: String { localized(japanese: "Google Drive バックアップ", chinese: "Google Drive 云备份", english: "Google Drive Backup") }
     private var localizedCloudProUpgradeTitle: String { localized(japanese: "ProでGoogle Driveバックアップを使う", chinese: "升级 Pro 使用 Google Drive 备份", english: "Use Google Drive Backup with Pro") }
     private var localizedCloudSignInTitle: String { localized(japanese: "Google Drive にログイン", chinese: "登录 Google Drive", english: "Sign In to Google Drive") }
@@ -2373,8 +5104,11 @@ struct AccountManagementScreen: View {
     private var localizedCloudLoadingPackagesStatus: String { localized(japanese: "同期パックを読み込み中", chinese: "正在读取同步备份包", english: "Loading backup packages") }
     private var localizedCloudMonthlyFolderStatus: String { localized(japanese: "月別フォルダに保存しました。", chinese: "已保存到按月份区分的文件夹。", english: "Saved in a monthly folder.") }
     private var localizedCloudSyncConfirmTitle: String { localized(japanese: "Google Drive と同期しますか？", chinese: "确定要从 Google Drive 同步吗？", english: "Sync from Google Drive?") }
-    private var localizedCloudSyncConfirmMessage: String { localized(japanese: "Google Drive のバックアップ一覧を読み込みます。選択した同期パックを取り込めます。置き換えを選ぶと、この端末の既存データが上書きされる可能性があります。", chinese: "将读取 Google Drive 备份包列表。你可以选择要同步的备份包；如果后续选择替换，本机现有资料可能会被覆盖。", english: "This will load the Google Drive backup package list. You can choose which packages to sync; choosing Replace later may overwrite existing data on this device.") }
+    private var localizedCloudSyncConfirmMessage: String { localized(japanese: "Google Drive のバックアップ一覧を読み込みます。後で置き換えを選ぶと、この端末の既存データは上書きされ、App からは復元できません。", chinese: "将读取 Google Drive 备份包列表。后续如果选择替换，本机现有资料会被覆盖，且无法从 App 内恢复。", english: "This will load Google Drive backup packages. If you choose Replace later, existing data on this device will be overwritten and cannot be restored from the app.") }
     private var localizedCloudSyncConfirmButtonTitle: String { localized(japanese: "一覧を表示", chinese: "查看备份包", english: "Show Packages") }
+    private var localizedCloudUploadOverwriteTitle: String { localized(japanese: "Google Drive のバックアップを上書きしますか？", chinese: "要覆盖 Google Drive 备份吗？", english: "Overwrite Google Drive Backup?") }
+    private var localizedCloudUploadOverwriteMessage: String { localized(japanese: "この端末の内容で既存の Google Drive バックアップファイルを上書きします。上書き後、古いバックアップは App から復元できません。", chinese: "将用本机目前内容覆盖既有 Google Drive 备份文件。覆盖后，旧备份无法从 App 内恢复。", english: "This will overwrite the existing Google Drive backup file with this device's current data. After overwriting, the old backup cannot be restored from the app.") }
+    private var localizedCloudUploadOverwriteActionTitle: String { localized(japanese: "上書きしてアップロード", chinese: "覆盖并上传", english: "Overwrite and Upload") }
     private var localizedCloudBackupManagerTitle: String { localized(japanese: "同期パックを選択", chinese: "选择同步备份包", english: "Choose Backup Packages") }
     private var localizedCloudBackupManagerSubtitle: String { localized(japanese: "バックアップは Google Drive 内で月別フォルダに保存されます。複数選択した場合は既存データに結合します。", chinese: "备份会按月份保存在 Google Drive。选择多个时会合并到现有数据。", english: "Backups are saved by month in Google Drive. Multiple selected packages are merged into existing data.") }
     private var localizedCloudBackupManagerEmptyText: String { localized(japanese: "Google Drive に同期パックがありません。まずこの端末からアップロードしてください。", chinese: "Google Drive 中没有同步备份包。请先从本机上传。", english: "No backup packages were found in Google Drive. Upload from this device first.") }
@@ -2385,7 +5119,7 @@ struct AccountManagementScreen: View {
     private var localizedCloudRefreshBackupsTitle: String { localized(japanese: "再読み込み", chinese: "刷新", english: "Refresh") }
     private var localizedCloudNoSelectionStatus: String { localized(japanese: "同期パックを選択してください。", chinese: "请选择至少一个同步备份包。", english: "Select at least one backup package.") }
     private var localizedCloudImportModeTitle: String { localized(japanese: "Google Drive から同期", chinese: "从 Google Drive 同步", english: "Sync from Google Drive") }
-    private var localizedCloudImportModeMessage: String { localized(japanese: "Google Drive のバックアップを既存データに結合するか、この端末の内容を置き換えるか選択してください。複数選択時は安全のため結合のみ実行します。", chinese: "请选择将 Google Drive 备份合并到本机，或用云端内容替换本机内容。选择多个备份包时，为避免覆盖，只会执行合并。", english: "Choose whether to merge the Google Drive backup or replace this device. Multiple selected packages are merged only.") }
+    private var localizedCloudImportModeMessage: String { localized(japanese: "Google Drive のバックアップを既存データに結合するか、この端末の内容を置き換えるか選択してください。置き換えは本機データを上書きし、App から復元できません。複数選択時は安全のため結合のみ実行します。", chinese: "请选择将 Google Drive 备份合并到本机，或用云端内容替换本机内容。替换会覆盖本机资料，且无法从 App 内恢复。选择多个备份包时，为避免覆盖，只会执行合并。", english: "Choose whether to merge the Google Drive backup or replace this device. Replace overwrites local data and cannot be restored from the app. Multiple selected packages are merged only.") }
     private var localizedCloudSignedInStatus: String { localized(japanese: "ログイン済み", chinese: "已登录", english: "Signed in") }
     private var localizedCloudSignedOutStatus: String { localized(japanese: "未ログイン", chinese: "未登录", english: "Signed out") }
     private var localizedCloudSignedInCompleteStatus: String { localized(japanese: "Google Drive にログインしました。", chinese: "已登录 Google Drive。", english: "Signed in to Google Drive.") }
@@ -2442,7 +5176,10 @@ struct AccountManagementScreen: View {
         switch language {
         case .japanese: return japanese
         case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         }
     }
 
@@ -2481,7 +5218,6 @@ private struct OnboardingGuideSheet: View {
                         Label(localizedLoadDemoTitle, systemImage: "tray.and.arrow.down.fill")
                             .font(.subheadline.weight(.semibold))
                             .lineLimit(1)
-                            .minimumScaleFactor(0.82)
                             .frame(maxWidth: .infinity, minHeight: 46)
                             .background(buttonAccent.opacity(0.12))
                             .foregroundColor(buttonAccent)
@@ -2543,13 +5279,6 @@ private struct OnboardingGuideSheet: View {
     private func onboardingPage(for item: OnboardingStep) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Image(systemName: item.systemImage)
-                    .font(.system(size: 38, weight: .semibold))
-                    .foregroundColor(buttonAccent)
-                    .frame(width: 72, height: 72)
-                    .background(buttonAccent.opacity(0.12))
-                    .clipShape(Circle())
-
                 VStack(alignment: .leading, spacing: 8) {
                     Text(item.title(language))
                         .font(.title2.weight(.bold))
@@ -2560,6 +5289,8 @@ private struct OnboardingGuideSheet: View {
                         .foregroundColor(.appMuted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+
+                OnboardingImageSlot(step: item, language: language)
 
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(item.points(language), id: \.self) { point in
@@ -2639,8 +5370,25 @@ private struct OnboardingGuideSheet: View {
         switch language {
         case .japanese: return japanese
         case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         }
+    }
+}
+
+private struct OnboardingImageSlot: View {
+    let step: OnboardingStep
+    let language: AppLanguage
+
+    var body: some View {
+        TutorialImageView(
+            asset: step.imageAsset,
+            title: step.imageTitle(language),
+            caption: step.imageCaption(language),
+            badge: step.imageBadge(language)
+        )
     }
 }
 
@@ -2665,42 +5413,42 @@ private enum OnboardingStep: String, CaseIterable, Identifiable {
         }
     }
 
-    var systemImage: String {
+    var imageAsset: TutorialImageAsset {
         switch self {
-        case .start: return "hand.tap.fill"
-        case .company: return "building.columns.fill"
-        case .products: return "shippingbox.fill"
-        case .customers: return "building.2.fill"
-        case .form: return "doc.text.fill"
-        case .preview: return "doc.richtext.fill"
+        case .start: return .onboardingStart
+        case .company: return .onboardingCompany
+        case .products: return .onboardingProducts
+        case .customers: return .onboardingCustomers
+        case .form: return .onboardingForm
+        case .preview: return .onboardingPreview
         }
     }
 
     func title(_ language: AppLanguage) -> String {
         switch self {
-        case .start: return localized(language, japanese: "まず使い方を確認", chinese: "先学会基本用法", english: "Start with the Basics")
-        case .company: return localized(language, japanese: "会社情報を登録", chinese: "建立公司信息", english: "Create Company Information")
-        case .products: return localized(language, japanese: "商品情報を登録", chinese: "建立产品信息", english: "Create Product Information")
-        case .customers: return localized(language, japanese: "取引先情報を登録", chinese: "建立客户信息", english: "Create Customer Information")
-        case .form: return localized(language, japanese: "帳票を作成", chinese: "建立表单", english: "Create a Form")
-        case .preview: return localized(language, japanese: "プレビューを確認", chinese: "预览", english: "Preview")
+        case .start: return localized(language, japanese: "まず使い方を確認", chinese: "先学会基本用法", english: "Start with the Basics", korean: "먼저 사용 방법 확인")
+        case .company: return localized(language, japanese: "会社情報を登録", chinese: "建立公司信息", english: "Create Company Information", korean: "회사 정보 등록")
+        case .products: return localized(language, japanese: "商品情報を登録", chinese: "建立产品信息", english: "Create Product Information", korean: "상품 정보 등록")
+        case .customers: return localized(language, japanese: "取引先情報を登録", chinese: "建立客户信息", english: "Create Customer Information", korean: "거래처 정보 등록")
+        case .form: return localized(language, japanese: "帳票を作成", chinese: "建立表单", english: "Create a Form", korean: "양식 작성")
+        case .preview: return localized(language, japanese: "プレビューを確認", chinese: "预览", english: "Preview", korean: "미리보기 확인")
         }
     }
 
     func body(_ language: AppLanguage) -> String {
         switch self {
         case .start:
-            return localized(language, japanese: "このアプリは、会社・商品・取引先を候補として保存し、帳票作成とPDF確認までを端末内で進めます。", chinese: "这个 App 会先保存公司、产品与客户候选资料，再用这些资料建立表单并确认 PDF 预览。", english: "Save company, product, and customer profiles, then use them to create forms and preview PDFs on this device.")
+            return localized(language, japanese: "このアプリは、会社・商品・取引先を候補として保存し、帳票作成とPDF確認までを端末内で進めます。", chinese: "这个 App 会先保存公司、产品与客户候选资料，再用这些资料建立表单并确认 PDF 预览。", english: "Save company, product, and customer profiles, then use them to create forms and preview PDFs on this device.", korean: "이 앱은 회사, 상품, 거래처 정보를 후보로 저장한 뒤, 양식 작성과 PDF 확인까지 기기 안에서 진행합니다.")
         case .company:
-            return localized(language, japanese: "帳票に表示する自社名、登録番号、連絡先、住所を登録します。", chinese: "登记表单上显示的本公司名称、登记编号、联系人和地址。", english: "Register the issuer name, registration number, contact details, and address shown on forms.")
+            return localized(language, japanese: "帳票に表示する自社名、登録番号、連絡先、住所を登録します。", chinese: "登记表单上显示的本公司名称、登记编号、联系人和地址。", english: "Register the issuer name, registration number, contact details, and address shown on forms.", korean: "양식에 표시할 자사명, 등록번호, 연락처와 주소를 등록합니다.")
         case .products:
-            return localized(language, japanese: "よく使う商品や作業項目を保存すると、明細入力が速くなります。", chinese: "保存常用商品或作业项目后，建立明细会更快。", english: "Save frequently used products or work items to speed up line item entry.")
+            return localized(language, japanese: "よく使う商品や作業項目を保存すると、明細入力が速くなります。", chinese: "保存常用商品或作业项目后，建立明细会更快。", english: "Save frequently used products or work items to speed up line item entry.", korean: "자주 사용하는 상품이나 작업 항목을 저장하면 상세 항목 입력이 빨라집니다.")
         case .customers:
-            return localized(language, japanese: "顧客や仕入先を保存しておくと、帳票作成時に候補から呼び出せます。", chinese: "预先保存客户或供应商后，建立表单时可直接从候选项带入。", english: "Save customers and vendors so they can be inserted while creating forms.")
+            return localized(language, japanese: "顧客や仕入先を保存しておくと、帳票作成時に候補から呼び出せます。", chinese: "预先保存客户或供应商后，建立表单时可直接从候选项带入。", english: "Save customers and vendors so they can be inserted while creating forms.", korean: "고객이나 공급업체를 저장해 두면 양식 작성 시 후보에서 바로 불러올 수 있습니다.")
         case .form:
-            return localized(language, japanese: "見積、注文、納品、請求、領収など、用途に合わせて帳票を選んで入力します。", chinese: "依照用途选择报价、订单、交付、请款、收据等表单并输入内容。", english: "Choose the form type you need, such as estimate, order, delivery, invoice, or receipt.")
+            return localized(language, japanese: "見積、注文、納品、請求、領収など、用途に合わせて帳票を選んで入力します。", chinese: "依照用途选择报价、订单、交付、请款、收据等表单并输入内容。", english: "Choose the form type you need, such as estimate, order, delivery, invoice, or receipt.", korean: "견적, 주문, 납품, 청구, 영수 등 용도에 맞는 양식을 선택해 입력합니다.")
         case .preview:
-            return localized(language, japanese: "保存した帳票はPDFとして確認できます。共有やGoogle DriveバックアップはPro機能です。", chinese: "保存后的表单可用 PDF 预览确认。分享与 Google Drive 备份属于 Pro 功能。", english: "Saved forms can be reviewed as PDFs. Sharing and Google Drive backup are Pro features.")
+            return localized(language, japanese: "保存した帳票はPDFとして確認できます。共有やGoogle DriveバックアップはPro機能です。", chinese: "保存后的表单可用 PDF 预览确认。分享与 Google Drive 备份属于 Pro 功能。", english: "Saved forms can be reviewed as PDFs. Sharing and Google Drive backup are Pro features.", korean: "저장한 양식은 PDF로 확인할 수 있습니다. 공유와 Google Drive 백업은 Pro 기능입니다.")
         }
     }
 
@@ -2708,42 +5456,87 @@ private enum OnboardingStep: String, CaseIterable, Identifiable {
         switch self {
         case .start:
             return [
-                localized(language, japanese: "下のボタンから各管理画面を開けます。", chinese: "可用下方按钮打开对应管理页面。", english: "Use the button below to open each related screen."),
-                localized(language, japanese: "導入中でも右上からいつでも閉じられます。", chinese: "导览过程中可随时从右上角跳出。", english: "You can close the guide at any time.")
+                localized(language, japanese: "下のボタンから各管理画面を開けます。", chinese: "可用下方按钮打开对应管理页面。", english: "Use the button below to open each related screen.", korean: "아래 버튼에서 각 관리 화면을 열 수 있습니다."),
+                localized(language, japanese: "導入中でも右上からいつでも閉じられます。", chinese: "导览过程中可随时从右上角跳出。", english: "You can close the guide at any time.", korean: "도움말 중에도 오른쪽 위에서 언제든지 닫을 수 있습니다.")
             ]
         case .company:
             return [
-                localized(language, japanese: "複数の会社情報を保存できます。", chinese: "可以保存多笔公司资料。", english: "You can save multiple company profiles."),
-                localized(language, japanese: "既定の会社情報は新規帳票に反映されます。", chinese: "默认公司资料会带入新表单。", english: "The default company is applied to new forms.")
+                localized(language, japanese: "複数の会社情報を保存できます。", chinese: "可以保存多笔公司资料。", english: "You can save multiple company profiles.", korean: "여러 회사 정보를 저장할 수 있습니다."),
+                localized(language, japanese: "既定の会社情報は新規帳票に反映されます。", chinese: "默认公司资料会带入新表单。", english: "The default company is applied to new forms.", korean: "기본 회사 정보는 새 양식에 자동 반영됩니다.")
             ]
         case .products:
             return [
-                localized(language, japanese: "品名、型番、仕様、単価を保存します。", chinese: "保存品名、型号、规格和单价。", english: "Save item name, model, specification, and unit price."),
-                localized(language, japanese: "帳票明細へ候補から入力できます。", chinese: "建立表单明细时可从候选项输入。", english: "Insert saved products into form line items.")
+                localized(language, japanese: "品名、型番、仕様、単価を保存します。", chinese: "保存品名、型号、规格和单价。", english: "Save item name, model, specification, and unit price.", korean: "품명, 모델, 사양, 단가를 저장합니다."),
+                localized(language, japanese: "帳票明細へ候補から入力できます。", chinese: "建立表单明细时可从候选项输入。", english: "Insert saved products into form line items.", korean: "양식 상세 항목에 후보로 입력할 수 있습니다.")
             ]
         case .customers:
             return [
-                localized(language, japanese: "顧客と仕入先の候補を同じ場所で管理します。", chinese: "客户与供应商候选资料在同一处管理。", english: "Manage customers and vendors in one place."),
-                localized(language, japanese: "会社名、担当者、電話、メール、住所を保存します。", chinese: "保存公司名、负责人、电话、邮箱和地址。", english: "Save name, contact, phone, email, and address.")
+                localized(language, japanese: "顧客と仕入先の候補を同じ場所で管理します。", chinese: "客户与供应商候选资料在同一处管理。", english: "Manage customers and vendors in one place.", korean: "고객과 공급업체 후보를 한곳에서 관리합니다."),
+                localized(language, japanese: "会社名、担当者、電話、メール、住所を保存します。", chinese: "保存公司名、负责人、电话、邮箱和地址。", english: "Save name, contact, phone, email, and address.", korean: "회사명, 담당자, 전화, 이메일, 주소를 저장합니다.")
             ]
         case .form:
             return [
-                localized(language, japanese: "入力中の内容は保存して後から再利用できます。", chinese: "输入中的内容可保存并之后继续使用。", english: "Save forms and reuse them later."),
-                localized(language, japanese: "プロジェクトにまとめると関連帳票を追跡しやすくなります。", chinese: "放入项目后更容易追踪相关表单。", english: "Projects help track related forms together.")
+                localized(language, japanese: "入力中の内容は保存して後から再利用できます。", chinese: "输入中的内容可保存并之后继续使用。", english: "Save forms and reuse them later.", korean: "입력 중인 내용은 저장해 나중에 다시 사용할 수 있습니다."),
+                localized(language, japanese: "プロジェクトにまとめると関連帳票を追跡しやすくなります。", chinese: "放入项目后更容易追踪相关表单。", english: "Projects help track related forms together.", korean: "프로젝트로 묶으면 관련 양식을 추적하기 쉽습니다.")
             ]
         case .preview:
             return [
-                localized(language, japanese: "保存済み帳票からPDFプレビューを開けます。", chinese: "可从已保存表单打开 PDF 预览。", english: "Open PDF preview from saved forms."),
-                localized(language, japanese: "テストデータを読み込むとすぐにプレビューを試せます。", chinese: "载入测试数据后可以马上试用预览。", english: "Load demo data to try preview immediately.")
+                localized(language, japanese: "保存済み帳票からPDFプレビューを開けます。", chinese: "可从已保存表单打开 PDF 预览。", english: "Open PDF preview from saved forms.", korean: "저장된 양식에서 PDF 미리보기를 열 수 있습니다."),
+                localized(language, japanese: "テストデータを読み込むとすぐにプレビューを試せます。", chinese: "载入测试数据后可以马上试用预览。", english: "Load demo data to try preview immediately.", korean: "테스트 데이터를 불러오면 바로 미리보기를 시험할 수 있습니다.")
             ]
         }
     }
 
-    private func localized(_ language: AppLanguage, japanese: String, chinese: String, english: String) -> String {
+    func imageTitle(_ language: AppLanguage) -> String {
+        switch self {
+        case .start:
+            return localized(language, japanese: "全体の流れを図で確認", chinese: "用附图预览整体流程", english: "Preview the Full Workflow", korean: "전체 흐름을 그림으로 확인")
+        case .company:
+            return localized(language, japanese: "会社情報登録の案内図", chinese: "公司资料附图", english: "Company Illustration", korean: "회사 정보 안내 그림")
+        case .products:
+            return localized(language, japanese: "商品登録の案内図", chinese: "产品资料附图", english: "Product Illustration", korean: "상품 등록 안내 그림")
+        case .customers:
+            return localized(language, japanese: "取引先登録の案内図", chinese: "客户资料附图", english: "Customer Illustration", korean: "거래처 등록 안내 그림")
+        case .form:
+            return localized(language, japanese: "帳票作成の案内図", chinese: "表单建立附图", english: "Form Creation Illustration", korean: "양식 작성 안내 그림")
+        case .preview:
+            return localized(language, japanese: "PDFプレビューの案内図", chinese: "PDF 预览附图", english: "PDF Preview Illustration", korean: "PDF 미리보기 안내 그림")
+        }
+    }
+
+    func imageCaption(_ language: AppLanguage) -> String {
+        switch self {
+        case .start:
+            return localized(language, japanese: "初回起動ガイドの流れを確認できます。", chinese: "这里显示首次启动导览附图。", english: "Shows the first-launch guide flow.", korean: "첫 실행 안내 흐름을 확인할 수 있습니다.")
+        case .company:
+            return localized(language, japanese: "自社情報の入力手順を図で確認します。", chinese: "用附图说明本公司资料输入步骤。", english: "Shows the issuer profile setup flow.", korean: "자사 정보 입력 절차를 그림으로 확인합니다.")
+        case .products:
+            return localized(language, japanese: "商品候補の追加手順を図で確認します。", chinese: "用附图说明产品候选资料新增步骤。", english: "Shows the product candidate setup flow.", korean: "상품 후보 추가 절차를 그림으로 확인합니다.")
+        case .customers:
+            return localized(language, japanese: "顧客・仕入先登録の手順を図で確認します。", chinese: "用附图说明客户与供应商登记步骤。", english: "Shows the customer and vendor setup flow.", korean: "고객 및 공급업체 등록 절차를 그림으로 확인합니다.")
+        case .form:
+            return localized(language, japanese: "帳票入力から保存までの手順を図で確認します。", chinese: "用附图说明表单输入到保存的步骤。", english: "Shows the form entry and save flow.", korean: "양식 입력부터 저장까지의 절차를 그림으로 확인합니다.")
+        case .preview:
+            return localized(language, japanese: "PDF確認と共有前チェックの手順を図で確認します。", chinese: "用附图说明 PDF 确认与分享前检查步骤。", english: "Shows the PDF review flow.", korean: "PDF 확인과 공유 전 점검 절차를 그림으로 확인합니다.")
+        }
+    }
+
+    func imageBadge(_ language: AppLanguage) -> String {
+        guard let index = Self.allCases.firstIndex(of: self) else {
+            return localized(language, japanese: "図", chinese: "附图", english: "Image", korean: "그림")
+        }
+        let number = String(format: "%02d", index + 1)
+        return localized(language, japanese: "図 \(number)", chinese: "附图 \(number)", english: "Image \(number)", korean: "그림 \(number)")
+    }
+
+    private func localized(_ language: AppLanguage, japanese: String, chinese: String, english: String, korean: String? = nil) -> String {
         switch language {
         case .japanese: return japanese
         case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         case .english: return english
+        case .korean: return korean ?? english
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         }
     }
 }
@@ -2841,7 +5634,9 @@ private struct ElectronicBookkeepingGuideSheet: View {
     }
 
     private var formItems: [PreservationGuideItem] {
-        DocumentType.allCases.map { type in
+        ProjectDirection.customer.requiredTypes.map { type in
+            PreservationGuideItem(title: type.localizedTitle(language), body: formGuideBody(for: type))
+        } + ProjectDirection.vendor.requiredTypes.map { type in
             PreservationGuideItem(title: type.localizedTitle(language), body: formGuideBody(for: type))
         }
     }
@@ -2851,7 +5646,7 @@ private struct ElectronicBookkeepingGuideSheet: View {
         case .estimate:
             return localized(japanese: "見積条件、明細、税率、有効期限を残し、後続の注文・請求と照合しやすくします。", chinese: "保存报价条件、明细、税率和有效期，便于和后续订单、请款内容核对。", english: "Keeps terms, line items, tax, and validity dates for comparison with later orders and invoices.")
         case .customerOrder:
-            return localized(japanese: "顧客から受けた注文内容、希望納期、関連見積番号を記録し、受注根拠を整理します。", chinese: "记录客户订单内容、希望交期和相关报价编号，用来整理受订单据依据。", english: "Records customer order details, requested delivery dates, and related quote numbers.")
+            return localized(japanese: "受注内容、希望納期、関連見積番号を記録し、受注根拠を整理します。", chinese: "记录受注内容、希望交期和相关报价编号，用来整理受订单据依据。", english: "Records order received details, requested delivery dates, and related quote numbers.")
         case .purchaseOrder:
             return localized(japanese: "仕入先への発注内容、数量、納期、条件を保存し、受領・支払確認につなげます。", chinese: "保存向供应商采购的内容、数量、交期和条件，便于后续收货和付款确认。", english: "Stores supplier order details, quantities, delivery dates, and terms for receipt and payment checks.")
         case .delivery:
@@ -2866,6 +5661,8 @@ private struct ElectronicBookkeepingGuideSheet: View {
             return localized(japanese: "顧客ごとの関連ファイルや帳票をまとめ、同じ取引の資料を分散させず管理します。", chinese: "集中管理每个客户相关文件和表单，避免同一交易资料分散。", english: "Collects customer-related files and forms so transaction records stay together.")
         case .vendorEstimate:
             return localized(japanese: "仕入先見積の内容、受領日、添付資料を残し、発注判断の根拠を保存します。", chinese: "保存供应商报价内容、取得日期和附件资料，用作采购判断依据。", english: "Stores vendor quote content, receipt date, and attachments as purchase decision support.")
+        case .vendorInvoice:
+            return localized(japanese: "仕入先請求書の受領日、関連番号、添付資料を保存し、支払確認につなげます。", chinese: "保存供应商请款书的取得日期、关联编号和附件，便于后续付款确认。", english: "Stores vendor invoice dates, related numbers, and attachments for payment review.")
         case .vendorReceipt:
             return localized(japanese: "仕入先から受けた領収内容、支払証憑、関連資料をまとめて保存します。", chinese: "保存供应商收据内容、付款凭证和相关资料。", english: "Keeps vendor receipt details, payment evidence, and related documents together.")
         case .paymentNotice:
@@ -2903,7 +5700,10 @@ private struct ElectronicBookkeepingGuideSheet: View {
         switch language {
         case .japanese: return japanese
         case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         }
     }
 }
@@ -2987,7 +5787,6 @@ private struct DeveloperStoryReviewScreen: View {
                     .font(.title3.weight(.semibold))
                     .foregroundColor(.appInk)
                     .lineLimit(2)
-                    .minimumScaleFactor(0.84)
                 Text(localizedSubtitle)
                     .font(.footnote.weight(.regular))
                     .foregroundColor(.appMuted)
@@ -3055,7 +5854,6 @@ private struct DeveloperStoryReviewScreen: View {
                 }
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
                 .frame(maxWidth: .infinity, minHeight: 48)
                 .background(buttonAccent)
                 .foregroundColor(.white)
@@ -3252,7 +6050,10 @@ private struct DeveloperStoryReviewScreen: View {
         switch language {
         case .japanese: return japanese
         case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         }
     }
 }
@@ -3361,7 +6162,6 @@ private struct DSASettingsScreen: View {
                 .font(.body.weight(.regular))
                 .foregroundColor(isEnabled ? buttonAccent : .appMuted)
                 .lineLimit(2)
-                .minimumScaleFactor(0.76)
             Spacer(minLength: 8)
             if isEnabled {
                 Image(systemName: "arrow.up.right")
@@ -3381,7 +6181,10 @@ private struct DSASettingsScreen: View {
         switch language {
         case .japanese: return japanese
         case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         }
     }
 }
@@ -3528,7 +6331,6 @@ private struct CloudBackupPackageRow: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundColor(.appInk)
                         .lineLimit(2)
-                        .minimumScaleFactor(0.82)
                     HStack(spacing: 8) {
                         if !dateText.isEmpty {
                             Label(dateText, systemImage: "calendar")
@@ -3540,7 +6342,6 @@ private struct CloudBackupPackageRow: View {
                     .font(.caption.weight(.semibold))
                     .foregroundColor(.appMuted)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.76)
                 }
 
                 Spacer(minLength: 0)
@@ -3794,7 +6595,10 @@ struct CompanyManagementScreen: View {
         switch language {
         case .japanese: return japanese
         case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         }
     }
 }
@@ -3809,6 +6613,12 @@ struct FileManagementScreen: View {
     @State private var selectedProjectGroupID: String?
     @State private var selectedDocumentType: DocumentType?
     @State private var copyingDocument: BusinessDocument?
+    @State private var quickPreviewProjectGroup: FileProjectGroup?
+    @State private var editingProject: ProjectArchive?
+    @State private var isSelectingDocuments = false
+    @State private var selectedDocumentIDs: Set<BusinessDocument.ID> = []
+    @State private var isDeleteConfirmationPresented = false
+    @State private var isDeletedHistoryPresented = false
     @Environment(\.appButtonAccent) private var buttonAccent
     private var language: AppLanguage { store.interfaceLanguage }
 
@@ -3900,12 +6710,65 @@ struct FileManagementScreen: View {
             selectedPartnerName = nil
             selectedProjectGroupID = nil
             selectedDocumentType = nil
+            clearDocumentSelection()
+        }
+        .onChange(of: selectedDocumentType) { _ in
+            clearDocumentSelection()
         }
         .sheet(item: $copyingDocument) { document in
             ProjectDocumentCopySheet(store: store, source: document) { copied in
                 store.select(copied)
                 selectedSection = .form
             }
+        }
+        .sheet(item: $editingProject) { project in
+            ProjectSettingsSheet(store: store, project: project)
+        }
+        .sheet(item: $quickPreviewProjectGroup) { group in
+            FileProjectQuickPreviewSheet(
+                group: group,
+                direction: direction,
+                language: language,
+                onOpenType: { type in
+                    openProjectGroupType(group, type: type)
+                },
+                onOpenDocument: { document in
+                    store.select(document)
+                    selectedSection = .form
+                },
+                onCopyDocument: { document in
+                    quickPreviewProjectGroup = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        copyingDocument = document
+                    }
+                },
+                onSettings: {
+                    guard let project = projectArchive(for: group.id) else { return }
+                    quickPreviewProjectGroup = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        editingProject = project
+                    }
+                },
+                onDelete: {
+                    store.deleteDocuments(ids: Set(group.documents.map(\.id)))
+                    quickPreviewProjectGroup = nil
+                    if selectedProjectGroupID == group.id {
+                        selectedProjectGroupID = nil
+                        selectedDocumentType = nil
+                    }
+                }
+            )
+        }
+        .sheet(isPresented: $isDeletedHistoryPresented) {
+            DeletedDocumentHistorySheet(store: store, language: language)
+        }
+        .confirmationDialog(localizedDeleteSelectedTitle, isPresented: $isDeleteConfirmationPresented, titleVisibility: .visible) {
+            Button(localizedMoveToDeletedHistoryTitle, role: .destructive) {
+                deleteSelectedDocuments()
+            }
+            Button(localizedCancelTitle, role: .cancel) {}
+        } message: {
+            Text(localizedDeleteSelectedMessage)
         }
     }
 
@@ -3931,11 +6794,36 @@ struct FileManagementScreen: View {
                 .font(.title3.weight(.semibold))
                 .foregroundColor(.appInk)
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
 
             Spacer(minLength: 12)
-            if level == .partners {
-                directionMenu
+            HStack(spacing: 8) {
+                if level == .documents {
+                    Button(isSelectingDocuments ? localizedDoneTitle : localizedSelectTitle) {
+                        isSelectingDocuments.toggle()
+                        if !isSelectingDocuments {
+                            selectedDocumentIDs.removeAll()
+                        }
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(buttonAccent)
+                    .frame(minWidth: 54, minHeight: 40)
+                }
+
+                if level == .partners {
+                    Button {
+                        store.pruneExpiredDeletedDocuments()
+                        isDeletedHistoryPresented = true
+                    } label: {
+                        Image(systemName: "trash.circle")
+                            .font(.headline.weight(.semibold))
+                            .foregroundColor(.appInk)
+                            .frame(width: 44, height: 44)
+                            .background(Color.appInputBackground)
+                            .clipShape(Circle())
+                    }
+                    .accessibilityLabel(Text(localizedDeletedHistoryTitle))
+                    directionMenu
+                }
             }
         }
         .padding(.horizontal, 18)
@@ -3993,10 +6881,7 @@ struct FileManagementScreen: View {
             } else {
                 VStack(spacing: 10) {
                     ForEach(projectGroups) { group in
-                        fileSelectionButton(title: group.name, subtitle: localizedProjectSubtitle(group), systemImage: "folder") {
-                            selectedProjectGroupID = group.id
-                            selectedDocumentType = nil
-                        }
+                        projectSelectionButton(group)
                     }
                 }
             }
@@ -4004,15 +6889,17 @@ struct FileManagementScreen: View {
     }
 
     private var documentTypeSection: some View {
-        SectionCard(title: localizedTypeListTitle, titleWeight: .regular) {
+        SectionCard(title: localizedReportTitle, titleWeight: .regular) {
             if typeGroups.isEmpty {
                 EmptyManagementText(text: localizedNoTypeText)
             } else {
-                VStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(localizedReportHelpText)
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.appMuted)
+                        .fixedSize(horizontal: false, vertical: true)
                     ForEach(typeGroups) { group in
-                        fileSelectionButton(title: group.type.localizedTitle(language), subtitle: localizedTypeSubtitle(group), systemImage: group.type.isAttachmentRecord ? "paperclip" : "doc.text") {
-                            selectedDocumentType = group.type
-                        }
+                        reportCategorySection(group)
                     }
                 }
             }
@@ -4022,7 +6909,32 @@ struct FileManagementScreen: View {
     private var documentListSection: some View {
         SectionCard(title: selectedTypeGroup?.type.localizedTitle(language) ?? localizedDocumentListTitle, titleWeight: .regular) {
             if let selectedTypeGroup {
-                VStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 10) {
+                    if isSelectingDocuments {
+                        Text(localizedSelectionHelpText)
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(.appMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: 10) {
+                            Button {
+                                toggleSelectAllDocuments(selectedTypeGroup.documents)
+                            } label: {
+                                Label(areAllDocumentsSelected(selectedTypeGroup.documents) ? localizedDeselectAllTitle : localizedSelectAllTitle, systemImage: areAllDocumentsSelected(selectedTypeGroup.documents) ? "checkmark.circle" : "checkmark.circle.fill")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(CompanyOutlineButtonStyle())
+
+                            Button {
+                                isDeleteConfirmationPresented = true
+                            } label: {
+                                Label(localizedDeleteTitle, systemImage: "trash")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(CompanyFilledButtonStyle())
+                            .disabled(selectedDocumentIDs.isEmpty)
+                            .opacity(selectedDocumentIDs.isEmpty ? 0.45 : 1)
+                        }
+                    }
                     ForEach(selectedTypeGroup.documents) { document in
                         documentRow(document)
                     }
@@ -4034,13 +6946,20 @@ struct FileManagementScreen: View {
     }
 
     private func documentRow(_ document: BusinessDocument) -> some View {
-        HStack(alignment: .center, spacing: 10) {
+        let isSelected = selectedDocumentIDs.contains(document.id)
+        return HStack(alignment: .center, spacing: 10) {
+            if isSelectingDocuments {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.title3.weight(.semibold))
+                    .foregroundColor(isSelected ? buttonAccent : .appMuted)
+                    .frame(width: 32, height: 40)
+            }
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(document.number.isEmpty ? document.type.localizedTitle(language) : document.number)
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(.appInk)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.75)
                 Text(documentSummary(document))
                     .font(.caption.weight(.semibold))
                     .foregroundColor(.appMuted)
@@ -4048,50 +6967,173 @@ struct FileManagementScreen: View {
             }
             Spacer()
 
-            Button {
-                onPreviewDocument(document)
-            } label: {
-                Image(systemName: "eye")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(buttonAccent)
-                    .frame(width: 40, height: 40)
-                    .background(buttonAccent.opacity(0.10))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(PlainButtonStyle())
-            .accessibilityLabel(localizedPreviewDocumentTitle)
+            if !isSelectingDocuments {
+                Button {
+                    onPreviewDocument(document)
+                } label: {
+                    Image(systemName: "eye")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(buttonAccent)
+                        .frame(width: 40, height: 40)
+                        .background(buttonAccent.opacity(0.10))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel(localizedPreviewDocumentTitle)
 
-            Button {
-                store.select(document)
-                selectedSection = .form
-            } label: {
-                Image(systemName: "pencil")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(buttonAccent)
-                    .frame(width: 40, height: 40)
-                    .background(buttonAccent.opacity(0.10))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(PlainButtonStyle())
-            .accessibilityLabel(localizedEditDocumentTitle)
+                Button {
+                    store.select(document)
+                    selectedSection = .form
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(buttonAccent)
+                        .frame(width: 40, height: 40)
+                        .background(buttonAccent.opacity(0.10))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel(localizedEditDocumentTitle)
 
-            Button {
-                copyingDocument = document
-            } label: {
-                Image(systemName: "doc.on.doc")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(buttonAccent)
-                    .frame(width: 40, height: 40)
-                    .background(buttonAccent.opacity(0.10))
-                    .clipShape(Circle())
+                Button {
+                    copyingDocument = document
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(buttonAccent)
+                        .frame(width: 40, height: 40)
+                        .background(buttonAccent.opacity(0.10))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel(localizedCopyDocumentTitle)
             }
-            .buttonStyle(PlainButtonStyle())
-            .accessibilityLabel(localizedCopyDocumentTitle)
         }
         .padding(12)
-        .background(Color.appInputBackground)
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appDivider))
+        .background(isSelected ? buttonAccent.opacity(0.10) : Color.appInputBackground)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(isSelected ? buttonAccent : Color.appDivider))
         .cornerRadius(8)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if isSelectingDocuments {
+                toggleDocumentSelection(document)
+            } else {
+                openDocumentForEditing(document)
+            }
+        }
+    }
+
+    private func reportCategorySection(_ group: FileDocumentTypeGroup) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 10) {
+                Label(group.type.localizedTitle(language), systemImage: group.type.isAttachmentRecord ? "paperclip" : "doc.text")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(.appInk)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Button {
+                    selectedDocumentType = group.type
+                } label: {
+                    Text(localizedOpenCategoryTitle)
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(buttonAccent)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(buttonAccent.opacity(0.10))
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+
+            VStack(spacing: 8) {
+                ForEach(group.documents) { document in
+                    reportDocumentRow(document)
+                }
+            }
+        }
+        .padding(12)
+        .background(Color.appInputBackground.opacity(0.65))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.appDivider))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func reportDocumentRow(_ document: BusinessDocument) -> some View {
+        Button {
+            openDocumentForEditing(document)
+        } label: {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(spacing: 6) {
+                        reportTag(text: AppFormatters.shortDate(document.issueDate), color: buttonAccent)
+                        reportTag(text: document.type.localizedSubtitle(language), color: .appMuted)
+                        if let payment = paymentReportStatus(for: document) {
+                            reportTag(text: payment.title, color: payment.color)
+                        }
+                    }
+                    .lineLimit(1)
+
+                    Text(reportDocumentTitle(document))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.appInk)
+                        .lineLimit(1)
+
+                    Text(reportKeyInfo(document))
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.appMuted)
+                        .lineLimit(2)
+
+                    if let warning = reportWarningText(document) {
+                        Text(warning)
+                            .font(.caption2.weight(.bold))
+                            .foregroundColor(Color(red: 0.80, green: 0.18, blue: 0.12))
+                            .lineLimit(2)
+                    }
+                }
+
+                Spacer(minLength: 6)
+
+                VStack(alignment: .trailing, spacing: 8) {
+                    Text(reportAmountText(document))
+                        .font(.subheadline.weight(.bold))
+                        .foregroundColor(.appInk)
+                        .multilineTextAlignment(.trailing)
+                        .lineLimit(2)
+                    Button {
+                        onPreviewDocument(document)
+                    } label: {
+                        Image(systemName: "eye")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(buttonAccent)
+                            .frame(width: 32, height: 32)
+                            .background(buttonAccent.opacity(0.10))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .accessibilityLabel(localizedPreviewDocumentTitle)
+                }
+                .frame(width: 94, alignment: .trailing)
+            }
+            .padding(10)
+            .background(Color.appBackground)
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.appDivider))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private func reportTag(text: String, color: Color) -> some View {
+        Text(text)
+            .font(.caption2.weight(.bold))
+            .foregroundColor(color)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(color.opacity(0.12))
+            .clipShape(Capsule())
+    }
+
+    private func openDocumentForEditing(_ document: BusinessDocument) {
+        store.select(document)
+        selectedSection = .form
     }
 
     private func fileSelectionButton(title: String, subtitle: String, systemImage: String, action: @escaping () -> Void) -> some View {
@@ -4126,6 +7168,45 @@ struct FileManagementScreen: View {
         .buttonStyle(PlainButtonStyle())
     }
 
+    private func projectSelectionButton(_ group: FileProjectGroup) -> some View {
+        fileSelectionButton(title: group.name, subtitle: localizedProjectSubtitle(group), systemImage: "folder") {
+            selectedProjectGroupID = group.id
+            selectedDocumentType = nil
+        }
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.45)
+                .onEnded { _ in
+                    quickPreviewProjectGroup = group
+                }
+        )
+    }
+
+    private func openProjectGroupType(_ group: FileProjectGroup, type: DocumentType) {
+        if type == .customerOrder,
+           let project = projectArchive(for: group.id),
+           group.documents.filter({ $0.type == .customerOrder }).isEmpty {
+            store.createAdditionalCustomerOrder(project: project)
+            selectedSection = .form
+            return
+        }
+
+        if let document = group.documents
+            .filter({ $0.type == type })
+            .sorted(by: { $0.updatedAt > $1.updatedAt })
+            .first {
+            store.select(document)
+            selectedSection = .form
+            return
+        }
+
+        if let project = projectArchive(for: group.id) {
+            store.openProjectForm(project: project, type: type)
+        } else {
+            store.newDocument(type: type)
+        }
+        selectedSection = .form
+    }
+
     private func navigateBack() {
         switch level {
         case .documents:
@@ -4136,6 +7217,40 @@ struct FileManagementScreen: View {
             selectedPartnerName = nil
         case .partners:
             break
+        }
+    }
+
+    private func toggleDocumentSelection(_ document: BusinessDocument) {
+        if selectedDocumentIDs.contains(document.id) {
+            selectedDocumentIDs.remove(document.id)
+        } else {
+            selectedDocumentIDs.insert(document.id)
+        }
+    }
+
+    private func areAllDocumentsSelected(_ documents: [BusinessDocument]) -> Bool {
+        !documents.isEmpty && documents.allSatisfy { selectedDocumentIDs.contains($0.id) }
+    }
+
+    private func toggleSelectAllDocuments(_ documents: [BusinessDocument]) {
+        let ids = Set(documents.map(\.id))
+        if areAllDocumentsSelected(documents) {
+            selectedDocumentIDs.subtract(ids)
+        } else {
+            selectedDocumentIDs.formUnion(ids)
+        }
+    }
+
+    private func clearDocumentSelection() {
+        isSelectingDocuments = false
+        selectedDocumentIDs.removeAll()
+    }
+
+    private func deleteSelectedDocuments() {
+        store.deleteDocuments(ids: selectedDocumentIDs)
+        clearDocumentSelection()
+        if selectedTypeGroup?.documents.isEmpty != false {
+            selectedDocumentType = nil
         }
     }
 
@@ -4171,8 +7286,8 @@ struct FileManagementScreen: View {
         let projectCount = Set(group.documents.map { $0.projectId?.uuidString ?? FileProjectGroup.unassignedID }).count
         switch language {
         case .japanese: return "\(localizedCount(group.documentCount)) / \(projectCount) プロジェクト"
-        case .simplifiedChinese: return "\(localizedCount(group.documentCount)) / \(projectCount) 个项目"
-        case .english: return "\(localizedCount(group.documentCount)) / \(projectCount) projects"
+        case .simplifiedChinese, .traditionalChinese: return "\(localizedCount(group.documentCount)) / \(projectCount) 个项目"
+        case .english, .korean, .nepali, .french, .vietnamese: return "\(localizedCount(group.documentCount)) / \(projectCount) projects"
         }
     }
 
@@ -4180,25 +7295,128 @@ struct FileManagementScreen: View {
         let typeCount = Set(group.documents.map(\.type)).count
         switch language {
         case .japanese: return "\(localizedCount(group.documents.count)) / \(typeCount) 種類 / \(AppFormatters.shortDate(group.updatedAt))"
-        case .simplifiedChinese: return "\(localizedCount(group.documents.count)) / \(typeCount) 个类别 / \(AppFormatters.shortDate(group.updatedAt))"
-        case .english: return "\(localizedCount(group.documents.count)) / \(typeCount) types / \(AppFormatters.shortDate(group.updatedAt))"
+        case .simplifiedChinese, .traditionalChinese: return "\(localizedCount(group.documents.count)) / \(typeCount) 个类别 / \(AppFormatters.shortDate(group.updatedAt))"
+        case .english, .korean, .nepali, .french, .vietnamese: return "\(localizedCount(group.documents.count)) / \(typeCount) types / \(AppFormatters.shortDate(group.updatedAt))"
         }
     }
 
     private func localizedTypeSubtitle(_ group: FileDocumentTypeGroup) -> String {
         switch language {
         case .japanese: return "\(localizedCount(group.documents.count)) / 新しい順"
-        case .simplifiedChinese: return "\(localizedCount(group.documents.count)) / 新到旧"
-        case .english: return "\(localizedCount(group.documents.count)) / newest first"
+        case .simplifiedChinese, .traditionalChinese: return "\(localizedCount(group.documents.count)) / 新到旧"
+        case .english, .korean, .nepali, .french, .vietnamese: return "\(localizedCount(group.documents.count)) / newest first"
         }
     }
 
     private func localizedCount(_ count: Int) -> String {
         switch language {
         case .japanese: return "\(count) 件"
-        case .simplifiedChinese: return "\(count) 笔"
-        case .english: return "\(count) forms"
+        case .simplifiedChinese, .traditionalChinese: return "\(count) 笔"
+        case .english, .korean, .nepali, .french, .vietnamese: return "\(count) forms"
         }
+    }
+
+    private func reportDocumentTitle(_ document: BusinessDocument) -> String {
+        let number = document.number.trimmingCharacters(in: .whitespacesAndNewlines)
+        return number.isEmpty ? document.type.localizedTitle(language) : "\(document.type.localizedTitle(language)) \(number)"
+    }
+
+    private func reportAmountText(_ document: BusinessDocument) -> String {
+        if document.type.isAttachmentRecord,
+           document.total == 0,
+           let proofAmount = document.paymentProofAmount,
+           proofAmount > 0 {
+            return AppFormatters.yen(proofAmount, language: language)
+        }
+        return AppFormatters.yen(document.total, language: language)
+    }
+
+    private func reportKeyInfo(_ document: BusinessDocument) -> String {
+        let attachmentNames = reportAttachmentNames(document)
+        let attachmentText = localizedAttachmentSummary(count: reportAttachmentCount(document), names: attachmentNames)
+        let dateText = localizedReportDateText(document)
+        let partner = document.customerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let partnerText = partner.isEmpty ? localizedNoPartnerName : partner
+        return "\(dateText) / \(partnerText) / \(attachmentText)"
+    }
+
+    private func localizedReportDateText(_ document: BusinessDocument) -> String {
+        let issue = AppFormatters.shortDate(document.issueDate)
+        let transaction = AppFormatters.shortDate(document.transactionDate)
+        switch language {
+        case .japanese: return "発行 \(issue) / 取引 \(transaction)"
+        case .simplifiedChinese, .traditionalChinese: return "开具 \(issue) / 交易 \(transaction)"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Issued \(issue) / transaction \(transaction)"
+        }
+    }
+
+    private func localizedAttachmentSummary(count: Int, names: [String]) -> String {
+        let countText: String
+        switch language {
+        case .japanese: countText = "\(count) ファイル"
+        case .simplifiedChinese, .traditionalChinese: countText = "\(count) 个文件"
+        case .english, .korean, .nepali, .french, .vietnamese: countText = "\(count) files"
+        }
+        guard !names.isEmpty else { return countText }
+        return "\(countText): \(names.prefix(2).joined(separator: ", "))"
+    }
+
+    private func reportAttachmentCount(_ document: BusinessDocument) -> Int {
+        (document.orderAttachments?.count ?? 0) + (document.paymentProofAttachments?.count ?? 0)
+    }
+
+    private func reportAttachmentNames(_ document: BusinessDocument) -> [String] {
+        ((document.orderAttachments ?? []) + (document.paymentProofAttachments ?? []))
+            .map(\.filename)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private func reportWarningText(_ document: BusinessDocument) -> String? {
+        if document.type.isAttachmentRecord && reportAttachmentCount(document) == 0 {
+            return localized(japanese: "警告: 添付ファイルがありません", chinese: "警告：没有上传附件", english: "Warning: no uploaded files")
+        }
+        if [.invoice, .vendorInvoice, .paymentNotice].contains(document.type),
+           paymentReportStatus(for: document)?.isPaid == false {
+            return localized(japanese: "未確認: 支払証明ファイルがありません", chinese: "未确认：没有支付证明文件", english: "Unconfirmed: no payment proof file")
+        }
+        return nil
+    }
+
+    private func paymentReportStatus(for document: BusinessDocument) -> (title: String, color: Color, isPaid: Bool)? {
+        let needsPaymentStatus: Bool
+        switch document.type {
+        case .invoice, .vendorInvoice, .paymentNotice:
+            needsPaymentStatus = true
+        default:
+            needsPaymentStatus = false
+        }
+        guard needsPaymentStatus else { return nil }
+
+        let hasPaymentProof = !(document.paymentProofAttachments ?? []).isEmpty
+        if hasPaymentProof {
+            let paidTitle: String
+            switch document.type {
+            case .invoice:
+                paidTitle = localized(japanese: "入金済", chinese: "客户已支付", english: "Customer Paid")
+            case .vendorInvoice, .paymentNotice:
+                paidTitle = localized(japanese: "支払済", chinese: "已支付", english: "Paid")
+            default:
+                paidTitle = localized(japanese: "支払済", chinese: "已支付", english: "Paid")
+            }
+            return (paidTitle, Color(red: 0.12, green: 0.56, blue: 0.30), true)
+        }
+
+        let unpaidTitle: String
+        switch document.type {
+        case .invoice:
+            unpaidTitle = localized(japanese: "入金待ち", chinese: "等待客户支付", english: "Awaiting Customer")
+        case .vendorInvoice, .paymentNotice:
+            unpaidTitle = localized(japanese: "支払待ち", chinese: "待支付", english: "Awaiting Payment")
+        default:
+            unpaidTitle = localized(japanese: "未払い", chinese: "未支付", english: "Unpaid")
+        }
+        return (unpaidTitle, Color(red: 0.86, green: 0.33, blue: 0.24), false)
     }
 
     private func documentSummary(_ document: BusinessDocument) -> String {
@@ -4208,14 +7426,14 @@ struct FileManagementScreen: View {
             let fileCount = (document.orderAttachments?.count ?? 0) + (document.paymentProofAttachments?.count ?? 0)
             switch language {
             case .japanese: return "\(date) 更新 / 発行 \(issueDate) / \(fileCount) ファイル"
-            case .simplifiedChinese: return "\(date) 更新 / 开具 \(issueDate) / \(fileCount) 个文件"
-            case .english: return "Updated \(date) / issued \(issueDate) / \(fileCount) files"
+            case .simplifiedChinese, .traditionalChinese: return "\(date) 更新 / 开具 \(issueDate) / \(fileCount) 个文件"
+            case .english, .korean, .nepali, .french, .vietnamese: return "Updated \(date) / issued \(issueDate) / \(fileCount) files"
             }
         }
         switch language {
         case .japanese: return "\(date) 更新 / 発行 \(issueDate) / \(AppFormatters.yen(document.total, language: language))"
-        case .simplifiedChinese: return "\(date) 更新 / 开具 \(issueDate) / \(AppFormatters.yen(document.total, language: language))"
-        case .english: return "Updated \(date) / issued \(issueDate) / \(AppFormatters.yen(document.total, language: language))"
+        case .simplifiedChinese, .traditionalChinese: return "\(date) 更新 / 开具 \(issueDate) / \(AppFormatters.yen(document.total, language: language))"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Updated \(date) / issued \(issueDate) / \(AppFormatters.yen(document.total, language: language))"
         }
     }
 
@@ -4224,6 +7442,15 @@ struct FileManagementScreen: View {
     private var localizedPartnerListTitle: String { direction == .customer ? localized(japanese: "顧客", chinese: "客户", english: "Customers") : localized(japanese: "仕入先", chinese: "供应商", english: "Vendors") }
     private var localizedProjectListTitle: String { localized(japanese: "プロジェクト", chinese: "项目", english: "Projects") }
     private var localizedTypeListTitle: String { localized(japanese: "帳票類別", chinese: "表单类别", english: "Form Types") }
+    private var localizedReportTitle: String { localized(japanese: "プロジェクトレポート", chinese: "项目报告", english: "Project Report") }
+    private var localizedReportHelpText: String {
+        localized(
+            japanese: "帳票類別ごとに新しい順で表示します。金額、支払状態、添付ファイル、重要な未確認情報を1行で確認できます。行をタップすると帳票編集へ移動します。",
+            chinese: "依照表单类别分区，并按时间新到旧显示。每列集中显示金额、支付状态、附件与重要未确认信息。点击列表可直接进入表单。",
+            english: "Grouped by form type and sorted newest first. Each row shows amount, payment status, attachments, and key warnings. Tap a row to open the form."
+        )
+    }
+    private var localizedOpenCategoryTitle: String { localized(japanese: "一覧", chinese: "列表", english: "List") }
     private var localizedDocumentListTitle: String { localized(japanese: "帳票一覧", chinese: "表单列表", english: "Forms") }
     private var localizedEmptyText: String { localized(japanese: "この区分の帳票はまだありません。", chinese: "这个区分还没有表单。", english: "No forms in this category yet.") }
     private var localizedNoProjectsText: String { localized(japanese: "プロジェクトがありません。", chinese: "没有项目。", english: "No projects.") }
@@ -4232,6 +7459,29 @@ struct FileManagementScreen: View {
     private var localizedNoPartnerName: String { localized(japanese: "取引先未入力", chinese: "未填写客户/供应商", english: "No customer/vendor") }
     private var localizedUnassignedProjectTitle: String { localized(japanese: "プロジェクト未指定", chinese: "未指定项目", english: "No Project") }
     private var localizedBackTitle: String { localized(japanese: "戻る", chinese: "返回", english: "Back") }
+    private var localizedSelectTitle: String { localized(japanese: "選択", chinese: "选择", english: "Select") }
+    private var localizedDoneTitle: String { localized(japanese: "完了", chinese: "完成", english: "Done") }
+    private var localizedSelectAllTitle: String { localized(japanese: "全選択", chinese: "全选", english: "Select All") }
+    private var localizedDeselectAllTitle: String { localized(japanese: "全解除", chinese: "全部取消", english: "Deselect All") }
+    private var localizedDeleteTitle: String { localized(japanese: "削除", chinese: "删除", english: "Delete") }
+    private var localizedCancelTitle: String { localized(japanese: "キャンセル", chinese: "取消", english: "Cancel") }
+    private var localizedDeletedHistoryTitle: String { localized(japanese: "削除履歴", chinese: "删除文件", english: "Deleted Files") }
+    private var localizedMoveToDeletedHistoryTitle: String { localized(japanese: "削除履歴へ移動", chinese: "移到删除文件", english: "Move to Deleted Files") }
+    private var localizedSelectionHelpText: String {
+        localized(
+            japanese: "選択した帳票は削除履歴へ移動します。30日以内なら削除履歴から復元できます。",
+            chinese: "选择的表单会移到删除文件。30 天内可在删除文件里恢复。",
+            english: "Selected forms move to Deleted Files and can be restored within 30 days."
+        )
+    }
+    private var localizedDeleteSelectedTitle: String { localized(japanese: "選択した帳票を削除しますか？", chinese: "要删除选择的表单吗？", english: "Delete selected forms?") }
+    private var localizedDeleteSelectedMessage: String {
+        localized(
+            japanese: "削除後も30日間は削除履歴に残り、復元できます。設定画面のデータ消去を実行した場合は削除履歴も含めて完全に空になります。",
+            chinese: "删除后会在删除文件保留 30 天，可恢复。如果从设置页面执行资料清除，删除文件也会一起清空，系统会回到完全空白状态。",
+            english: "Deleted forms are kept for 30 days and can be restored. Clearing data from Settings also removes Deleted Files and returns the app to a blank state."
+        )
+    }
     private var localizedPreviewDocumentTitle: String { localized(japanese: "プレビュー", chinese: "预览", english: "Preview") }
     private var localizedEditDocumentTitle: String { localized(japanese: "編集", chinese: "编辑", english: "Edit") }
     private var localizedCopyDocumentTitle: String { localized(japanese: "プロジェクトへコピー", chinese: "复制到项目", english: "Copy to project") }
@@ -4240,9 +7490,572 @@ struct FileManagementScreen: View {
         switch language {
         case .japanese: return japanese
         case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         }
     }
+}
+
+private struct DeletedDocumentHistorySheet: View {
+    @ObservedObject var store: DocumentStore
+    let language: AppLanguage
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.appButtonAccent) private var buttonAccent
+    @State private var selectedRecordIDs: Set<DeletedDocumentRecord.ID> = []
+    @State private var isRestoreConfirmationPresented = false
+    @State private var isPermanentDeleteConfirmationPresented = false
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                sheetContent
+            }
+            .background(Color.appBackground.edgesIgnoringSafeArea(.all))
+            .navigationTitle(localizedTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(localizedCloseTitle) {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .navigationViewStyle(StackNavigationViewStyle())
+        .onAppear {
+            store.pruneExpiredDeletedDocuments()
+        }
+        .confirmationDialog(localizedRestoreConfirmTitle, isPresented: $isRestoreConfirmationPresented, titleVisibility: .visible) {
+            Button(localizedRestoreTitle) {
+                store.restoreDeletedDocuments(ids: selectedRecordIDs)
+                selectedRecordIDs.removeAll()
+            }
+            Button(localizedCancelTitle, role: .cancel) {}
+        } message: {
+            Text(localizedRestoreConfirmMessage)
+        }
+        .confirmationDialog(localizedPermanentDeleteConfirmTitle, isPresented: $isPermanentDeleteConfirmationPresented, titleVisibility: .visible) {
+            Button(localizedPermanentDeleteTitle, role: .destructive) {
+                store.permanentlyDeleteDeletedDocuments(ids: selectedRecordIDs)
+                selectedRecordIDs.removeAll()
+            }
+            Button(localizedCancelTitle, role: .cancel) {}
+        } message: {
+            Text(localizedPermanentDeleteConfirmMessage)
+        }
+    }
+
+    @ViewBuilder
+    private var sheetContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            historyHelpText
+            historyContent
+        }
+        .padding(18)
+    }
+
+    private var historyHelpText: some View {
+        Text(localizedHelpText)
+            .font(.caption.weight(.semibold))
+            .foregroundColor(.appMuted)
+            .lineSpacing(3)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder
+    private var historyContent: some View {
+        if store.deletedDocuments.isEmpty {
+            EmptyManagementText(text: localizedEmptyText)
+        } else {
+            historyActions
+            deletedRecordList
+        }
+    }
+
+    private var historyActions: some View {
+        VStack(spacing: 10) {
+            selectAllHistoryButton
+
+            HStack(spacing: 10) {
+                restoreHistoryButton
+                permanentDeleteHistoryButton
+            }
+        }
+    }
+
+    private var selectAllHistoryButton: some View {
+        Button {
+            toggleSelectAll()
+        } label: {
+            Label(isAllSelected ? localizedDeselectAllTitle : localizedSelectAllTitle, systemImage: isAllSelected ? "checkmark.circle" : "checkmark.circle.fill")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(CompanyOutlineButtonStyle())
+    }
+
+    private var restoreHistoryButton: some View {
+        Button {
+            isRestoreConfirmationPresented = true
+        } label: {
+            Label(localizedRestoreTitle, systemImage: "arrow.uturn.backward")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(CompanyFilledButtonStyle())
+        .disabled(selectedRecordIDs.isEmpty)
+        .opacity(selectedRecordIDs.isEmpty ? 0.45 : 1)
+    }
+
+    private var permanentDeleteHistoryButton: some View {
+        Button {
+            isPermanentDeleteConfirmationPresented = true
+        } label: {
+            Label(localizedPermanentDeleteShortTitle, systemImage: "trash")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(CompanyOutlineButtonStyle())
+        .disabled(selectedRecordIDs.isEmpty)
+        .opacity(selectedRecordIDs.isEmpty ? 0.45 : 1)
+    }
+
+    private var deletedRecordList: some View {
+        VStack(spacing: 10) {
+            ForEach(store.deletedDocuments) { record in
+                deletedRecordRow(record)
+            }
+        }
+    }
+
+    private var isAllSelected: Bool {
+        !store.deletedDocuments.isEmpty && store.deletedDocuments.allSatisfy { selectedRecordIDs.contains($0.id) }
+    }
+
+    private func toggleSelectAll() {
+        let ids = Set(store.deletedDocuments.map(\.id))
+        if isAllSelected {
+            selectedRecordIDs.removeAll()
+        } else {
+            selectedRecordIDs = ids
+        }
+    }
+
+    private func toggleRecord(_ record: DeletedDocumentRecord) {
+        if selectedRecordIDs.contains(record.id) {
+            selectedRecordIDs.remove(record.id)
+        } else {
+            selectedRecordIDs.insert(record.id)
+        }
+    }
+
+    private func deletedRecordRow(_ record: DeletedDocumentRecord) -> some View {
+        let isSelected = selectedRecordIDs.contains(record.id)
+        let document = record.document
+        return HStack(alignment: .center, spacing: 10) {
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .font(.title3.weight(.semibold))
+                .foregroundColor(isSelected ? buttonAccent : .appMuted)
+                .frame(width: 32, height: 40)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(document.number.isEmpty ? document.type.localizedTitle(language) : document.number)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.appInk)
+                    .lineLimit(1)
+                Text(deletedRecordSummary(record))
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.appMuted)
+                    .lineLimit(2)
+            }
+            Spacer()
+        }
+        .padding(12)
+        .background(isSelected ? buttonAccent.opacity(0.10) : Color.appInputBackground)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(isSelected ? buttonAccent : Color.appDivider))
+        .cornerRadius(8)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            toggleRecord(record)
+        }
+    }
+
+    private func deletedRecordSummary(_ record: DeletedDocumentRecord) -> String {
+        let deletedAt = AppFormatters.shortDate(record.deletedAt)
+        let expiresAt = AppFormatters.shortDate(record.expiresAt)
+        switch language {
+        case .japanese: return "\(record.document.type.localizedTitle(language)) / 削除 \(deletedAt) / 保留期限 \(expiresAt)"
+        case .simplifiedChinese, .traditionalChinese: return "\(record.document.type.localizedTitle(language)) / 删除 \(deletedAt) / 保留到 \(expiresAt)"
+        case .english, .korean, .nepali, .french, .vietnamese: return "\(record.document.type.localizedTitle(language)) / deleted \(deletedAt) / kept until \(expiresAt)"
+        }
+    }
+
+    private var localizedTitle: String { localized(japanese: "削除履歴", chinese: "删除文件", english: "Deleted Files") }
+    private var localizedHelpText: String {
+        localized(
+            japanese: "通常の削除では帳票を30日間ここに保留します。復元すると元の帳票一覧に戻ります。ここで完全削除した帳票、または設定画面でデータ消去した内容は復元できません。",
+            chinese: "一般删除的表单会在这里保留 30 天。恢复后会回到原本的表单列表。在这里永久删除的表单，或从设置页面清除的数据，都无法恢复。",
+            english: "Regularly deleted forms stay here for 30 days. Restoring returns them to the form list. Permanently deleted forms, or content cleared from Settings, cannot be restored."
+        )
+    }
+    private var localizedEmptyText: String { localized(japanese: "削除された帳票はありません。", chinese: "没有已删除的表单。", english: "No deleted forms.") }
+    private var localizedSelectAllTitle: String { localized(japanese: "全選択", chinese: "全选", english: "Select All") }
+    private var localizedDeselectAllTitle: String { localized(japanese: "全解除", chinese: "全部取消", english: "Deselect All") }
+    private var localizedRestoreTitle: String { localized(japanese: "復元", chinese: "恢复", english: "Restore") }
+    private var localizedPermanentDeleteShortTitle: String { localized(japanese: "完全削除", chinese: "永久删除", english: "Delete") }
+    private var localizedPermanentDeleteTitle: String { localized(japanese: "完全に削除", chinese: "永久删除", english: "Permanently Delete") }
+    private var localizedCancelTitle: String { localized(japanese: "キャンセル", chinese: "取消", english: "Cancel") }
+    private var localizedCloseTitle: String { localized(japanese: "閉じる", chinese: "关闭", english: "Close") }
+    private var localizedRestoreConfirmTitle: String { localized(japanese: "選択した帳票を復元しますか？", chinese: "要恢复选择的表单吗？", english: "Restore selected forms?") }
+    private var localizedRestoreConfirmMessage: String {
+        localized(
+            japanese: "復元した帳票は通常のファイル管理リストに戻ります。",
+            chinese: "恢复后的表单会回到一般文件管理列表。",
+            english: "Restored forms return to the normal file management list."
+        )
+    }
+    private var localizedPermanentDeleteConfirmTitle: String { localized(japanese: "完全削除しますか？", chinese: "要永久删除吗？", english: "Permanently delete?") }
+    private var localizedPermanentDeleteConfirmMessage: String {
+        localized(
+            japanese: "選択した帳票を削除履歴から完全に削除します。この操作は取り消せず、復元できません。",
+            chinese: "选择的表单会从删除文件中永久删除。此操作无法取消，也无法恢复。",
+            english: "Selected forms will be removed from Deleted Files. This cannot be undone or restored."
+        )
+    }
+
+    private func localized(japanese: String, chinese: String, english: String) -> String {
+        switch language {
+        case .japanese: return japanese
+        case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
+        case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
+        }
+    }
+}
+
+private struct ExternalAttachmentImport: Identifiable {
+    let id = UUID()
+    let urls: [URL]
+    var sourceDirectory: URL? = nil
+}
+
+private struct ExternalAttachmentImportSheet: View {
+    @ObservedObject var store: DocumentStore
+    let importRequest: ExternalAttachmentImport
+    let language: AppLanguage
+    let onComplete: (BusinessDocument) -> Void
+    let onCancel: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.appButtonAccent) private var buttonAccent
+    @State private var direction: ProjectDirection = .customer
+    @State private var projectMode: ExternalAttachmentProjectMode = .existing
+    @State private var selectedCompanyName: String?
+    @State private var selectedProjectID: ProjectArchive.ID?
+    @State private var selectedType: DocumentType = .customerOrder
+    @State private var statusText = ""
+
+    private var allowedTypes: [DocumentType] {
+        switch direction {
+        case .customer: return [.customerOrder]
+        case .vendor: return [.vendorEstimate, .vendorInvoice, .vendorReceipt]
+        }
+    }
+
+    private var availableProjects: [ProjectArchive] {
+        store.projects.filter { $0.direction == direction }
+    }
+
+    private var availableCompanyNames: [String] {
+        var seen = Set<String>()
+        return availableProjects.compactMap { project in
+            let name = project.customerName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = name.lowercased()
+            guard !seen.contains(key) else { return nil }
+            seen.insert(key)
+            return name
+        }
+    }
+
+    private var selectedCompanyProjects: [ProjectArchive] {
+        guard projectMode == .existing, let selectedCompanyName else { return [] }
+        return availableProjects.filter {
+            $0.customerName.trimmingCharacters(in: .whitespacesAndNewlines) == selectedCompanyName
+        }
+    }
+
+    private var selectedProject: ProjectArchive? {
+        guard projectMode == .existing, let selectedProjectID else { return nil }
+        return selectedCompanyProjects.first { $0.id == selectedProjectID }
+    }
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(localizedHelpText)
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.appMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    SectionCard(title: localizedFileTitle, titleWeight: .regular) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(importRequest.urls, id: \.absoluteString) { url in
+                                Label(url.lastPathComponent, systemImage: iconName(for: url))
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundColor(.appInk)
+                                    .lineLimit(2)
+                            }
+                        }
+                    }
+
+                    SectionCard(title: localizedProjectTitle, titleWeight: .regular) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Picker(localizedDirectionTitle, selection: $direction) {
+                                ForEach(ProjectDirection.allCases) { item in
+                                    Text(item.localizedTitle(language)).tag(item)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+
+                            Picker(localizedProjectModeTitle, selection: $projectMode) {
+                                Text(localizedExistingProjectTitle).tag(ExternalAttachmentProjectMode.existing)
+                                Text(localizedNewProjectTitle).tag(ExternalAttachmentProjectMode.new)
+                            }
+                            .pickerStyle(.segmented)
+
+                            if projectMode == .existing {
+                                if availableProjects.isEmpty {
+                                    Text(localizedNoProjectText)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundColor(.appMuted)
+                                } else {
+                                    Picker(localizedCompanyPickerTitle, selection: $selectedCompanyName) {
+                                        Text(localizedChooseCompanyTitle).tag(nil as String?)
+                                        ForEach(availableCompanyNames, id: \.self) { companyName in
+                                            Text(companyDisplayName(companyName)).tag(Optional(companyName))
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 10)
+                                    .background(Color.appInputBackground)
+                                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appDivider))
+
+                                    if selectedCompanyName == nil {
+                                        Text(localizedChooseCompanyHelpText)
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundColor(.appMuted)
+                                    } else if selectedCompanyProjects.isEmpty {
+                                        Text(localizedNoProjectForCompanyText)
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundColor(.appMuted)
+                                    } else {
+                                        VStack(alignment: .leading, spacing: 10) {
+                                            VStack(alignment: .leading, spacing: 3) {
+                                                Text(localizedCompanyProjectListTitle)
+                                                    .font(.caption.weight(.bold))
+                                                    .foregroundColor(.appInk)
+                                                Text(localizedCompanyProjectListHelpText)
+                                                    .font(.caption2.weight(.semibold))
+                                                    .foregroundColor(.appMuted)
+                                                    .fixedSize(horizontal: false, vertical: true)
+                                            }
+
+                                            VStack(spacing: 10) {
+                                                ForEach(selectedCompanyProjects) { project in
+                                                    Button {
+                                                        selectedProjectID = project.id
+                                                    } label: {
+                                                        HStack(spacing: 10) {
+                                                            Image(systemName: selectedProjectID == project.id ? "checkmark.circle.fill" : "circle")
+                                                                .foregroundColor(selectedProjectID == project.id ? buttonAccent : .appMuted)
+                                                            VStack(alignment: .leading, spacing: 3) {
+                                                                Text(project.name)
+                                                                    .font(.subheadline.weight(.semibold))
+                                                                    .foregroundColor(.appInk)
+                                                                    .lineLimit(1)
+                                                                Text(projectSummary(project))
+                                                                    .font(.caption.weight(.semibold))
+                                                                    .foregroundColor(.appMuted)
+                                                                    .lineLimit(1)
+                                                            }
+                                                            Spacer()
+                                                        }
+                                                        .padding(12)
+                                                        .background(selectedProjectID == project.id ? buttonAccent.opacity(0.10) : Color.appInputBackground)
+                                                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(selectedProjectID == project.id ? buttonAccent : Color.appDivider))
+                                                        .cornerRadius(8)
+                                                    }
+                                                    .buttonStyle(PlainButtonStyle())
+                                                }
+                                            }
+                                        }
+                                        .padding(.top, 10)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    SectionCard(title: localizedFormTitle, titleWeight: .regular) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(localizedFormHelpText)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundColor(.appMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            ForEach(allowedTypes) { type in
+                                Button {
+                                    selectedType = type
+                                } label: {
+                                    HStack(spacing: 10) {
+                                        Image(systemName: selectedType == type ? "checkmark.circle.fill" : "circle")
+                                            .foregroundColor(selectedType == type ? buttonAccent : .appMuted)
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(type.localizedTitle(language))
+                                                .font(.subheadline.weight(.semibold))
+                                                .foregroundColor(.appInk)
+                                            Text(type.localizedSubtitle(language))
+                                                .font(.caption.weight(.semibold))
+                                                .foregroundColor(.appMuted)
+                                        }
+                                        Spacer()
+                                    }
+                                    .padding(12)
+                                    .background(selectedType == type ? buttonAccent.opacity(0.10) : Color.appInputBackground)
+                                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(selectedType == type ? buttonAccent : Color.appDivider))
+                                    .cornerRadius(8)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                        }
+                        .padding(12)
+                        .background(buttonAccent.opacity(0.04))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.appDivider))
+                        .cornerRadius(10)
+                    }
+
+                    if !statusText.isEmpty {
+                        Text(statusText)
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(.appMuted)
+                    }
+
+                    ManagementPrimaryButton(title: localizedImportTitle, systemImage: "paperclip") {
+                        importFiles()
+                    }
+                    .disabled(projectMode == .existing && selectedProject == nil)
+                    .opacity(projectMode == .existing && selectedProject == nil ? 0.45 : 1)
+                }
+                .padding(18)
+            }
+            .background(Color.appBackground.edgesIgnoringSafeArea(.all))
+            .navigationTitle(localizedTitle)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(localizedCancelTitle) {
+                        onCancel()
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .navigationViewStyle(StackNavigationViewStyle())
+        .onAppear {
+            selectedType = allowedTypes.first ?? .customerOrder
+            resetExistingProjectSelection()
+        }
+        .onChange(of: direction) { _ in
+            selectedType = allowedTypes.first ?? .customerOrder
+            resetExistingProjectSelection()
+        }
+        .onChange(of: projectMode) { _ in
+            if projectMode == .existing {
+                resetExistingProjectSelection()
+            } else {
+                selectedCompanyName = nil
+                selectedProjectID = nil
+            }
+        }
+        .onChange(of: selectedCompanyName) { _ in
+            selectedProjectID = selectedCompanyProjects.first?.id
+        }
+    }
+
+    private func resetExistingProjectSelection() {
+        projectMode = availableProjects.isEmpty ? .new : .existing
+        selectedCompanyName = nil
+        selectedProjectID = nil
+    }
+
+    private func importFiles() {
+        let project = projectMode == .existing ? selectedProject : nil
+        let count = store.importExternalAttachments(from: importRequest.urls, into: project, direction: direction, type: selectedType)
+        guard count > 0 else {
+            statusText = localizedImportFailedText
+            return
+        }
+        onComplete(store.current)
+        dismiss()
+    }
+
+    private func iconName(for url: URL) -> String {
+        UTType(filenameExtension: url.pathExtension)?.conforms(to: .pdf) == true ? "doc.richtext" : "photo"
+    }
+
+    private func companyDisplayName(_ name: String) -> String {
+        name.isEmpty ? localizedNoCompanyTitle : name
+    }
+
+    private func projectSummary(_ project: ProjectArchive) -> String {
+        "\(project.completedCount)/\(project.direction.requiredTypes.count) / \(AppFormatters.shortDate(project.updatedAt))"
+    }
+
+    private var localizedTitle: String { localized(japanese: "ファイルを帳票へ取り込む", chinese: "导入文件到表单", english: "Import Files to Form") }
+    private var localizedHelpText: String {
+        localized(
+            japanese: "PDFは1件、写真は複数件を取り込めます。既存プロジェクトまたは新規プロジェクトを選び、ファイル添付に対応した帳票を選択してください。",
+            chinese: "PDF 每次只导入 1 个，照片可多张导入。请选择现有项目或建立新项目，再选择支持文件上传的表单。",
+            english: "One PDF or multiple photos can be imported. Choose an existing or new project, then select an upload-enabled form."
+        )
+    }
+    private var localizedFileTitle: String { localized(japanese: "取り込むファイル", chinese: "要导入的文件", english: "Files to Import") }
+    private var localizedProjectTitle: String { localized(japanese: "プロジェクト", chinese: "项目", english: "Project") }
+    private var localizedDirectionTitle: String { localized(japanese: "帳票カテゴリ", chinese: "表单类别", english: "Form Category") }
+    private var localizedProjectModeTitle: String { localized(japanese: "プロジェクト", chinese: "项目", english: "Project") }
+    private var localizedExistingProjectTitle: String { localized(japanese: "既存プロジェクト", chinese: "现有项目", english: "Existing Project") }
+    private var localizedNewProjectTitle: String { localized(japanese: "新規プロジェクト", chinese: "新项目", english: "New Project") }
+    private var localizedNoProjectText: String { localized(japanese: "既存プロジェクトがありません。新規プロジェクトを選択してください。", chinese: "没有现有项目。请选择新项目。", english: "No existing projects. Choose New Project.") }
+    private var localizedCompanyPickerTitle: String { direction == .customer ? localized(japanese: "顧客会社", chinese: "客户公司", english: "Customer Company") : localized(japanese: "仕入先会社", chinese: "供应商公司", english: "Vendor Company") }
+    private var localizedChooseCompanyTitle: String { localized(japanese: "会社を選択", chinese: "选择公司", english: "Choose Company") }
+    private var localizedChooseCompanyHelpText: String { localized(japanese: "会社を選択すると、その会社のプロジェクト一覧が表示されます。", chinese: "选择公司后，会显示该公司下面的项目列表。", english: "Choose a company to show its project list.") }
+    private var localizedCompanyProjectListTitle: String { localized(japanese: "この会社のプロジェクト", chinese: "这家公司的项目", english: "Projects for This Company") }
+    private var localizedCompanyProjectListHelpText: String { localized(japanese: "先に添付先のプロジェクトを選択してください。", chinese: "请先选择要附加文件的项目。", english: "Choose the project that should receive the imported file.") }
+    private var localizedNoProjectForCompanyText: String { localized(japanese: "この会社のプロジェクトがありません。", chinese: "这家公司没有项目。", english: "No projects for this company.") }
+    private var localizedNoCompanyTitle: String { localized(japanese: "会社未入力", chinese: "未填写公司", english: "No company") }
+    private var localizedFormTitle: String { localized(japanese: "ファイル対応帳票", chinese: "支持上传的表单", english: "Upload-Enabled Forms") }
+    private var localizedFormHelpText: String { localized(japanese: "選んだプロジェクト内で、今回のファイルを入れる帳票種類を選択します。", chinese: "在已选项目中，选择这次文件要导入的表单类型。", english: "Choose the form type inside the selected project for this file.") }
+    private var localizedImportTitle: String { localized(japanese: "この帳票へ取り込む", chinese: "导入到这个表单", english: "Import to This Form") }
+    private var localizedCancelTitle: String { localized(japanese: "キャンセル", chinese: "取消", english: "Cancel") }
+    private var localizedImportFailedText: String { localized(japanese: "ファイルを読み込めませんでした。", chinese: "无法读取文件。", english: "Could not read the files.") }
+
+    private func localized(japanese: String, chinese: String, english: String) -> String {
+        switch language {
+        case .japanese: return japanese
+        case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
+        case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
+        }
+    }
+}
+
+private enum ExternalAttachmentProjectMode: String {
+    case existing
+    case new
 }
 
 private enum FileManagementLevel {
@@ -4272,6 +8085,244 @@ private struct FileDocumentTypeGroup: Identifiable {
     var id: String { type.rawValue }
     let type: DocumentType
     let documents: [BusinessDocument]
+}
+
+private struct FileProjectQuickPreviewSheet: View {
+    let group: FileProjectGroup
+    let direction: ProjectDirection
+    let language: AppLanguage
+    let onOpenType: (DocumentType) -> Void
+    let onOpenDocument: (BusinessDocument) -> Void
+    let onCopyDocument: (BusinessDocument) -> Void
+    let onSettings: () -> Void
+    let onDelete: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.appButtonAccent) private var buttonAccent
+    @State private var isDeleteConfirmationPresented = false
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12),
+    ]
+
+    private var completedTypeCount: Int {
+        direction.requiredTypes.filter { type in
+            group.documents.contains { $0.type == type }
+        }.count
+    }
+
+    var body: some View {
+        ZStack {
+            Color.appBackground.edgesIgnoringSafeArea(.all)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    header
+
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                        ForEach(direction.requiredTypes) { type in
+                            quickTypeCard(type)
+                        }
+                    }
+                }
+                .padding(22)
+                .background(Color.appPanel)
+                .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.appDivider))
+                .cornerRadius(18)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 24)
+            }
+        }
+        .confirmationDialog(localizedDeleteTitle, isPresented: $isDeleteConfirmationPresented, titleVisibility: .visible) {
+            Button(localizedDeleteTitle, role: .destructive) {
+                onDelete()
+                dismiss()
+            }
+            Button(localizedCancelTitle, role: .cancel) {}
+        } message: {
+            Text(localizedDeleteMessage)
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .top, spacing: 16) {
+            Image(systemName: direction == .customer ? "person.crop.square.filled.and.at.rectangle" : "building.2.crop.circle")
+                .font(.title3.weight(.semibold))
+                .foregroundColor(buttonAccent)
+                .frame(width: 60, height: 60)
+                .background(buttonAccent.opacity(0.12))
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(group.name)
+                    .font(.largeTitle.weight(.semibold))
+                    .foregroundColor(.appInk)
+                    .lineLimit(2)
+                Text(progressText)
+                    .font(.headline.weight(.semibold))
+                    .foregroundColor(.appMuted)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            Button(action: onSettings) {
+                Image(systemName: "gearshape")
+                    .font(.title2.weight(.semibold))
+                    .foregroundColor(.appMuted)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .disabled(group.id == FileProjectGroup.unassignedID)
+            .opacity(group.id == FileProjectGroup.unassignedID ? 0.35 : 1)
+            .accessibilityLabel(localizedSettingsTitle)
+
+            Button {
+                isDeleteConfirmationPresented = true
+            } label: {
+                Image(systemName: "trash")
+                    .font(.title2.weight(.semibold))
+                    .foregroundColor(.red)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel(localizedDeleteTitle)
+        }
+    }
+
+    private func quickTypeCard(_ type: DocumentType) -> some View {
+        let documents = group.documents
+            .filter { $0.type == type }
+            .sorted { $0.updatedAt > $1.updatedAt }
+        let document = documents.first
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
+                Text(type.localizedTitle(language))
+                    .font(.headline.weight(.semibold))
+                    .foregroundColor(.appInk)
+                    .lineLimit(2)
+
+                Spacer(minLength: 6)
+
+                if let document {
+                    Button {
+                        onCopyDocument(document)
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.appMuted)
+                            .frame(width: 34, height: 34)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .accessibilityLabel(localizedCopyTitle)
+                } else if type == .customerOrder || group.id != FileProjectGroup.unassignedID {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title3.weight(.semibold))
+                        .foregroundColor(buttonAccent)
+                        .opacity(0.75)
+                }
+            }
+
+            Text(documentNumberText(document))
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(document == nil ? .appMuted : .appInk)
+                .lineLimit(1)
+
+            if documents.count > 1 {
+                Text(countText(documents.count))
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.appMuted)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
+        .padding(16)
+        .background(document == nil ? Color.appInputBackground.opacity(0.55) : Color.appInputBackground)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(document == nil ? Color.appDivider.opacity(0.65) : Color.appDivider))
+        .cornerRadius(12)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if let document {
+                onOpenDocument(document)
+            } else {
+                onOpenType(type)
+            }
+            dismiss()
+        }
+    }
+
+    private var progressText: String {
+        switch language {
+        case .japanese:
+            return "\(direction.localizedTitle(language)) / \(completedTypeCount)/\(direction.requiredTypes.count) 件完了"
+        case .simplifiedChinese, .traditionalChinese:
+            return "\(direction.localizedTitle(language)) / \(completedTypeCount)/\(direction.requiredTypes.count) 个完成"
+        case .english, .korean, .nepali, .french, .vietnamese:
+            return "\(direction.localizedTitle(language)) / \(completedTypeCount)/\(direction.requiredTypes.count) complete"
+        }
+    }
+
+    private func documentNumberText(_ document: BusinessDocument?) -> String {
+        guard let document else { return localizedNotCreatedText }
+        return document.number.isEmpty ? document.type.localizedTitle(language) : document.number
+    }
+
+    private func countText(_ count: Int) -> String {
+        switch language {
+        case .japanese: return "\(count) 件"
+        case .simplifiedChinese, .traditionalChinese: return "\(count) 笔"
+        case .english, .korean, .nepali, .french, .vietnamese: return "\(count) forms"
+        }
+    }
+
+    private var localizedNotCreatedText: String {
+        switch language {
+        case .japanese: return "未作成"
+        case .simplifiedChinese, .traditionalChinese: return "未创建"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Not created"
+        }
+    }
+
+    private var localizedSettingsTitle: String {
+        switch language {
+        case .japanese: return "プロジェクト設定"
+        case .simplifiedChinese, .traditionalChinese: return "项目设置"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Project settings"
+        }
+    }
+
+    private var localizedCopyTitle: String {
+        switch language {
+        case .japanese: return "コピー"
+        case .simplifiedChinese, .traditionalChinese: return "复制"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Copy"
+        }
+    }
+
+    private var localizedDeleteTitle: String {
+        switch language {
+        case .japanese: return "削除"
+        case .simplifiedChinese, .traditionalChinese: return "删除"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Delete"
+        }
+    }
+
+    private var localizedCancelTitle: String {
+        switch language {
+        case .japanese: return "キャンセル"
+        case .simplifiedChinese, .traditionalChinese: return "取消"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Cancel"
+        }
+    }
+
+    private var localizedDeleteMessage: String {
+        switch language {
+        case .japanese: return "このプロジェクト内の帳票を削除履歴へ移動します。30日以内なら削除履歴から復元できます。"
+        case .simplifiedChinese, .traditionalChinese: return "这个项目里的表单会移到删除文件。30 天内可在删除文件里恢复。"
+        case .english, .korean, .nepali, .french, .vietnamese: return "The forms in this project move to Deleted Files and can be restored within 30 days."
+        }
+    }
 }
 
 struct ProjectDocumentCopySheet: View {
@@ -4387,7 +8438,6 @@ struct ProjectDocumentCopySheet: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundColor(.appInk)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.75)
                     Text(projectSubtitle(project, hasExisting: hasExisting))
                         .font(.caption.weight(.semibold))
                         .foregroundColor(.appMuted)
@@ -4443,23 +8493,15 @@ struct ProjectDocumentCopySheet: View {
 
     private func newProjectFromSource() -> ProjectArchive {
         let cleanCustomerName = source.customerName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let projectName = cleanCustomerName.isEmpty ? "\(sourceDirection.title) \(AppFormatters.shortDate(Date()))" : "\(AppFormatters.shortDate(Date())) \(cleanCustomerName)"
-        return ProjectArchive(
-            id: UUID(),
-            name: projectName,
-            direction: sourceDirection,
-            customerName: cleanCustomerName,
-            updatedAt: Date(),
-            documents: []
-        )
+        return store.makeProjectArchive(direction: sourceDirection, customerName: cleanCustomerName)
     }
 
     private func projectSubtitle(_ project: ProjectArchive, hasExisting: Bool) -> String {
         let status = hasExisting ? localizedHasExistingText : localizedNoExistingText
         switch language {
         case .japanese: return "\(project.direction.localizedTitle(language)) / \(status)"
-        case .simplifiedChinese: return "\(project.direction.localizedTitle(language)) / \(status)"
-        case .english: return "\(project.direction.localizedTitle(language)) / \(status)"
+        case .simplifiedChinese, .traditionalChinese: return "\(project.direction.localizedTitle(language)) / \(status)"
+        case .english, .korean, .nepali, .french, .vietnamese: return "\(project.direction.localizedTitle(language)) / \(status)"
         }
     }
 
@@ -4484,9 +8526,9 @@ struct ProjectDocumentCopySheet: View {
         switch language {
         case .japanese:
             return "\(projectName) の既存の \(typeName) を上書きします。この操作は取り消せません。"
-        case .simplifiedChinese:
+        case .simplifiedChinese, .traditionalChinese:
             return "将覆盖 \(projectName) 里现有的 \(typeName)。此操作无法撤销。"
-        case .english:
+        case .english, .korean, .nepali, .french, .vietnamese:
             return "This will overwrite the existing \(typeName) in \(projectName). This cannot be undone."
         }
     }
@@ -4495,7 +8537,10 @@ struct ProjectDocumentCopySheet: View {
         switch language {
         case .japanese: return japanese
         case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         }
     }
 }
@@ -4605,7 +8650,10 @@ private struct StampManagementSection: View {
         switch language {
         case .japanese: return japanese
         case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         }
     }
 }
@@ -4627,6 +8675,7 @@ struct ProjectManagementScreen: View {
     @State private var pendingCreatedProject: ProjectArchive?
     @State private var isProjectCreatorPresented = false
     @State private var highlightedProjectID: ProjectArchive.ID?
+    @State private var expandedProjectIDs: Set<ProjectArchive.ID> = []
     private var language: AppLanguage { store.interfaceLanguage }
 
     private var selectedCustomer: CustomerProfile? {
@@ -4696,9 +8745,17 @@ struct ProjectManagementScreen: View {
                                 EmptyManagementText(text: localizedNoMatchingProjectsText)
                             } else {
                                 ForEach(filteredProjects) { project in
-                                    ProjectArchiveRow(project: project, language: language, isHighlighted: highlightedProjectID == project.id) { type in
+                                    ProjectArchiveRow(project: project, language: language, isExpanded: expandedProjectIDs.contains(project.id), isHighlighted: highlightedProjectID == project.id) { type in
                                         store.openProjectForm(project: project, type: type)
                                         selectedSection = .form
+                                    } onToggleExpanded: {
+                                        withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
+                                            if expandedProjectIDs.contains(project.id) {
+                                                expandedProjectIDs.remove(project.id)
+                                            } else {
+                                                expandedProjectIDs.insert(project.id)
+                                            }
+                                        }
                                     } onOpenOrderRecord: { document in
                                         store.select(document)
                                         selectedSection = .form
@@ -4822,6 +8879,7 @@ struct ProjectManagementScreen: View {
         projectFilter = .all
         companyFilter = ""
         highlightedProjectID = focusedProjectID
+        expandedProjectIDs.insert(focusedProjectID)
 
         DispatchQueue.main.async {
             withAnimation(.spring(response: 0.48, dampingFraction: 0.86)) {
@@ -4841,152 +8899,152 @@ struct ProjectManagementScreen: View {
     private var localizedProjectManagementTitle: String {
         switch language {
         case .japanese: return "プロジェクト管理"
-        case .simplifiedChinese: return "文件与项目管理"
-        case .english: return "Files and Projects"
+        case .simplifiedChinese, .traditionalChinese: return "文件与项目管理"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Files and Projects"
         }
     }
 
     private var localizedProjectManagementSubtitle: String {
         switch language {
         case .japanese: return "顧客書類をプロジェクトとしてまとめ、必要な帳票の進捗を確認します。"
-        case .simplifiedChinese: return "将客户文件按项目汇总，并确认所需表单的进度。"
-        case .english: return "Group customer documents by project and track required forms."
+        case .simplifiedChinese, .traditionalChinese: return "将客户文件按项目汇总，并确认所需表单的进度。"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Group customer documents by project and track required forms."
         }
     }
 
     private var localizedFreePlanTitle: String {
         switch language {
         case .japanese: return "無料版"
-        case .simplifiedChinese: return "免费版"
-        case .english: return "Free Plan"
+        case .simplifiedChinese, .traditionalChinese: return "免费版"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Free Plan"
         }
     }
 
     private var localizedFreePlanMessage: String {
         switch language {
         case .japanese: return "無料版でもプロジェクト作成と帳票管理を利用できます。ProではPDFプレビュー共有とGoogle Driveバックアップも利用できます。"
-        case .simplifiedChinese: return "免费版也可使用项目创建与表单管理。Pro 可继续使用 PDF 预览分享与 Google Drive 备份。"
-        case .english: return "The free plan can create projects and manage forms. Pro adds PDF preview sharing and Google Drive backup."
+        case .simplifiedChinese, .traditionalChinese: return "免费版也可使用项目创建与表单管理。Pro 可继续使用 PDF 预览分享与 Google Drive 备份。"
+        case .english, .korean, .nepali, .french, .vietnamese: return "The free plan can create projects and manage forms. Pro adds PDF preview sharing and Google Drive backup."
         }
     }
 
     private var localizedUpgradeTitle: String {
         switch language {
         case .japanese: return "Proで共有・バックアップを使う"
-        case .simplifiedChinese: return "升级 Pro 使用分享与备份"
-        case .english: return "Use Sharing and Backup with Pro"
+        case .simplifiedChinese, .traditionalChinese: return "升级 Pro 使用分享与备份"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Use Sharing and Backup with Pro"
         }
     }
 
     private var localizedAddTitle: String {
         switch language {
         case .japanese: return "追加"
-        case .simplifiedChinese: return "新增"
-        case .english: return "Add"
+        case .simplifiedChinese, .traditionalChinese: return "新增"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Add"
         }
     }
 
     private var localizedProjectListTitle: String {
         switch language {
         case .japanese: return "プロジェクト一覧"
-        case .simplifiedChinese: return "项目列表"
-        case .english: return "Projects"
+        case .simplifiedChinese, .traditionalChinese: return "项目列表"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Projects"
         }
     }
 
     private var localizedEmptyProjectsText: String {
         switch language {
         case .japanese: return "保存済みのプロジェクトはありません。右上の追加ボタンからプロジェクトを作成してください。"
-        case .simplifiedChinese: return "没有已保存项目。请通过右上角的新增按钮建立项目。"
-        case .english: return "No saved projects. Use the add button to create one."
+        case .simplifiedChinese, .traditionalChinese: return "没有已保存项目。请通过右上角的新增按钮建立项目。"
+        case .english, .korean, .nepali, .french, .vietnamese: return "No saved projects. Use the add button to create one."
         }
     }
 
     private var localizedProjectCategoryTitle: String {
         switch language {
         case .japanese: return "プロジェクト分類"
-        case .simplifiedChinese: return "项目分类"
-        case .english: return "Project Category"
+        case .simplifiedChinese, .traditionalChinese: return "项目分类"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Project Category"
         }
     }
 
     private var localizedCompanySearchPlaceholder: String {
         switch language {
         case .japanese: return "会社名で検索"
-        case .simplifiedChinese: return "按公司名搜索"
-        case .english: return "Search by company"
+        case .simplifiedChinese, .traditionalChinese: return "按公司名搜索"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Search by company"
         }
     }
 
     private var localizedNoMatchingProjectsText: String {
         switch language {
         case .japanese: return "条件に一致するプロジェクトはありません。"
-        case .simplifiedChinese: return "没有符合条件的项目。"
-        case .english: return "No projects match the filters."
+        case .simplifiedChinese, .traditionalChinese: return "没有符合条件的项目。"
+        case .english, .korean, .nepali, .french, .vietnamese: return "No projects match the filters."
         }
     }
 
     private var localizedDeleteProjectTitle: String {
         switch language {
         case .japanese: return "プロジェクトを削除しますか？"
-        case .simplifiedChinese: return "要删除项目吗？"
-        case .english: return "Delete this project?"
+        case .simplifiedChinese, .traditionalChinese: return "要删除项目吗？"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Delete this project?"
         }
     }
 
     private var localizedDeleteTitle: String {
         switch language {
         case .japanese: return "削除"
-        case .simplifiedChinese: return "删除"
-        case .english: return "Delete"
+        case .simplifiedChinese, .traditionalChinese: return "删除"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Delete"
         }
     }
 
     private var localizedCancelTitle: String {
         switch language {
         case .japanese: return "キャンセル"
-        case .simplifiedChinese: return "取消"
-        case .english: return "Cancel"
+        case .simplifiedChinese, .traditionalChinese: return "取消"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Cancel"
         }
     }
 
     private var localizedDeleteProjectMessage: String {
         switch language {
-        case .japanese: return "プロジェクト内の帳票をすべて削除します。この操作は取り消せません。"
-        case .simplifiedChinese: return "项目内的所有表单都会被删除。此操作无法撤销。"
-        case .english: return "All forms in this project will be deleted. This cannot be undone."
+        case .japanese: return "プロジェクト内の帳票をすべて削除履歴へ移動します。30日以内なら削除履歴から復元できます。"
+        case .simplifiedChinese, .traditionalChinese: return "项目内的所有表单都会移到删除文件。30 天内可在删除文件里恢复。"
+        case .english, .korean, .nepali, .french, .vietnamese: return "All forms in this project move to Deleted Files and can be restored within 30 days."
         }
     }
 
     private var localizedNewProjectTitle: String {
         switch language {
         case .japanese: return "新規プロジェクト"
-        case .simplifiedChinese: return "新项目"
-        case .english: return "New Project"
+        case .simplifiedChinese, .traditionalChinese: return "新项目"
+        case .english, .korean, .nepali, .french, .vietnamese: return "New Project"
         }
     }
 
     private var localizedPartnerPickerTitle: String {
         switch language {
         case .japanese: return "取引先・仕入先"
-        case .simplifiedChinese: return "客户/供应商"
-        case .english: return "Customer or Vendor"
+        case .simplifiedChinese, .traditionalChinese: return "客户/供应商"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Customer or Vendor"
         }
     }
 
     private var localizedNoSelectionTitle: String {
         switch language {
         case .japanese: return "未選択"
-        case .simplifiedChinese: return "未选择"
-        case .english: return "Not selected"
+        case .simplifiedChinese, .traditionalChinese: return "未选择"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Not selected"
         }
     }
 
     private var localizedCreateProjectTitle: String {
         switch language {
         case .japanese: return "プロジェクトを作成"
-        case .simplifiedChinese: return "建立项目"
-        case .english: return "Create Project"
+        case .simplifiedChinese, .traditionalChinese: return "建立项目"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Create Project"
         }
     }
 }
@@ -5007,8 +9065,8 @@ private enum ProjectDirectionFilter: String, CaseIterable, Identifiable {
         case .all:
             switch language {
             case .japanese: return "すべて"
-            case .simplifiedChinese: return "全部"
-            case .english: return "All"
+            case .simplifiedChinese, .traditionalChinese: return "全部"
+            case .english, .korean, .nepali, .french, .vietnamese: return "All"
             }
         case .customer: return ProjectDirection.customer.localizedTitle(language)
         case .vendor: return ProjectDirection.vendor.localizedTitle(language)
@@ -5056,7 +9114,7 @@ private struct ProjectPostCreateSheet: View {
                             Text(project.name)
                                 .font(.headline.weight(.semibold))
                                 .foregroundColor(.appInk)
-                                .lineLimit(2)
+                                .lineLimit(1)
                             Text(project.direction.localizedSubtitle(language))
                                 .font(.caption.weight(.semibold))
                                 .foregroundColor(.appMuted)
@@ -5139,7 +9197,10 @@ private struct ProjectPostCreateSheet: View {
         switch language {
         case .japanese: return japanese
         case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         }
     }
 }
@@ -5206,7 +9267,6 @@ private struct ProjectPostCreateTypeCard: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundColor(.appInk)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -5238,6 +9298,7 @@ private struct ProjectPostCreateTypeCard: View {
         case .acceptance: return "tray.full.fill"
         case .customerFiles: return "folder.fill"
         case .vendorEstimate: return "doc.text.magnifyingglass"
+        case .vendorInvoice: return "doc.richtext.fill"
         case .vendorReceipt: return "checkmark.rectangle.stack.fill"
         case .paymentNotice: return "yensign.circle.fill"
         }
@@ -5288,7 +9349,6 @@ private struct ProjectPostCreateDocumentPreviewCard: View {
                         Text(document.number.isEmpty ? document.type.localizedTitle(language) : document.number)
                             .font(.system(size: 8, weight: .semibold))
                             .lineLimit(1)
-                            .minimumScaleFactor(0.7)
                     }
                     .foregroundColor(.appInk)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -5314,7 +9374,6 @@ private struct ProjectPostCreateDocumentPreviewCard: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundColor(.appInk)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -5342,8 +9401,10 @@ private struct ProjectPostCreateDocumentPreviewCard: View {
 private struct ProjectArchiveRow: View {
     let project: ProjectArchive
     let language: AppLanguage
+    let isExpanded: Bool
     var isHighlighted = false
     let onOpenForm: (DocumentType) -> Void
+    let onToggleExpanded: () -> Void
     let onOpenOrderRecord: (BusinessDocument) -> Void
     let onNewOrderRecord: () -> Void
     let onCopyDocument: (BusinessDocument) -> Void
@@ -5358,21 +9419,37 @@ private struct ProjectArchiveRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: project.direction == .customer ? "person.crop.square.filled.and.at.rectangle" : "building.2.crop.circle")
-                    .font(.headline.weight(.semibold))
-                    .foregroundColor(buttonAccent)
-                    .frame(width: 38, height: 38)
-                    .background(buttonAccent.opacity(0.12))
-                    .clipShape(Circle())
+                Button(action: onToggleExpanded) {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: project.direction == .customer ? "person.crop.square.filled.and.at.rectangle" : "building.2.crop.circle")
+                            .font(.headline.weight(.semibold))
+                            .foregroundColor(buttonAccent)
+                            .frame(width: 38, height: 38)
+                            .background(buttonAccent.opacity(0.12))
+                            .clipShape(Circle())
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(project.name)
-                        .font(.headline.weight(.semibold))
-                        .foregroundColor(.appInk)
-                    Text(projectProgressText)
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.appMuted)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(project.name)
+                                .font(.headline.weight(.semibold))
+                                .foregroundColor(.appInk)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(projectProgressText)
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(.appMuted)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(.appMuted)
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                            .frame(width: 24, height: 38)
+                    }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(PlainButtonStyle())
+                .frame(maxWidth: .infinity, alignment: .leading)
                 Spacer()
                 Button(action: onSettings) {
                     Image(systemName: "gearshape")
@@ -5384,54 +9461,57 @@ private struct ProjectArchiveRow: View {
                     Image(systemName: "trash")
                         .font(.body.weight(.semibold))
                         .foregroundColor(.red)
-                        .frame(width: 44, height: 44)
+                    .frame(width: 44, height: 44)
                 }
             }
 
-            LazyVGrid(columns: documentGridColumns, alignment: .leading, spacing: 8) {
-                ForEach(project.direction.requiredTypes) { type in
-                    if type == .customerOrder {
-                        customerOrderProjectCard
-                    } else {
-                        let document = project.document(for: type)
-                        HStack(alignment: .center, spacing: 6) {
-                            Button {
-                                onOpenForm(type)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(type.localizedTitle(language))
-                                        .font(.caption.weight(.black))
-                                        .foregroundColor(document == nil ? .appMuted : .appInk)
-                                    Text(document?.number ?? localizedNotCreatedText)
-                                        .font(.caption2.weight(.semibold))
-                                        .foregroundColor(document == nil ? buttonAccent : .appMuted)
-                                        .lineLimit(1)
-                                }
-                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-
-                            if let document {
+            if isExpanded {
+                LazyVGrid(columns: documentGridColumns, alignment: .leading, spacing: 8) {
+                    ForEach(project.direction.requiredTypes) { type in
+                        if type == .customerOrder {
+                            customerOrderProjectCard
+                        } else {
+                            let document = project.document(for: type)
+                            HStack(alignment: .center, spacing: 6) {
                                 Button {
-                                    onCopyDocument(document)
+                                    onOpenForm(type)
                                 } label: {
-                                    Image(systemName: "doc.on.doc")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundColor(buttonAccent)
-                                        .frame(width: 44, height: 44)
-                                        .background(buttonAccent.opacity(0.10))
-                                        .clipShape(Circle())
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(type.localizedTitle(language))
+                                            .font(.caption.weight(.black))
+                                            .foregroundColor(document == nil ? .appMuted : .appInk)
+                                        Text(document?.number ?? localizedNotCreatedText)
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundColor(document == nil ? buttonAccent : .appMuted)
+                                            .lineLimit(1)
+                                    }
+                                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                                 }
                                 .buttonStyle(PlainButtonStyle())
-                                .accessibilityLabel(localizedCopyDocumentText)
+
+                                if let document {
+                                    Button {
+                                        onCopyDocument(document)
+                                    } label: {
+                                        Image(systemName: "doc.on.doc")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundColor(buttonAccent)
+                                            .frame(width: 44, height: 44)
+                                            .background(buttonAccent.opacity(0.10))
+                                            .clipShape(Circle())
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+                                    .accessibilityLabel(localizedCopyDocumentText)
+                                }
                             }
+                            .padding(10)
+                            .background(document == nil ? buttonAccent.opacity(0.12) : Color.appInputBackground)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(document == nil ? buttonAccent.opacity(0.35) : Color.appDivider))
+                            .cornerRadius(8)
                         }
-                        .padding(10)
-                        .background(document == nil ? buttonAccent.opacity(0.12) : Color.appInputBackground)
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(document == nil ? buttonAccent.opacity(0.35) : Color.appDivider))
-                        .cornerRadius(8)
                     }
                 }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(14)
@@ -5521,48 +9601,48 @@ private struct ProjectArchiveRow: View {
     private var projectProgressText: String {
         switch language {
         case .japanese: return "\(project.direction.localizedTitle(language)) / \(project.completedCount)/\(project.direction.requiredTypes.count) 件完了"
-        case .simplifiedChinese: return "\(project.direction.localizedTitle(language)) / \(project.completedCount)/\(project.direction.requiredTypes.count) 个完成"
-        case .english: return "\(project.direction.localizedTitle(language)) / \(project.completedCount)/\(project.direction.requiredTypes.count) complete"
+        case .simplifiedChinese, .traditionalChinese: return "\(project.direction.localizedTitle(language)) / \(project.completedCount)/\(project.direction.requiredTypes.count) 个完成"
+        case .english, .korean, .nepali, .french, .vietnamese: return "\(project.direction.localizedTitle(language)) / \(project.completedCount)/\(project.direction.requiredTypes.count) complete"
         }
     }
 
     private var localizedNotCreatedText: String {
         switch language {
         case .japanese: return "未作成"
-        case .simplifiedChinese: return "未创建"
-        case .english: return "Not created"
+        case .simplifiedChinese, .traditionalChinese: return "未创建"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Not created"
         }
     }
 
     private var localizedAddOrderRecordText: String {
         switch language {
-        case .japanese: return "注文記録を追加"
-        case .simplifiedChinese: return "新增订单记录"
-        case .english: return "Add order record"
+        case .japanese: return "受注を追加"
+        case .simplifiedChinese, .traditionalChinese: return "新增受注"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Add order received"
         }
     }
 
     private var localizedTapToCreateText: String {
         switch language {
         case .japanese: return "タップして作成"
-        case .simplifiedChinese: return "点击创建"
-        case .english: return "Tap to create"
+        case .simplifiedChinese, .traditionalChinese: return "点击创建"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Tap to create"
         }
     }
 
     private var localizedCopyDocumentText: String {
         switch language {
         case .japanese: return "プロジェクトへコピー"
-        case .simplifiedChinese: return "复制到项目"
-        case .english: return "Copy to project"
+        case .simplifiedChinese, .traditionalChinese: return "复制到项目"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Copy to project"
         }
     }
 
     private func localizedCountText(_ count: Int) -> String {
         switch language {
         case .japanese: return "\(count) 件"
-        case .simplifiedChinese: return "\(count) 个"
-        case .english: return "\(count)"
+        case .simplifiedChinese, .traditionalChinese: return "\(count) 个"
+        case .english, .korean, .nepali, .french, .vietnamese: return "\(count)"
         }
     }
 
@@ -5571,9 +9651,9 @@ private struct ProjectArchiveRow: View {
         switch language {
         case .japanese:
             return "\(attachmentCount) ファイル / \(record.lines.count) 項目\(record.relatedNumber.isEmpty ? "" : " / \(record.relatedNumber)")"
-        case .simplifiedChinese:
+        case .simplifiedChinese, .traditionalChinese:
             return "\(attachmentCount) 个文件 / \(record.lines.count) 个品项\(record.relatedNumber.isEmpty ? "" : " / \(record.relatedNumber)")"
-        case .english:
+        case .english, .korean, .nepali, .french, .vietnamese:
             return "\(attachmentCount) files / \(record.lines.count) items\(record.relatedNumber.isEmpty ? "" : " / \(record.relatedNumber)")"
         }
     }
@@ -5714,9 +9794,17 @@ private struct ProjectSettingsSheet: View {
         switch language {
         case .japanese: return japanese
         case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         }
     }
+}
+
+private enum CustomerProfileRiskAction {
+    case update
+    case delete(CustomerProfile)
 }
 
 struct CustomerManagementScreen: View {
@@ -5730,6 +9818,8 @@ struct CustomerManagementScreen: View {
     @State private var customerAddress = ""
     @State private var editingCustomerID: CustomerProfile.ID?
     @State private var isCustomerEditorPresented = false
+    @State private var pendingRiskAction: CustomerProfileRiskAction?
+    @State private var isRiskConfirmationPresented = false
     @State private var applyToastText = ""
     @State private var isApplyToastVisible = false
     @State private var applyToastID = UUID()
@@ -5760,7 +9850,7 @@ struct CustomerManagementScreen: View {
                             } onEdit: {
                                 editCustomer(customer)
                             } onDelete: {
-                                store.deleteCustomer(customer)
+                                requestDeleteCustomer(customer)
                             }
                         }
                     }
@@ -5791,6 +9881,32 @@ struct CustomerManagementScreen: View {
                     }
                 }
             }
+        }
+        .confirmationDialog(localizedRiskConfirmTitle, isPresented: $isRiskConfirmationPresented, titleVisibility: .visible) {
+            switch pendingRiskAction {
+            case .update:
+                Button(localizedCreateNewDataTitle) {
+                    performCustomerSave(asNewRecord: true)
+                }
+                Button(localizedUpdateExistingDataTitle, role: .destructive) {
+                    performCustomerSave(asNewRecord: false)
+                }
+                Button(localizedCancelTitle, role: .cancel) {
+                    pendingRiskAction = nil
+                }
+            case .delete(let customer):
+                Button(localizedDeleteExistingDataTitle, role: .destructive) {
+                    store.deleteCustomer(customer)
+                    pendingRiskAction = nil
+                }
+                Button(localizedCancelTitle, role: .cancel) {
+                    pendingRiskAction = nil
+                }
+            case nil:
+                Button(localizedCancelTitle, role: .cancel) {}
+            }
+        } message: {
+            Text(localizedRiskConfirmMessage)
         }
     }
 
@@ -5826,7 +9942,7 @@ struct CustomerManagementScreen: View {
                     .multilineFormInput(minHeight: 86)
             }
             ManagementPrimaryButton(title: editingCustomerID == nil ? localizedSaveCustomerTitle : localizedUpdateCustomerTitle, systemImage: editingCustomerID == nil ? "plus.circle.fill" : "checkmark.circle.fill") {
-                saveCustomerForm()
+                requestSaveCustomerForm()
             }
             .disabled(customerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .opacity(customerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
@@ -5873,14 +9989,39 @@ struct CustomerManagementScreen: View {
         isCustomerEditorPresented = false
     }
 
-    private func saveCustomerForm() {
+    private func requestSaveCustomerForm() {
+        if let editingCustomerID,
+           let customer = store.customers.first(where: { $0.id == editingCustomerID }),
+           store.savedDocumentUsageCount(for: customer) > 0 {
+            pendingRiskAction = .update
+            isRiskConfirmationPresented = true
+            return
+        }
+        performCustomerSave(asNewRecord: false)
+    }
+
+    private func performCustomerSave(asNewRecord: Bool) {
         if let editingCustomerID {
-            store.updateCustomerProfile(id: editingCustomerID, name: customerName, contact: customerContact, phone: customerPhone, email: customerEmail, address: customerAddress)
+            if asNewRecord {
+                store.saveCustomerProfile(name: customerName, contact: customerContact, phone: customerPhone, email: customerEmail, address: customerAddress)
+            } else {
+                store.updateCustomerProfile(id: editingCustomerID, name: customerName, contact: customerContact, phone: customerPhone, email: customerEmail, address: customerAddress)
+            }
         } else {
             store.saveCustomerProfile(name: customerName, contact: customerContact, phone: customerPhone, email: customerEmail, address: customerAddress)
         }
+        pendingRiskAction = nil
         clearCustomerForm()
         isCustomerEditorPresented = false
+    }
+
+    private func requestDeleteCustomer(_ customer: CustomerProfile) {
+        guard store.savedDocumentUsageCount(for: customer) > 0 else {
+            store.deleteCustomer(customer)
+            return
+        }
+        pendingRiskAction = .delete(customer)
+        isRiskConfirmationPresented = true
     }
 
     private func editCustomer(_ customer: CustomerProfile) {
@@ -5912,6 +10053,32 @@ struct CustomerManagementScreen: View {
     private var localizedAddressTitle: String { localized(japanese: "住所", chinese: "地址", english: "Address") }
     private var localizedSaveCustomerTitle: String { localized(japanese: "取引先・仕入先情報を保存", chinese: "保存客户/供应商资料", english: "Save Customer or Vendor") }
     private var localizedUpdateCustomerTitle: String { localized(japanese: "取引先・仕入先情報を更新", chinese: "更新客户/供应商资料", english: "Update Customer or Vendor") }
+    private var localizedRiskConfirmTitle: String { localized(japanese: "保存済み帳票で使用中です", chinese: "此资料已被已保存表单使用", english: "Used by Saved Forms") }
+    private var localizedCreateNewDataTitle: String { localized(japanese: "新しいデータとして作成", chinese: "建立全新的资料", english: "Create New Data") }
+    private var localizedUpdateExistingDataTitle: String { localized(japanese: "既存データを更新", chinese: "更新现有资料", english: "Update Existing Data") }
+    private var localizedDeleteExistingDataTitle: String { localized(japanese: "候補データを削除", chinese: "删除候选资料", english: "Delete Candidate Data") }
+
+    private var localizedRiskConfirmMessage: String {
+        let count: Int
+        switch pendingRiskAction {
+        case .update:
+            if let editingCustomerID,
+               let customer = store.customers.first(where: { $0.id == editingCustomerID }) {
+                count = store.savedDocumentUsageCount(for: customer)
+            } else {
+                count = 0
+            }
+        case .delete(let customer):
+            count = store.savedDocumentUsageCount(for: customer)
+        case nil:
+            count = 0
+        }
+        return localized(
+            japanese: "\(count)件の保存済み帳票でこの取引先候補が使われています。データ管理から編集しても、完成済み帳票の内容は自動で書き換えられません。履歴を分ける場合は新しいデータとして作成してください。",
+            chinese: "目前有 \(count) 份已保存表单使用这笔客户/供应商资料。从数据管理修改候选资料，不会自动回头改写已完成表单内容。为了保留历史，建议建立全新的资料。",
+            english: "\(count) saved forms use this customer/vendor candidate. Editing it from Data Management does not automatically rewrite completed forms. Create new data to preserve history."
+        )
+    }
 
     private func localizedAppliedMessage(name: String) -> String {
         localized(
@@ -5925,7 +10092,10 @@ struct CustomerManagementScreen: View {
         switch language {
         case .japanese: return japanese
         case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         }
     }
 }
@@ -6070,16 +10240,16 @@ struct TemplateManagementScreen: View {
     private func localizedTemplateListTitle(_ kind: TextTemplateKind) -> String {
         switch language {
         case .japanese: return "\(kind.localizedTitle(language))一覧"
-        case .simplifiedChinese: return "\(kind.localizedTitle(language))列表"
-        case .english: return "\(kind.localizedTitle(language)) Templates"
+        case .simplifiedChinese, .traditionalChinese: return "\(kind.localizedTitle(language))列表"
+        case .english, .korean, .nepali, .french, .vietnamese: return "\(kind.localizedTitle(language)) Templates"
         }
     }
 
     private func localizedEmptyTemplateText(_ kind: TextTemplateKind) -> String {
         switch language {
         case .japanese: return "\(kind.localizedTitle(language))のテンプレートはありません。"
-        case .simplifiedChinese: return "没有\(kind.localizedTitle(language))模板。"
-        case .english: return "No \(kind.localizedTitle(language).lowercased()) templates."
+        case .simplifiedChinese, .traditionalChinese: return "没有\(kind.localizedTitle(language))模板。"
+        case .english, .korean, .nepali, .french, .vietnamese: return "No \(kind.localizedTitle(language).lowercased()) templates."
         }
     }
 
@@ -6087,9 +10257,17 @@ struct TemplateManagementScreen: View {
         switch language {
         case .japanese: return japanese
         case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         }
     }
+}
+
+private enum ProductProfileRiskAction {
+    case update
+    case delete(ProductProfile)
 }
 
 struct ProductManagementScreen: View {
@@ -6102,6 +10280,8 @@ struct ProductManagementScreen: View {
     @State private var productUnitPrice: Double = 0
     @State private var editingProductID: ProductProfile.ID?
     @State private var isProductEditorPresented = false
+    @State private var pendingRiskAction: ProductProfileRiskAction?
+    @State private var isRiskConfirmationPresented = false
     @State private var applyToastText = ""
     @State private var isApplyToastVisible = false
     @State private var applyToastID = UUID()
@@ -6132,7 +10312,7 @@ struct ProductManagementScreen: View {
                             } onEdit: {
                                 editProduct(product)
                             } onDelete: {
-                                store.deleteProduct(product)
+                                requestDeleteProduct(product)
                             }
                         }
                     }
@@ -6164,6 +10344,32 @@ struct ProductManagementScreen: View {
                 }
             }
         }
+        .confirmationDialog(localizedRiskConfirmTitle, isPresented: $isRiskConfirmationPresented, titleVisibility: .visible) {
+            switch pendingRiskAction {
+            case .update:
+                Button(localizedCreateNewDataTitle) {
+                    performProductSave(asNewRecord: true)
+                }
+                Button(localizedUpdateExistingDataTitle, role: .destructive) {
+                    performProductSave(asNewRecord: false)
+                }
+                Button(localizedCancelTitle, role: .cancel) {
+                    pendingRiskAction = nil
+                }
+            case .delete(let product):
+                Button(localizedDeleteExistingDataTitle, role: .destructive) {
+                    store.deleteProduct(product)
+                    pendingRiskAction = nil
+                }
+                Button(localizedCancelTitle, role: .cancel) {
+                    pendingRiskAction = nil
+                }
+            case nil:
+                Button(localizedCancelTitle, role: .cancel) {}
+            }
+        } message: {
+            Text(localizedRiskConfirmMessage)
+        }
     }
 
     private var productEditorForm: some View {
@@ -6192,7 +10398,7 @@ struct ProductManagementScreen: View {
                 }
             }
             ManagementPrimaryButton(title: editingProductID == nil ? localizedSaveProductTitle : localizedUpdateProductTitle, systemImage: editingProductID == nil ? "plus.circle.fill" : "checkmark.circle.fill") {
-                saveProductForm()
+                requestSaveProductForm()
             }
             .disabled(productName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .opacity(productName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
@@ -6238,14 +10444,39 @@ struct ProductManagementScreen: View {
         isProductEditorPresented = false
     }
 
-    private func saveProductForm() {
+    private func requestSaveProductForm() {
+        if let editingProductID,
+           let product = store.products.first(where: { $0.id == editingProductID }),
+           store.savedDocumentUsageCount(for: product) > 0 {
+            pendingRiskAction = .update
+            isRiskConfirmationPresented = true
+            return
+        }
+        performProductSave(asNewRecord: false)
+    }
+
+    private func performProductSave(asNewRecord: Bool) {
         if let editingProductID {
-            store.updateProductProfile(id: editingProductID, name: productName, model: productModel, specification: productSpecification, unitPrice: productUnitPrice)
+            if asNewRecord {
+                store.saveProductProfile(name: productName, model: productModel, specification: productSpecification, unitPrice: productUnitPrice)
+            } else {
+                store.updateProductProfile(id: editingProductID, name: productName, model: productModel, specification: productSpecification, unitPrice: productUnitPrice)
+            }
         } else {
             store.saveProductProfile(name: productName, model: productModel, specification: productSpecification, unitPrice: productUnitPrice)
         }
+        pendingRiskAction = nil
         clearProductForm()
         isProductEditorPresented = false
+    }
+
+    private func requestDeleteProduct(_ product: ProductProfile) {
+        guard store.savedDocumentUsageCount(for: product) > 0 else {
+            store.deleteProduct(product)
+            return
+        }
+        pendingRiskAction = .delete(product)
+        isRiskConfirmationPresented = true
     }
 
     private func editProduct(_ product: ProductProfile) {
@@ -6274,6 +10505,32 @@ struct ProductManagementScreen: View {
     private var localizedUnitPriceTitle: String { localized(japanese: "単価", chinese: "单价", english: "Unit Price") }
     private var localizedSaveProductTitle: String { localized(japanese: "項目情報を保存", chinese: "保存品项信息", english: "Save Item Information") }
     private var localizedUpdateProductTitle: String { localized(japanese: "項目情報を更新", chinese: "更新品项信息", english: "Update Item Information") }
+    private var localizedRiskConfirmTitle: String { localized(japanese: "保存済み帳票で使用中です", chinese: "此品项已被已保存表单使用", english: "Used by Saved Forms") }
+    private var localizedCreateNewDataTitle: String { localized(japanese: "新しいデータとして作成", chinese: "建立全新的资料", english: "Create New Data") }
+    private var localizedUpdateExistingDataTitle: String { localized(japanese: "既存データを更新", chinese: "更新现有资料", english: "Update Existing Data") }
+    private var localizedDeleteExistingDataTitle: String { localized(japanese: "候補データを削除", chinese: "删除候选资料", english: "Delete Candidate Data") }
+
+    private var localizedRiskConfirmMessage: String {
+        let count: Int
+        switch pendingRiskAction {
+        case .update:
+            if let editingProductID,
+               let product = store.products.first(where: { $0.id == editingProductID }) {
+                count = store.savedDocumentUsageCount(for: product)
+            } else {
+                count = 0
+            }
+        case .delete(let product):
+            count = store.savedDocumentUsageCount(for: product)
+        case nil:
+            count = 0
+        }
+        return localized(
+            japanese: "\(count)件の保存済み帳票でこの商品・項目候補が使われています。データ管理から編集しても、完成済み帳票の明細は自動で書き換えられません。履歴を分ける場合は新しいデータとして作成してください。",
+            chinese: "目前有 \(count) 份已保存表单使用这个商品/品项资料。从数据管理修改候选资料，不会自动回头改写已完成表单明细。为了保留历史，建议建立全新的资料。",
+            english: "\(count) saved forms use this item candidate. Editing it from Data Management does not automatically rewrite completed form line items. Create new data to preserve history."
+        )
+    }
 
     private func localizedAppliedMessage(name: String) -> String {
         localized(
@@ -6287,7 +10544,10 @@ struct ProductManagementScreen: View {
         switch language {
         case .japanese: return japanese
         case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         }
     }
 }
@@ -6395,7 +10655,6 @@ struct CompanySettingsHeader: View {
                 Label(actionTitle, systemImage: actionIcon)
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.75)
                     .padding(.horizontal, 10)
                     .frame(height: 44)
                     .background((isEditing || isEditorPresented) ? buttonAccent.opacity(0.12) : Color.appInputBackground)
@@ -6501,7 +10760,10 @@ struct CompanyProfileRow: View {
         switch language {
         case .japanese: return japanese
         case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         }
     }
 }
@@ -6512,9 +10774,8 @@ struct CompanyFilledButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.subheadline.weight(.semibold))
+            .font(AppFont.cardTitle(.semibold))
             .lineLimit(1)
-            .minimumScaleFactor(0.75)
             .padding(.horizontal, 14)
             .frame(height: 44)
             .background(buttonAccent.opacity(isEnabled ? (configuration.isPressed ? 0.82 : 1) : 0.45))
@@ -6530,9 +10791,8 @@ struct CompanyOutlineButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.subheadline.weight(.semibold))
+            .font(AppFont.cardTitle(.semibold))
             .lineLimit(1)
-            .minimumScaleFactor(0.75)
             .padding(.horizontal, 14)
             .frame(height: 44)
             .background(configuration.isPressed ? buttonAccent.opacity(0.12) : Color.appInputBackground)
@@ -6553,9 +10813,8 @@ struct CompanyMiniButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.caption.weight(.semibold))
+            .font(AppFont.secondary(.semibold))
             .lineLimit(1)
-            .minimumScaleFactor(0.75)
             .padding(.horizontal, 10)
             .frame(height: 44)
             .background(effectiveTint.opacity(configuration.isPressed ? 0.18 : 0.10))
@@ -6578,11 +10837,11 @@ struct ManagementRecordRow: View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.cardTitle(.semibold))
                     .foregroundColor(.appInk)
                 if !subtitle.isEmpty {
                     Text(subtitle)
-                        .font(.caption.weight(.semibold))
+                        .font(AppFont.secondary(.semibold))
                         .foregroundColor(.appMuted)
                         .lineLimit(2)
                 }
@@ -6590,9 +10849,8 @@ struct ManagementRecordRow: View {
             Spacer()
             if let applyTitle = applyTitle {
                 Button(applyTitle, action: onApply)
-                    .font(.caption.weight(.semibold))
+                    .font(AppFont.secondary(.semibold))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.75)
                     .padding(.horizontal, 10)
                     .frame(height: 44)
                     .background(buttonAccent.opacity(0.12))
@@ -6601,9 +10859,8 @@ struct ManagementRecordRow: View {
             }
             if let editTitle = editTitle {
                 Button(editTitle, action: onEdit)
-                    .font(.caption.weight(.semibold))
+                    .font(AppFont.secondary(.semibold))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.75)
                     .padding(.horizontal, 10)
                     .frame(height: 44)
                     .background(Color.appInputBackground)
@@ -6631,9 +10888,8 @@ struct ManagementSecondaryButton: View {
     var body: some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
-                .font(.subheadline.weight(.semibold))
+                .font(AppFont.cardTitle(.semibold))
                 .lineLimit(1)
-                .minimumScaleFactor(0.75)
                 .padding(.horizontal, 18)
                 .frame(maxWidth: .infinity, minHeight: 44, maxHeight: 44)
                 .overlay(Rectangle().fill(Color.appDivider).frame(height: 1), alignment: .bottom)
@@ -6651,9 +10907,8 @@ struct ManagementPrimaryButton: View {
     var body: some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
-                .font(.subheadline.weight(.semibold))
+                .font(AppFont.cardTitle(.semibold))
                 .lineLimit(1)
-                .minimumScaleFactor(0.75)
                 .padding(.horizontal, 18)
                 .frame(maxWidth: .infinity, minHeight: 44, maxHeight: 44)
                 .background(buttonAccent)
@@ -6680,13 +10935,12 @@ struct BackupStatusRow: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.cardTitle(.semibold))
                     .foregroundColor(.appInk)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.82)
                 if !value.isEmpty {
                     Text(value)
-                        .font(.caption.weight(.semibold))
+                        .font(AppFont.secondary(.semibold))
                         .foregroundColor(.appMuted)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -6717,9 +10971,8 @@ struct BackupActionRow: View {
                     .background(iconBackgroundColor)
                     .clipShape(Circle())
                 Text(title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.cardTitle(.semibold))
                     .lineLimit(2)
-                    .minimumScaleFactor(0.86)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.bold))
@@ -6783,7 +11036,7 @@ struct BackupProgressRow: View {
         HStack(spacing: 10) {
             ProgressView()
             Text(title)
-                .font(.caption.weight(.semibold))
+                .font(AppFont.secondary(.semibold))
                 .foregroundColor(.appMuted)
         }
         .padding(.horizontal, 12)
@@ -6799,7 +11052,7 @@ struct BackupStatusMessage: View {
 
     var body: some View {
         Text(text)
-            .font(.caption.weight(.semibold))
+            .font(AppFont.secondary(.semibold))
             .foregroundColor(.appMuted)
             .lineLimit(3)
             .fixedSize(horizontal: false, vertical: true)
@@ -6817,10 +11070,9 @@ struct ManagementApplyToast: View {
 
     var body: some View {
         Label(text, systemImage: "checkmark.circle.fill")
-            .font(.subheadline.weight(.semibold))
+            .font(AppFont.cardTitle(.semibold))
             .foregroundColor(.white)
             .lineLimit(2)
-            .minimumScaleFactor(0.82)
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             .background(Color.appInk.opacity(0.92))
@@ -6834,7 +11086,7 @@ struct EmptyManagementText: View {
 
     var body: some View {
         Text(text)
-            .font(.subheadline.weight(.semibold))
+            .font(AppFont.cardTitle(.semibold))
             .foregroundColor(.appMuted)
             .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 16)
@@ -6877,6 +11129,9 @@ final class AppUpdateChecker: ObservableObject {
     }
 
     func checkForUpdateIfNeeded(language: AppLanguage) async {
+#if DEBUG
+        return
+#else
         self.language = language
         guard !isChecking, !hasPromptedToday else { return }
         guard let bundleID = Bundle.main.bundleIdentifier, !bundleID.isEmpty else { return }
@@ -6893,6 +11148,7 @@ final class AppUpdateChecker: ObservableObject {
         } catch {
             return
         }
+#endif
     }
 
     func openAppStore() {
@@ -6964,7 +11220,10 @@ final class AppUpdateChecker: ObservableObject {
         switch language {
         case .japanese: return japanese
         case .simplifiedChinese: return chinese
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         }
     }
 }

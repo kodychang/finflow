@@ -43,11 +43,18 @@ struct PreviewScreen: View {
                         previewToolbar
                             .padding(.horizontal, 16)
                             .padding(.top, 12)
+                            .padding(.trailing, isLandscape ? 178 : 0)
                             .opacity(activePreviewIntroKey == nil ? 1 : previewTitleRevealProgress)
                             .offset(y: activePreviewIntroKey == nil ? 0 : -72 * (1 - previewTitleRevealProgress))
 
-                        if !isLandscape {
-                            previewStampBar
+                        if isLandscape {
+                            previewStampBar(isLandscape: true)
+                                .frame(width: 156)
+                                .padding(.trailing, 16)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                                .opacity(activePreviewIntroKey == nil ? 1 : previewTitleRevealProgress)
+                        } else {
+                            previewStampBar(isLandscape: false)
                                 .padding(.horizontal, 16)
                                 .padding(.bottom, 18)
                                 .frame(maxHeight: .infinity, alignment: .bottom)
@@ -231,7 +238,6 @@ struct PreviewScreen: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(.appInk)
                 .lineLimit(2)
-                .minimumScaleFactor(0.82)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
@@ -273,6 +279,20 @@ struct PreviewScreen: View {
             }
             Spacer()
             Button {
+                exportSourceFile()
+            } label: {
+                Label(sourceShareButtonTitle, systemImage: "doc.badge.arrow.up")
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .padding(.horizontal, 12)
+                    .frame(height: 44)
+                    .background(buttonAccent.opacity(0.12))
+                    .foregroundColor(buttonAccent)
+                    .cornerRadius(8)
+            }
+            .accessibilityLabel(Text(sourceShareButtonTitle))
+
+            Button {
                 if purchaseService.hasProAccess {
                     exportPDF()
                 } else {
@@ -282,7 +302,6 @@ struct PreviewScreen: View {
                 Label(shareButtonTitle, systemImage: "square.and.arrow.up")
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.75)
                     .padding(.horizontal, 14)
                     .frame(height: 44)
                     .background(buttonAccent)
@@ -298,13 +317,28 @@ struct PreviewScreen: View {
         .shadow(color: Color.black.opacity(0.05), radius: 14, x: 0, y: 8)
     }
 
-    private var previewStampBar: some View {
-        HStack(spacing: 8) {
+    @ViewBuilder
+    private func previewStampBar(isLandscape: Bool) -> some View {
+        if isLandscape {
+            VStack(spacing: 8) {
+                previewStampButtons
+            }
+            .modifier(PreviewStampBarChrome())
+        } else {
+            HStack(spacing: 8) {
+                previewStampButtons
+            }
+            .modifier(PreviewStampBarChrome())
+        }
+    }
+
+    @ViewBuilder
+    private var previewStampButtons: some View {
             Button {
                 isStampEditorPresented = true
             } label: {
-                Image(systemName: "seal.fill")
-                    .font(.body.weight(.semibold))
+                Label(stampedPreviewImage == nil ? localized(japanese: "印章", chinese: "印章", english: "Stamp") : localized(japanese: "再設定", chinese: "重设", english: "Reset"), systemImage: "seal.fill")
+                    .font(.caption.weight(.semibold))
                     .frame(maxWidth: .infinity)
             }
             .accessibilityLabel(stampedPreviewImage == nil ? localized(japanese: "印章設定", chinese: "印章设置", english: "Stamp Settings") : localized(japanese: "印章再設定", chinese: "重新设置印章", english: "Reset Stamp"))
@@ -333,12 +367,6 @@ struct PreviewScreen: View {
             .buttonStyle(PreviewActionButtonStyle(tint: buttonAccent, filled: false))
             .disabled(pngExportImage == nil)
             .opacity(pngExportImage == nil ? 0.45 : 1)
-        }
-        .padding(10)
-        .background(Color.appPanel.opacity(0.96))
-        .cornerRadius(8)
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appDivider))
-        .shadow(color: Color.black.opacity(0.05), radius: 14, x: 0, y: 8)
     }
 
     private var stampBaseImage: UIImage? {
@@ -375,6 +403,10 @@ struct PreviewScreen: View {
         localized(japanese: "共有", chinese: "分享", english: "Share")
     }
 
+    private var sourceShareButtonTitle: String {
+        localized(japanese: "原本", chinese: "原始档", english: "Source")
+    }
+
     private var pdfProPromptPurchaseTitle: String {
         localized(japanese: "購入へ進む", chinese: "前往购买", english: "Go to Purchase")
     }
@@ -395,6 +427,15 @@ struct PreviewScreen: View {
             }
         } catch {
             exportError = AppText.value(.pdfExportError, interfaceLanguage)
+        }
+    }
+
+    private func exportSourceFile() {
+        do {
+            exportError = ""
+            sharePayload = SharePayload(url: try PreviewSourceFileExporter.export(document))
+        } catch {
+            exportError = localized(japanese: "原本ファイルを書き出せませんでした。", chinese: "无法导出原始档。", english: "Could not export the source file.")
         }
     }
 
@@ -419,12 +460,16 @@ struct PreviewScreen: View {
     }
 
     private func singlePagePreview(_ image: UIImage, size: CGSize) -> some View {
-        ZoomablePDFImageView(
+        let isLandscape = size.width > size.height
+        return ZoomablePDFImageView(
             image: image,
             viewportSize: size,
             maximumZoomScale: maximumPreviewScale,
-            topInset: 110,
-            bottomInset: 132,
+            topInset: isLandscape ? max(8, size.height * 0.025) : 110,
+            leftInset: 8,
+            bottomInset: isLandscape ? max(8, size.height * 0.025) : 132,
+            rightInset: isLandscape ? 184 : 8,
+            fitHeightRatio: isLandscape ? 0.95 : nil,
             resetID: previewResetID
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -525,7 +570,7 @@ struct PreviewScreen: View {
     }
 
     private func stampDisplaySize(pageSize: CGSize, stampImage: UIImage, scale: CGFloat) -> CGSize {
-        let base = min(pageSize.width, pageSize.height) * 0.24 * min(max(scale, 0.25), 4)
+        let base = min(pageSize.width, pageSize.height) * StampSettings.basePageRatio * StampSettings.clampedScale(scale)
         let aspect = max(0.1, stampImage.size.width / max(1, stampImage.size.height))
         if aspect >= 1 {
             return CGSize(width: base, height: base / aspect)
@@ -588,41 +633,47 @@ struct PreviewScreen: View {
 
     private var recordEyebrow: String {
         switch (document.type, interfaceLanguage) {
-        case (.customerOrder, .japanese): return "注文記録"
-        case (.customerOrder, .simplifiedChinese): return "订单记录"
-        case (.customerOrder, .english): return "Customer order record"
+        case (.customerOrder, .japanese): return "受注"
+        case (.customerOrder, .simplifiedChinese), (.customerOrder, .traditionalChinese): return "受注"
+        case (.customerOrder, .english), (.customerOrder, .korean), (.customerOrder, .nepali), (.customerOrder, .french), (.customerOrder, .vietnamese): return "Order received"
         case (.vendorEstimate, .japanese): return "仕入先見積記録"
-        case (.vendorEstimate, .simplifiedChinese): return "供应商报价记录"
-        case (.vendorEstimate, .english): return "Vendor quotation record"
+        case (.vendorEstimate, .simplifiedChinese), (.vendorEstimate, .traditionalChinese): return "供应商报价记录"
+        case (.vendorEstimate, .english), (.vendorEstimate, .korean), (.vendorEstimate, .nepali), (.vendorEstimate, .french), (.vendorEstimate, .vietnamese): return "Vendor quotation record"
+        case (.vendorInvoice, .japanese): return "仕入先請求書記録"
+        case (.vendorInvoice, .simplifiedChinese), (.vendorInvoice, .traditionalChinese): return "供应商请款书记录"
+        case (.vendorInvoice, .english), (.vendorInvoice, .korean), (.vendorInvoice, .nepali), (.vendorInvoice, .french), (.vendorInvoice, .vietnamese): return "Vendor invoice record"
         case (.vendorReceipt, .japanese): return "仕入先領収書記録"
-        case (.vendorReceipt, .simplifiedChinese): return "供应商收据记录"
-        case (.vendorReceipt, .english): return "Vendor receipt record"
+        case (.vendorReceipt, .simplifiedChinese), (.vendorReceipt, .traditionalChinese): return "供应商收据记录"
+        case (.vendorReceipt, .english), (.vendorReceipt, .korean), (.vendorReceipt, .nepali), (.vendorReceipt, .french), (.vendorReceipt, .vietnamese): return "Vendor receipt record"
         case (.paymentNotice, .japanese): return "支払通知"
-        case (.paymentNotice, .simplifiedChinese): return "付款通知"
-        case (.paymentNotice, .english): return "Payment notice"
+        case (.paymentNotice, .simplifiedChinese), (.paymentNotice, .traditionalChinese): return "付款通知"
+        case (.paymentNotice, .english), (.paymentNotice, .korean), (.paymentNotice, .nepali), (.paymentNotice, .french), (.paymentNotice, .vietnamese): return "Payment notice"
         case (_, .japanese): return "帳票記録"
-        case (_, .simplifiedChinese): return "表单记录"
-        case (_, .english): return "Document record"
+        case (_, .simplifiedChinese), (_, .traditionalChinese): return "表单记录"
+        case (_, .english), (_, .korean), (_, .nepali), (_, .french), (_, .vietnamese): return "Document record"
         }
     }
 
     private var recordAttachmentTitle: String {
         switch (document.type, interfaceLanguage) {
-        case (.customerOrder, .japanese): return "注文ファイル"
-        case (.customerOrder, .simplifiedChinese): return "订单文件"
-        case (.customerOrder, .english): return "Order Files"
+        case (.customerOrder, .japanese): return "受注ファイル"
+        case (.customerOrder, .simplifiedChinese), (.customerOrder, .traditionalChinese): return "受注文件"
+        case (.customerOrder, .english), (.customerOrder, .korean), (.customerOrder, .nepali), (.customerOrder, .french), (.customerOrder, .vietnamese): return "Order Received Files"
         case (.vendorEstimate, .japanese): return "見積ファイル"
-        case (.vendorEstimate, .simplifiedChinese): return "报价文件"
-        case (.vendorEstimate, .english): return "Quotation Files"
+        case (.vendorEstimate, .simplifiedChinese), (.vendorEstimate, .traditionalChinese): return "报价文件"
+        case (.vendorEstimate, .english), (.vendorEstimate, .korean), (.vendorEstimate, .nepali), (.vendorEstimate, .french), (.vendorEstimate, .vietnamese): return "Quotation Files"
+        case (.vendorInvoice, .japanese): return "請求書ファイル"
+        case (.vendorInvoice, .simplifiedChinese), (.vendorInvoice, .traditionalChinese): return "请款书文件"
+        case (.vendorInvoice, .english), (.vendorInvoice, .korean), (.vendorInvoice, .nepali), (.vendorInvoice, .french), (.vendorInvoice, .vietnamese): return "Invoice Files"
         case (.vendorReceipt, .japanese): return "領収書ファイル"
-        case (.vendorReceipt, .simplifiedChinese): return "收据文件"
-        case (.vendorReceipt, .english): return "Receipt Files"
+        case (.vendorReceipt, .simplifiedChinese), (.vendorReceipt, .traditionalChinese): return "收据文件"
+        case (.vendorReceipt, .english), (.vendorReceipt, .korean), (.vendorReceipt, .nepali), (.vendorReceipt, .french), (.vendorReceipt, .vietnamese): return "Receipt Files"
         case (.paymentNotice, .japanese): return "支払通知ファイル"
-        case (.paymentNotice, .simplifiedChinese): return "付款通知文件"
-        case (.paymentNotice, .english): return "Payment Notice Files"
+        case (.paymentNotice, .simplifiedChinese), (.paymentNotice, .traditionalChinese): return "付款通知文件"
+        case (.paymentNotice, .english), (.paymentNotice, .korean), (.paymentNotice, .nepali), (.paymentNotice, .french), (.paymentNotice, .vietnamese): return "Payment Notice Files"
         case (_, .japanese): return "ファイル"
-        case (_, .simplifiedChinese): return "文件"
-        case (_, .english): return "Files"
+        case (_, .simplifiedChinese), (_, .traditionalChinese): return "文件"
+        case (_, .english), (_, .korean), (_, .nepali), (_, .french), (_, .vietnamese): return "Files"
         }
     }
 
@@ -633,8 +684,10 @@ struct PreviewScreen: View {
     private func localized(japanese: String, chinese: String, english: String) -> String {
         switch interfaceLanguage {
         case .japanese: return japanese
-        case .simplifiedChinese: return chinese
+        case .simplifiedChinese, .traditionalChinese: return chinese
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return english
         }
     }
 
@@ -652,7 +705,6 @@ private struct PreviewActionButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .lineLimit(1)
-            .minimumScaleFactor(0.75)
             .padding(.horizontal, 10)
             .frame(height: 44)
             .background(filled ? (configuration.isPressed ? tint.opacity(0.78) : tint) : Color.appInputBackground)
@@ -662,12 +714,26 @@ private struct PreviewActionButtonStyle: ButtonStyle {
     }
 }
 
+private struct PreviewStampBarChrome: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(10)
+            .background(Color.appPanel.opacity(0.96))
+            .cornerRadius(8)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appDivider))
+            .shadow(color: Color.black.opacity(0.05), radius: 14, x: 0, y: 8)
+    }
+}
+
 private struct ZoomablePDFImageView: UIViewRepresentable {
     let image: UIImage
     let viewportSize: CGSize
     let maximumZoomScale: CGFloat
     let topInset: CGFloat
+    let leftInset: CGFloat
     let bottomInset: CGFloat
+    let rightInset: CGFloat
+    let fitHeightRatio: CGFloat?
     let resetID: Int
 
     func makeCoordinator() -> Coordinator {
@@ -693,8 +759,9 @@ private struct ZoomablePDFImageView: UIViewRepresentable {
         scrollView.addSubview(imageView)
 
         context.coordinator.imageView = imageView
-        context.coordinator.widthConstraint = imageView.widthAnchor.constraint(equalToConstant: pageWidth)
-        context.coordinator.heightConstraint = imageView.heightAnchor.constraint(equalToConstant: pageHeight(for: pageWidth))
+        let pageSize = pageSize
+        context.coordinator.widthConstraint = imageView.widthAnchor.constraint(equalToConstant: pageSize.width)
+        context.coordinator.heightConstraint = imageView.heightAnchor.constraint(equalToConstant: pageSize.height)
 
         NSLayoutConstraint.activate([
             imageView.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
@@ -722,13 +789,13 @@ private struct ZoomablePDFImageView: UIViewRepresentable {
         context.coordinator.imageView?.image = image
         context.coordinator.maximumZoomScale = maximumZoomScale
 
-        let pageWidth = pageWidth
-        context.coordinator.widthConstraint?.constant = pageWidth
-        context.coordinator.heightConstraint?.constant = pageHeight(for: pageWidth)
+        let pageSize = pageSize
+        context.coordinator.widthConstraint?.constant = pageSize.width
+        context.coordinator.heightConstraint?.constant = pageSize.height
 
         scrollView.minimumZoomScale = 1
         scrollView.maximumZoomScale = maximumZoomScale
-        scrollView.contentInset = UIEdgeInsets(top: topInset, left: 8, bottom: bottomInset, right: 8)
+        scrollView.contentInset = contentInset(for: pageSize)
         scrollView.scrollIndicatorInsets = scrollView.contentInset
 
         if shouldResetZoom || scrollView.zoomScale < 1 {
@@ -737,13 +804,32 @@ private struct ZoomablePDFImageView: UIViewRepresentable {
         }
     }
 
-    private var pageWidth: CGFloat {
-        max(1, viewportSize.width - 16)
+    private var pageSize: CGSize {
+        let aspect = pageAspect
+        let availableWidth = max(1, viewportSize.width - leftInset - rightInset)
+        let width: CGFloat
+        if let fitHeightRatio {
+            let targetHeight = max(1, viewportSize.height * min(max(fitHeightRatio, 0.1), 1))
+            width = min(availableWidth, targetHeight / aspect)
+        } else {
+            width = availableWidth
+        }
+        return CGSize(width: width, height: width * aspect)
     }
 
-    private func pageHeight(for width: CGFloat) -> CGFloat {
-        let aspect = max(0.1, image.size.height / max(1, image.size.width))
-        return width * aspect
+    private var pageAspect: CGFloat {
+        max(0.1, image.size.height / max(1, image.size.width))
+    }
+
+    private func contentInset(for pageSize: CGSize) -> UIEdgeInsets {
+        let horizontalArea = max(1, viewportSize.width - leftInset - rightInset)
+        let extraHorizontalSpace = max(0, horizontalArea - pageSize.width)
+        return UIEdgeInsets(
+            top: topInset,
+            left: leftInset + extraHorizontalSpace / 2,
+            bottom: bottomInset,
+            right: rightInset + extraHorizontalSpace / 2
+        )
     }
 
     final class Coordinator: NSObject, UIScrollViewDelegate {
@@ -825,8 +911,10 @@ private struct OrderRecordAttachmentPreview: View {
     private func localized(japanese: String, chinese: String, english: String) -> String {
         switch language {
         case .japanese: return japanese
-        case .simplifiedChinese: return chinese
+        case .simplifiedChinese, .traditionalChinese: return chinese
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return english
         }
     }
 }
@@ -855,6 +943,7 @@ private struct PrinterPDFIntroOverlay: View {
     let onComplete: (String) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @State private var printerOffsetY: CGFloat = 260
     @State private var pageProgress: CGFloat = 0
     @State private var pageCenterProgress: CGFloat = 0
@@ -862,6 +951,8 @@ private struct PrinterPDFIntroOverlay: View {
     @State private var overlayOpacity: CGFloat = 1
     @State private var overlayExitProgress: CGFloat = 0
     @State private var printerExitProgress: CGFloat = 0
+    @State private var pageWobbleX: CGFloat = 0
+    @State private var pageWobbleRotation: Double = 0
     @State private var audioPlayer: AVAudioPlayer?
     @State private var didComplete = false
 
@@ -879,11 +970,13 @@ private struct PrinterPDFIntroOverlay: View {
             let printedPageCenterY = pageStartY + (pageEndY - pageStartY) * pageProgress
             let settledPageCenterY = size.height / 2
             let pageCenterY = printedPageCenterY + (settledPageCenterY - printedPageCenterY) * pageCenterProgress
-            let pageScale = 1 - 0.2 * pageCenterProgress
+            let pageScale = 1 - 0.05 * pageCenterProgress
             let printerExitOffsetY = (printerHeight + 24) * printerExitProgress
+            let animationBackground = colorScheme == .dark ? Color.black : Color.white
+            let pageShadow = colorScheme == .dark ? Color.black.opacity(0.42) : Color.black.opacity(0.12)
 
             ZStack {
-                Color.white
+                animationBackground
                     .ignoresSafeArea()
                     .opacity(1 - overlayExitProgress)
 
@@ -898,8 +991,10 @@ private struct PrinterPDFIntroOverlay: View {
                     .aspectRatio(contentMode: .fit)
                     .frame(width: pageWidth, height: pageHeight)
                     .background(Color.white)
-                    .shadow(color: Color.black.opacity(0.12), radius: 18, x: 0, y: 8)
+                    .shadow(color: pageShadow, radius: 18, x: 0, y: 8)
                     .scaleEffect(pageScale)
+                    .rotationEffect(.degrees(pageWobbleRotation))
+                    .offset(x: pageWobbleX)
                     .position(x: size.width / 2, y: pageCenterY)
                     .opacity(pageOpacity * (1 - overlayExitProgress))
 
@@ -940,6 +1035,8 @@ private struct PrinterPDFIntroOverlay: View {
         pageProgress = 0
         pageCenterProgress = 0
         pageOpacity = 0
+        pageWobbleX = 0
+        pageWobbleRotation = 0
 
         guard !reduceMotion else {
             overlayOpacity = 0
@@ -957,11 +1054,10 @@ private struct PrinterPDFIntroOverlay: View {
         withAnimation(.easeOut(duration: 0.18)) {
             pageOpacity = 1
         }
-        withAnimation(.spring(response: 6.2, dampingFraction: 0.92)) {
-            pageProgress = 1
-        }
-        try? await Task.sleep(nanoseconds: 7_200_000_000)
+        await runPagePrintFeed(duration: 6.0)
         guard !Task.isCancelled else { return }
+        pageWobbleX = 0
+        pageWobbleRotation = 0
 
         audioPlayer?.stop()
         audioPlayer = nil
@@ -981,6 +1077,55 @@ private struct PrinterPDFIntroOverlay: View {
         guard !Task.isCancelled else { return }
         overlayOpacity = 0
         completeIfNeeded()
+    }
+
+    @MainActor
+    private func runPagePrintFeed(duration: TimeInterval) async {
+        let feedSteps: [(progress: CGFloat, advance: TimeInterval, pause: TimeInterval)] = [
+            (0.07, 0.18, 0.10),
+            (0.13, 0.15, 0.06),
+            (0.20, 0.22, 0.12),
+            (0.28, 0.18, 0.08),
+            (0.35, 0.26, 0.14),
+            (0.44, 0.20, 0.06),
+            (0.52, 0.28, 0.12),
+            (0.61, 0.22, 0.08),
+            (0.70, 0.30, 0.14),
+            (0.78, 0.20, 0.06),
+            (0.86, 0.26, 0.10),
+            (0.93, 0.22, 0.08),
+            (1.00, 0.28, 0.00)
+        ]
+        let xOffsets: [CGFloat] = [-1.4, 1.0, -0.8, 1.3, -1.1, 0.7]
+        let rotations: [Double] = [-0.18, 0.14, -0.1, 0.16, -0.12, 0.08]
+        let activeDuration = feedSteps.reduce(0) { $0 + $1.advance + $1.pause }
+        let timeScale = duration / activeDuration
+
+        for (index, step) in feedSteps.enumerated() {
+            guard !Task.isCancelled else { return }
+            let advanceDuration = step.advance * timeScale
+            withAnimation(.easeInOut(duration: advanceDuration)) {
+                pageProgress = step.progress
+                pageWobbleX = xOffsets[index % xOffsets.count]
+                pageWobbleRotation = rotations[index % rotations.count]
+            }
+            try? await Task.sleep(nanoseconds: UInt64(advanceDuration * 1_000_000_000))
+
+            guard !Task.isCancelled else { return }
+            let pauseDuration = step.pause * timeScale
+            if pauseDuration > 0 {
+                withAnimation(.easeOut(duration: min(0.08, pauseDuration))) {
+                    pageWobbleX = 0
+                    pageWobbleRotation = 0
+                }
+                try? await Task.sleep(nanoseconds: UInt64(pauseDuration * 1_000_000_000))
+            }
+        }
+
+        withAnimation(.easeOut(duration: 0.12)) {
+            pageWobbleX = 0
+            pageWobbleRotation = 0
+        }
     }
 
     private func playPrinterSound() {
@@ -1013,4 +1158,39 @@ private struct PrinterPDFIntroOverlay: View {
         let aspect = max(0.1, image.size.height / max(1, image.size.width))
         return width * aspect
     }
+}
+
+private enum PreviewSourceFileExporter {
+    static func export(_ document: BusinessDocument) throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName(for: document))
+        let file = PreviewSharedFormFile(exportedAt: Date(), document: document)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(file).write(to: url, options: .atomic)
+        return url
+    }
+
+    private static func fileName(for document: BusinessDocument) -> String {
+        let title = document.number.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? document.type.title
+            : "\(document.number)-\(document.type.title)"
+        return "\(sanitizedFileBaseName(title, fallback: "shoko-form")).shokoform"
+    }
+
+    private static func sanitizedFileBaseName(_ value: String, fallback: String) -> String {
+        let invalid = CharacterSet(charactersIn: "/\\?%*|\"<>:")
+            .union(.newlines)
+            .union(.controlCharacters)
+        let cleaned = value
+            .components(separatedBy: invalid)
+            .joined(separator: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? fallback : cleaned
+    }
+}
+
+private struct PreviewSharedFormFile: Codable {
+    var version = 1
+    var exportedAt: Date
+    var document: BusinessDocument
 }

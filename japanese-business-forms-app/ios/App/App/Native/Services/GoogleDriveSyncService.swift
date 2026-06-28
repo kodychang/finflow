@@ -661,7 +661,7 @@ private extension DocumentType {
         switch self {
         case .estimate, .vendorEstimate:
             return "見積書"
-        case .invoice, .paymentNotice:
+        case .invoice, .vendorInvoice, .paymentNotice:
             return "請求書"
         case .delivery, .acceptance:
             return "納品書"

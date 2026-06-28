@@ -122,14 +122,13 @@ struct StampEditorView: View {
                 .buttonStyle(StampFilledButtonStyle(tint: buttonAccent))
 
                 if stampImage != nil {
-                    Toggle(localized(japanese: "白背景を透明にする", chinese: "将白底设为透明", english: "Make white background transparent"), isOn: $options.removesWhiteBackground)
-                        .toggleStyle(SwitchToggleStyle(tint: buttonAccent))
+                    backgroundRemovalControls
                     Toggle(localized(japanese: "色を調整", chinese: "调整颜色", english: "Adjust Color"), isOn: $options.appliesTint)
                         .toggleStyle(SwitchToggleStyle(tint: buttonAccent))
                     if options.appliesTint {
                         ColorPicker(localized(japanese: "印章色", chinese: "印章颜色", english: "Stamp Color"), selection: tintBinding, supportsOpacity: false)
                     }
-                    slider(title: localized(japanese: "サイズ", chinese: "大小", english: "Size"), value: stampScaleBinding, range: 0.25...4)
+                    slider(title: localized(japanese: "サイズ", chinese: "大小", english: "Size"), value: stampScaleBinding, range: StampSettings.minimumScale...StampSettings.maximumScale)
                     rotationControls
                     slider(title: localized(japanese: "透明度", chinese: "透明度", english: "Opacity"), value: $options.opacity, range: 0.1...1)
                     slider(title: localized(japanese: "明るさ", chinese: "亮度", english: "Brightness"), value: $options.brightness, range: -0.35...0.35)
@@ -176,6 +175,37 @@ struct StampEditorView: View {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appDivider))
     }
 
+    private var backgroundRemovalControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle(isOn: $options.removesWhiteBackground) {
+                Label(localized(japanese: "背景を透明にする", chinese: "去背并保留透明背景", english: "Remove Background"), systemImage: "wand.and.stars")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.appInk)
+            }
+            .toggleStyle(SwitchToggleStyle(tint: buttonAccent))
+
+            if options.removesWhiteBackground {
+                slider(
+                    title: localized(japanese: "去背強度", chinese: "去背强度", english: "Removal Strength"),
+                    value: $options.backgroundRemovalStrength,
+                    range: 0...1
+                )
+                Text(localized(
+                    japanese: "白い紙面や薄い影を透明化します。印章が欠ける場合は強度を下げてください。",
+                    chinese: "将白纸背景和浅色阴影转为透明。印章边缘被削掉时请降低强度。",
+                    english: "Turns white paper and light shadows transparent. Lower the strength if stamp edges disappear."
+                ))
+                .font(.caption2.weight(.semibold))
+                .foregroundColor(.appMuted)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .background(Color.appInputBackground)
+        .cornerRadius(8)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appDivider))
+    }
+
     private func slider(title: String, value: Binding<CGFloat>, range: ClosedRange<CGFloat>) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -197,6 +227,9 @@ struct StampEditorView: View {
         case .japanese: return japanese
         case .simplifiedChinese: return chinese
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .traditionalChinese: return chinese
+        case .nepali, .french, .vietnamese: return english
         }
     }
 
@@ -211,7 +244,7 @@ struct StampEditorView: View {
         Binding(
             get: { stampScale },
             set: { value in
-                stampScale = min(max(value, 0.25), 4)
+                stampScale = StampSettings.clampedScale(value)
                 lastStampScale = stampScale
             }
         )
@@ -245,7 +278,7 @@ struct StampEditorView: View {
     private var stampMagnificationGesture: some Gesture {
         MagnificationGesture()
             .onChanged { value in
-                stampScale = min(max(lastStampScale * value, 0.25), 4)
+                stampScale = StampSettings.clampedScale(lastStampScale * value)
             }
             .onEnded { _ in
                 lastStampScale = stampScale
@@ -307,7 +340,7 @@ struct StampEditorView: View {
         guard !didApplyInitialSettings, let initialSettings, pageRect.width > 0, pageRect.height > 0 else { return }
         options = initialSettings.options
         options.cropInsets = StampCropInsets()
-        stampScale = min(max(initialSettings.scale, 0.25), 4)
+        stampScale = StampSettings.clampedScale(initialSettings.scale)
         lastStampScale = stampScale
         rotation = Angle(radians: Double(initialSettings.rotation))
         lastRotation = rotation
@@ -324,7 +357,7 @@ struct StampEditorView: View {
         var settings = StampSettings(
             normalizedCenterX: min(max(centerInPage.x / max(1, pageRect.width), 0), 1),
             normalizedCenterY: min(max(centerInPage.y / max(1, pageRect.height), 0), 1),
-            scale: stampScale,
+            scale: StampSettings.clampedScale(stampScale),
             rotation: CGFloat(rotation.radians)
         )
         settings.options = processingOptions
@@ -338,7 +371,7 @@ struct StampEditorView: View {
     }
 
     private func stampDisplaySize(pageRect: CGRect) -> CGSize {
-        let base = min(pageRect.width, pageRect.height) * 0.24 * stampScale
+        let base = min(pageRect.width, pageRect.height) * StampSettings.basePageRatio * StampSettings.clampedScale(stampScale)
         guard let stampImage = processedStampImage ?? stampImage else { return CGSize(width: base, height: base) }
         let aspect = max(0.1, stampImage.size.width / max(1, stampImage.size.height))
         if aspect >= 1 {
@@ -368,7 +401,6 @@ private struct StampFilledButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .lineLimit(1)
-            .minimumScaleFactor(0.75)
             .padding(.horizontal, 14)
             .frame(height: 44)
             .background(configuration.isPressed ? tint.opacity(0.78) : tint)

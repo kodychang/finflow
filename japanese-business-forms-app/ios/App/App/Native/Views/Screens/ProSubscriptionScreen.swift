@@ -3,75 +3,80 @@ import SwiftUI
 struct ProSubscriptionScreen: View {
     @ObservedObject var purchaseService: PurchaseService
     let language: AppLanguage
-    @Environment(\.appButtonAccent) private var buttonAccent
+    var onBack: (() -> Void)? = nil
     @State private var presentedSheet: ProSubscriptionSheet?
 
     private var content: ProSubscriptionContent {
         ProSubscriptionContent(
             language: language,
-            monthlyPrice: purchaseService.displayMonthlyPrice
+            monthlyPrice: purchaseService.displayMonthlyPrice,
+            yearlyPrice: purchaseService.displayYearlyPrice
         )
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                ProNordicHeroSection(content: content)
-
-                if purchaseService.hasProAccess {
-                    ProActiveCard(title: content.activeStatus, message: content.activeMessage)
-                } else {
-                    ProPriceOverviewCard(
-                        content: content,
-                        isLoading: purchaseService.isLoading,
-                        onMonthlyPurchase: {
-                            Task {
-                                await purchaseService.purchasePro(.monthly)
-                            }
-                        }
-                    )
+        VStack(spacing: 0) {
+            ProPaymentNavigationBar(content: content, onBack: onBack) {
+                Task {
+                    await purchaseService.restorePurchases()
                 }
-
-                ProBenefitStrip(title: content.includedTitle, items: content.featureHighlights)
-                ProWorkflowCard(content: content)
-
-                ProOfferCodeCard(content: content, isLoading: purchaseService.isLoading) {
-                    Task {
-                        await purchaseService.presentOfferCodeRedemption()
-                    }
-                }
-
-                if !purchaseService.statusMessage.isEmpty {
-                    ProStatusCard(message: content.statusText(for: purchaseService.statusMessage))
-                }
-
-                ProComparisonCard(content: content)
-                ProFAQCard(title: content.faqTitle) {
-                    presentedSheet = .purchaseFAQ
-                }
-                ProOriginalDetailsSection(content: content)
-
-                Text(content.proAccessNote)
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(.appMuted)
-                    .frame(maxWidth: .infinity, alignment: .center)
-
-                Button {
-                    Task {
-                        await purchaseService.restorePurchases()
-                    }
-                } label: {
-                    Text(content.restoreTitle)
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(buttonAccent)
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(PlainButtonStyle())
-                .padding(.bottom, 8)
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 14)
-            .padding(.bottom, 22)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    ProNordicHeroSection(content: content)
+
+                    if purchaseService.hasProAccess {
+                        ProActiveCard(title: content.activeStatus, message: content.activeMessage)
+                    } else {
+                        ProPriceOverviewCard(
+                            content: content,
+                            isLoading: purchaseService.isLoading,
+                            isMonthlyPurchaseAvailable: purchaseService.isProMonthlyProductAvailable,
+                            isYearlyPurchaseAvailable: purchaseService.isProYearlyProductAvailable,
+                            onMonthlyPurchase: {
+                                Task {
+                                    await purchaseService.purchasePro(.monthly)
+                                }
+                            },
+                            onYearlyPurchase: {
+                                Task {
+                                    await purchaseService.purchasePro(.yearly)
+                                }
+                            }
+                        )
+                        ProLegalLinksCard(content: content)
+                    }
+
+                    ProTrustCard(content: content)
+                    ProBenefitStrip(title: content.includedTitle, items: content.featureHighlights)
+                    ProWorkflowCard(content: content)
+
+                    ProOfferCodeCard(content: content, isLoading: purchaseService.isLoading) {
+                        Task {
+                            await purchaseService.presentOfferCodeRedemption()
+                        }
+                    }
+
+                    if !purchaseService.statusMessage.isEmpty {
+                        ProStatusCard(message: content.statusText(for: purchaseService.statusMessage))
+                    }
+
+                    ProComparisonCard(content: content)
+                    ProFAQCard(title: content.faqTitle) {
+                        presentedSheet = .purchaseFAQ
+                    }
+                    ProOriginalDetailsSection(content: content)
+
+                    Text(content.proAccessNote)
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.appMuted)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 8)
+                .padding(.bottom, 22)
+            }
         }
         .background(Color.appBackground.edgesIgnoringSafeArea(.all))
         .task {
@@ -97,53 +102,96 @@ private enum ProSubscriptionSheet: Identifiable {
     }
 }
 
+private struct ProPaymentNavigationBar: View {
+    let content: ProSubscriptionContent
+    let onBack: (() -> Void)?
+    let onRestore: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            if let onBack {
+                Button(action: onBack) {
+                    Image(systemName: "chevron.left")
+                        .font(.title3.weight(.semibold))
+                        .foregroundColor(.appInk)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel(content.backTitle)
+            } else {
+                Color.clear.frame(width: 44, height: 44)
+            }
+
+            Text(content.title)
+                .font(.headline.weight(.semibold))
+                .foregroundColor(.appInk)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+
+            Button(action: onRestore) {
+                Text(content.restoreTitle)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.appInk)
+                    .lineLimit(1)
+                    .frame(width: 74, height: 44, alignment: .trailing)
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
+        .background(Color.appBackground.opacity(0.96))
+        .overlay(Rectangle().fill(Color.appDivider.opacity(0.35)).frame(height: 1), alignment: .bottom)
+    }
+}
+
 private struct ProNordicHeroSection: View {
     let content: ProSubscriptionContent
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(content.heroKicker)
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(Color.proNordicBlue)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.proNordicBlue.opacity(0.10))
-                        .clipShape(Capsule())
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(content.heroKicker)
+                    .font(.title2.weight(.semibold))
+                    .foregroundColor(.appInk)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                    Text(content.title)
-                        .font(.title2.weight(.semibold))
-                        .foregroundColor(.appInk)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.78)
-
-                    Text(content.subtitle)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(.appMuted)
-                        .lineSpacing(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 0)
-
-                ProNordicStamp()
-                    .frame(width: 92, height: 92)
-                    .accessibilityHidden(true)
+                Text(content.subtitle)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.appMuted)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+
+            Spacer(minLength: 0)
+
+            ProNordicStamp()
+                .frame(width: 128, height: 116)
+                .accessibilityHidden(true)
         }
-        .padding(16)
+        .padding(.horizontal, 18)
+        .padding(.top, 26)
+        .padding(.bottom, 30)
         .background(
-            LinearGradient(
-                colors: [
-                    Color.proNordicPaper,
-                    Color.appPanel
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            ZStack(alignment: .bottomTrailing) {
+                LinearGradient(
+                    colors: [
+                        Color.proNordicAir,
+                        Color.proNordicPaper,
+                        Color.appPanel
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+                RoundedRectangle(cornerRadius: 80, style: .continuous)
+                    .fill(Color.white.opacity(0.22))
+                    .frame(width: 250, height: 86)
+                    .offset(x: 62, y: 32)
+            }
         )
-        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.appDivider))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.appDivider.opacity(0.55)))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
@@ -161,16 +209,20 @@ private struct ProNordicStamp: View {
 
             VStack(spacing: 7) {
                 HStack(spacing: 5) {
-                    ForEach(0..<3) { index in
+                    ForEach(0..<4) { index in
                         RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .fill(index == 0 ? Color.proNordicBlue : Color.proNordicMist)
+                            .fill(index == 3 ? Color.proNordicBlue : Color.proNordicMist)
                             .frame(width: 16, height: CGFloat(18 + index * 8))
                     }
                 }
 
                 Text("PRO")
                     .font(.caption.weight(.black))
-                    .foregroundColor(.appInk)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 6)
+                    .background(Color.proNordicBlue)
+                    .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
 
                 Capsule()
                     .fill(Color.proNordicGold)
@@ -189,7 +241,10 @@ private struct ProNordicStamp: View {
 private struct ProPriceOverviewCard: View {
     let content: ProSubscriptionContent
     let isLoading: Bool
+    let isMonthlyPurchaseAvailable: Bool
+    let isYearlyPurchaseAvailable: Bool
     let onMonthlyPurchase: () -> Void
+    let onYearlyPurchase: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -203,26 +258,55 @@ private struct ProPriceOverviewCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            ProPlanTile(
-                title: content.monthlyTitle,
-                term: content.monthlyTerm,
-                price: content.monthlyPrice,
-                badge: content.monthlyBadge,
-                note: content.monthlyDescription,
-                buttonTitle: content.monthlyPurchaseTitle,
-                systemImage: "calendar.badge.plus",
-                isProminent: true,
-                isLoading: isLoading,
-                action: onMonthlyPurchase
-            )
+            HStack(alignment: .top, spacing: 10) {
+                ProPlanTile(
+                    title: content.monthlyTitle,
+                    term: content.monthlyTerm,
+                    price: content.monthlyDisplayPrice,
+                    badge: content.monthlyBadge,
+                    note: content.monthlyDescription,
+                    featureTitles: content.planFeatureBullets,
+                    buttonTitle: content.monthlyPurchaseTitle,
+                    loadingTitle: content.purchaseProcessingTitle,
+                    unavailableTitle: content.purchaseUnavailableTitle,
+                    systemImage: "calendar.badge.plus",
+                    isProminent: true,
+                    isLoading: isLoading,
+                    isPurchaseAvailable: isMonthlyPurchaseAvailable,
+                    action: onMonthlyPurchase
+                )
 
-            Label(content.securePaymentNote, systemImage: "lock.fill")
-                .font(.caption.weight(.semibold))
-                .foregroundColor(.appMuted)
-                .frame(maxWidth: .infinity, alignment: .center)
+                ProPlanTile(
+                    title: content.yearlyTitle,
+                    term: content.yearlyTerm,
+                    price: content.yearlyDisplayPrice,
+                    badge: content.yearlyBadge,
+                    note: content.yearlyDescription,
+                    featureTitles: content.planFeatureBullets,
+                    buttonTitle: content.yearlyPurchaseTitle,
+                    loadingTitle: content.purchaseProcessingTitle,
+                    unavailableTitle: content.purchaseUnavailableTitle,
+                    systemImage: "calendar",
+                    isProminent: false,
+                    isLoading: isLoading,
+                    isPurchaseAvailable: isYearlyPurchaseAvailable,
+                    action: onYearlyPurchase
+                )
+            }
+
+            HStack(spacing: 6) {
+                Capsule()
+                    .fill(Color.proNordicBlue)
+                    .frame(width: 16, height: 6)
+                Circle()
+                    .fill(Color.proNordicMist)
+                    .frame(width: 6, height: 6)
+                Circle()
+                    .fill(Color.proNordicMist)
+                    .frame(width: 6, height: 6)
+            }
+            .frame(maxWidth: .infinity)
         }
-        .padding(16)
-        .proCard(border: Color.proNordicBlue.opacity(0.28))
     }
 }
 
@@ -232,16 +316,35 @@ private struct ProPlanTile: View {
     let price: String
     let badge: String
     let note: String
+    let featureTitles: [String]
     let buttonTitle: String
+    let loadingTitle: String
+    let unavailableTitle: String
     let systemImage: String
     let isProminent: Bool
     let isLoading: Bool
+    let isPurchaseAvailable: Bool
     let action: () -> Void
     @Environment(\.appButtonAccent) private var buttonAccent
 
+    private var isActionDisabled: Bool {
+        isLoading || !isPurchaseAvailable
+    }
+
+    private var actionTitle: String {
+        if isLoading {
+            return loadingTitle
+        }
+        if !isPurchaseAvailable {
+            return unavailableTitle
+        }
+        return buttonTitle
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
+            ZStack(alignment: .topTrailing) {
+                HStack(spacing: 8) {
                 Image(systemName: systemImage)
                     .font(.caption.weight(.bold))
                     .foregroundColor(isProminent ? Color.proNordicGold : Color.proNordicBlue)
@@ -253,25 +356,28 @@ private struct ProPlanTile: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(.appInk)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.82)
 
                 Spacer(minLength: 0)
-            }
 
-            Text(badge)
-                .font(.caption2.weight(.bold))
-                .foregroundColor(isProminent ? .white : Color.proNordicBlue)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(isProminent ? Color.proNordicBlue : Color.proNordicBlue.opacity(0.10))
-                .clipShape(Capsule())
+                }
+
+                if isProminent {
+                    Text(badge)
+                        .font(.caption2.weight(.bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(Color.proNordicBlue)
+                        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                        .offset(x: 6, y: -18)
+                }
+            }
 
             HStack(alignment: .firstTextBaseline, spacing: 5) {
                 Text(price)
                     .font(.title3.weight(.semibold))
                     .foregroundColor(.proPriceText)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.70)
                 Text(term)
                     .font(.caption.weight(.semibold))
                     .foregroundColor(.appMuted)
@@ -281,34 +387,110 @@ private struct ProPlanTile: View {
             Text(note)
                 .font(.caption.weight(.semibold))
                 .foregroundColor(.appMuted)
-                .lineLimit(3)
+                .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(featureTitles, id: \.self) { feature in
+                    Label(feature, systemImage: "checkmark.circle")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(.appInk)
+                        .lineLimit(1)
+                }
+            }
+            .padding(.top, 8)
+            .overlay(Rectangle().fill(Color.appDivider).frame(height: 1), alignment: .top)
 
             Spacer(minLength: 0)
 
             Button(action: action) {
-                Text(buttonTitle)
-                    .font(.caption.weight(.bold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                    .frame(maxWidth: .infinity, minHeight: 40)
-                    .foregroundColor(isProminent ? .white : buttonAccent)
-                    .background(isProminent ? buttonAccent : Color.clear)
-                    .overlay(Capsule().stroke(isProminent ? Color.clear : buttonAccent, lineWidth: 1.5))
-                    .clipShape(Capsule())
+                HStack(spacing: 8) {
+                    if isLoading {
+                        ProgressView()
+                            .tint(isProminent ? .white : buttonAccent)
+                    }
+                    Text(actionTitle)
+                        .lineLimit(1)
+                }
+                .font(.caption.weight(.bold))
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .foregroundColor(isProminent ? .white : buttonAccent)
+                .background(isProminent ? Color.proNordicBlue : Color.clear)
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(isProminent ? Color.clear : Color.proNordicGreen, lineWidth: 1.4))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             .buttonStyle(PlainButtonStyle())
-            .disabled(isLoading)
-            .opacity(isLoading ? 0.55 : 1)
+            .disabled(isActionDisabled)
+            .opacity(isActionDisabled ? 0.55 : 1)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, minHeight: 216, alignment: .leading)
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 268, alignment: .leading)
         .background(isProminent ? Color.proNordicPaper : Color.appInputBackground)
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(isProminent ? Color.proNordicBlue.opacity(0.35) : Color.appDivider, lineWidth: isProminent ? 1.5 : 1)
+                .stroke(isProminent ? Color.proNordicBlue.opacity(0.85) : Color.appDivider, lineWidth: isProminent ? 1.4 : 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .shadow(color: Color.black.opacity(isProminent ? 0.08 : 0.045), radius: 14, x: 0, y: 8)
+    }
+
+}
+
+private struct ProTrustCard: View {
+    let content: ProSubscriptionContent
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "lock.fill")
+                .font(.title3.weight(.bold))
+                .foregroundColor(Color.proNordicBlue)
+                .frame(width: 48, height: 48)
+                .background(Color.proNordicBlue.opacity(0.10))
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(content.securePaymentTitle)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.appInk)
+                Text(content.securePaymentNote)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.appMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(14)
+        .proCard()
+    }
+}
+
+private struct ProLegalLinksCard: View {
+    let content: ProSubscriptionContent
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(content.legalTitle, systemImage: "doc.text.magnifyingglass")
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.appInk)
+
+            Text(content.legalSubtitle)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.appMuted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Link(destination: content.privacyPolicyURL) {
+                    Label(content.privacyPolicyTitle, systemImage: "hand.raised.fill")
+                }
+
+                Link(destination: content.termsOfUseURL) {
+                    Label(content.termsOfUseTitle, systemImage: "doc.plaintext.fill")
+                }
+            }
+            .font(.caption.weight(.bold))
+            .foregroundColor(Color.proNordicBlue)
+        }
+        .padding(14)
+        .proCard()
     }
 }
 
@@ -338,13 +520,11 @@ private struct ProBenefitStrip: View {
                             .font(.caption.weight(.semibold))
                             .foregroundColor(.appInk)
                             .lineLimit(2)
-                            .minimumScaleFactor(0.78)
 
                         Text(item.subtitle)
                             .font(.caption2.weight(.semibold))
                             .foregroundColor(.appMuted)
                             .lineLimit(2)
-                            .minimumScaleFactor(0.78)
                     }
                     .padding(12)
                     .frame(maxWidth: .infinity, minHeight: 126, alignment: .leading)
@@ -434,7 +614,6 @@ private struct ProHeroSection: View {
                     .font(.title2.weight(.semibold))
                     .foregroundColor(Color(red: 0.060, green: 0.110, blue: 0.250))
                     .lineLimit(2)
-                    .minimumScaleFactor(0.70)
 
                 Text(content.subtitle)
                     .font(.subheadline.weight(.bold))
@@ -526,14 +705,12 @@ private struct ProFeatureSummaryGrid: View {
                         .foregroundColor(.appInk)
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
-                        .minimumScaleFactor(0.78)
 
                     Text(item.subtitle)
                         .font(.caption2.weight(.semibold))
                         .foregroundColor(.appMuted)
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
-                        .minimumScaleFactor(0.78)
                 }
                 .frame(maxWidth: .infinity, minHeight: 104)
                 .padding(.horizontal, 8)
@@ -574,7 +751,6 @@ private struct ProOfferCodeCard: View {
                 Text(content.offerCodeSubmitTitle)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.72)
                     .padding(.horizontal, 18)
                     .frame(height: 44)
                     .foregroundColor(Color.appBlue)
@@ -642,7 +818,6 @@ private struct ProComparisonRow: View {
                 .font(.caption.weight(.semibold))
                 .foregroundColor(.appInk)
                 .lineLimit(2)
-                .minimumScaleFactor(0.75)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
                 .background(item.tint.opacity(0.10))
@@ -881,7 +1056,13 @@ private extension View {
 
 private extension Color {
     static let proNordicBlue = Color(red: 0.180, green: 0.360, blue: 0.620)
+    static let proNordicGreen = Color(red: 0.270, green: 0.560, blue: 0.470)
     static let proNordicMist = Color(red: 0.780, green: 0.870, blue: 0.900)
+    static let proNordicAir = Color(UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.090, green: 0.120, blue: 0.160, alpha: 1)
+            : UIColor(red: 0.920, green: 0.965, blue: 1.000, alpha: 1)
+    })
     static let proNordicPaper = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
             ? UIColor(red: 0.130, green: 0.160, blue: 0.185, alpha: 1)
@@ -898,10 +1079,15 @@ private extension Color {
 
 private struct ProSubscriptionContent {
     let language: AppLanguage
-    let monthlyPrice: String
+    let monthlyPrice: String?
+    let yearlyPrice: String?
 
     var title: String {
         localized(japanese: "Proプラン", chinese: "Pro 版本", english: "Pro Plan")
+    }
+
+    var backTitle: String {
+        localized(japanese: "戻る", chinese: "返回", english: "Back")
     }
 
     var heroKicker: String {
@@ -917,14 +1103,14 @@ private struct ProSubscriptionContent {
     }
 
     var priceSectionTitle: String {
-        localized(japanese: "価格", chinese: "价格", english: "Pricing")
+        localized(japanese: "料金プラン", chinese: "费用方案", english: "Pricing Plans")
     }
 
     var priceSectionSubtitle: String {
         localized(
-            japanese: "Proは月額の自動更新サブスクリプションです。最終価格はApp Storeの購入画面で確認してください。",
-            chinese: "Pro 是月度自动续订订阅。最终价格请以 App Store 购买页面显示为准。",
-            english: "Pro is a monthly auto-renewable subscription. Confirm the final price in the App Store sheet."
+            japanese: "Proは月額または年額の自動更新サブスクリプションです。最終価格はApp Storeの購入画面で確認してください。",
+            chinese: "Pro 可选择月度或年度自动续订订阅。最终价格请以 App Store 购买页面显示为准。",
+            english: "Pro is available as a monthly or yearly auto-renewable subscription. Confirm the final price in the App Store sheet."
         )
     }
 
@@ -1016,6 +1202,10 @@ private struct ProSubscriptionContent {
         localized(japanese: "/ 月", chinese: "/ 月", english: "/ month")
     }
 
+    var monthlyDisplayPrice: String {
+        monthlyPrice ?? "¥600 JPY"
+    }
+
     var monthlyBadge: String {
         localized(japanese: "月額プラン", chinese: "月度方案", english: "Monthly plan")
     }
@@ -1028,8 +1218,52 @@ private struct ProSubscriptionContent {
         localized(japanese: "月額プランを開始する", chinese: "开始月度订阅", english: "Start Monthly Plan")
     }
 
+    var yearlyTitle: String {
+        localized(japanese: "年額プラン", chinese: "年度订阅", english: "Yearly Plan")
+    }
+
+    var yearlyTerm: String {
+        localized(japanese: "/ 年", chinese: "/ 年", english: "/ year")
+    }
+
+    var yearlyDisplayPrice: String {
+        yearlyPrice ?? "¥6,000 JPY"
+    }
+
+    var yearlyBadge: String {
+        localized(japanese: "年額プラン", chinese: "年度方案", english: "Yearly plan")
+    }
+
+    var yearlyDescription: String {
+        localized(japanese: "1年分のPro機能をまとめて利用できます。", chinese: "一次使用 1 年 Pro 全部功能。", english: "Use every Pro feature for one year.")
+    }
+
+    var yearlyPurchaseTitle: String {
+        localized(japanese: "年額プランを開始する", chinese: "开始年度订阅", english: "Start Yearly Plan")
+    }
+
+    var purchaseProcessingTitle: String {
+        localized(japanese: "購入画面を開いています", chinese: "正在打开购买页面", english: "Opening Purchase")
+    }
+
+    var purchaseUnavailableTitle: String {
+        localized(japanese: "商品情報を取得できません", chinese: "无法取得商品信息", english: "Product Unavailable")
+    }
+
     var securePaymentNote: String {
-        localized(japanese: "安全な決済で安心してご利用いただけます", chinese: "通过安全支付放心使用", english: "Secure App Store payment")
+        localized(japanese: "お支払い情報はAppleにより安全に処理され、いつでも解約できます。", chinese: "支付信息由 Apple 安全处理，可随时取消订阅。", english: "Payment is processed securely by Apple, and you can cancel anytime.")
+    }
+
+    var securePaymentTitle: String {
+        localized(japanese: "安心・安全な決済", chinese: "安心安全支付", english: "Secure Payment")
+    }
+
+    var planFeatureBullets: [String] {
+        [
+            localized(japanese: "PDFプレビューの共有", chinese: "PDF 预览分享", english: "PDF preview sharing"),
+            localized(japanese: "Google Driveバックアップ", chinese: "Google Drive 备份", english: "Google Drive backup"),
+            localized(japanese: "すべてのPro機能", chinese: "全部 Pro 功能", english: "All Pro features")
+        ]
     }
 
     var offerCodeTitle: String {
@@ -1207,10 +1441,38 @@ private struct ProSubscriptionContent {
 
     var appStoreText: String {
         localized(
-            japanese: "Proは月額の自動更新サブスクリプションです。価格と更新条件はApp Storeの購入画面に表示される内容が優先されます。管理と解約はApple IDのサブスクリプション設定から行えます。",
-            chinese: "Pro 是月度自动续订订阅。价格与续订条件以 App Store 购买页面显示为准。订阅管理与取消可在 Apple ID 的订阅设置中进行。",
-            english: "Pro is a monthly auto-renewable subscription. The price and renewal terms shown on the App Store purchase sheet apply. Manage or cancel it in Apple ID subscription settings."
+            japanese: "Proは月額または年額の自動更新サブスクリプションです。価格と更新条件はApp Storeの購入画面に表示される内容が優先されます。管理と解約はApple IDのサブスクリプション設定から行えます。",
+            chinese: "Pro 是月度或年度自动续订订阅。价格与续订条件以 App Store 购买页面显示为准。订阅管理与取消可在 Apple ID 的订阅设置中进行。",
+            english: "Pro is a monthly or yearly auto-renewable subscription. The price and renewal terms shown on the App Store purchase sheet apply. Manage or cancel it in Apple ID subscription settings."
         )
+    }
+
+    var legalTitle: String {
+        localized(japanese: "購入前に確認", chinese: "购买前确认", english: "Before You Subscribe")
+    }
+
+    var legalSubtitle: String {
+        localized(
+            japanese: "購入前にプライバシーポリシーと利用規約（EULA）を確認できます。",
+            chinese: "购买前可查看隐私政策与使用条款（EULA）。",
+            english: "Review the Privacy Policy and Terms of Use (EULA) before subscribing."
+        )
+    }
+
+    var privacyPolicyTitle: String {
+        localized(japanese: "プライバシーポリシー", chinese: "隐私政策", english: "Privacy Policy")
+    }
+
+    var termsOfUseTitle: String {
+        localized(japanese: "利用規約（EULA）", chinese: "使用条款（EULA）", english: "Terms of Use (EULA)")
+    }
+
+    var privacyPolicyURL: URL {
+        URL(string: "https://niix.jp/shokopolicy/")!
+    }
+
+    var termsOfUseURL: URL {
+        URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
     }
 
     var proAccessNote: String {
@@ -1387,6 +1649,9 @@ private struct ProSubscriptionContent {
         case .japanese: return japanese
         case .simplifiedChinese: return chinese
         case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .traditionalChinese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
+        case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         }
     }
 }
