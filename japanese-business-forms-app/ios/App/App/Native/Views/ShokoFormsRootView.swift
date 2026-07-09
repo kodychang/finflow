@@ -87,9 +87,9 @@ struct ShokoFormsRootView: View {
                         .tabItem { Label(AppText.value(.create, interfaceLanguage), systemImage: "doc.text") }
                         .tag(AppSection.form)
 
-                    compactPreviewContent
-                    .tabItem { Label(AppText.value(.preview, interfaceLanguage), systemImage: "doc.richtext") }
-                    .tag(AppSection.preview)
+                    scanFormContent
+                        .tabItem { Label(localizedScanFormTitle, systemImage: "viewfinder") }
+                        .tag(AppSection.scan)
 
                     compactDataContent
                         .tabItem { Label(localizedDataTitle, systemImage: "externaldrive") }
@@ -108,6 +108,9 @@ struct ShokoFormsRootView: View {
                     }
                 }
                 .background(Color.appBackground.edgesIgnoringSafeArea(.all))
+                .fullScreenCover(isPresented: compactPreviewPresentation) {
+                    iPadPreviewModalContent
+                }
             }
         }
         .environment(\.appButtonAccent, buttonAccent)
@@ -299,6 +302,8 @@ struct ShokoFormsRootView: View {
         switch section {
         case .company, .files, .projects, .customers, .products, .templates, .stamp, .reports:
             return .data
+        case .preview:
+            return .form
         case .pro:
             return .account
         default:
@@ -549,7 +554,8 @@ struct ShokoFormsRootView: View {
                 onBack: navigateBackInApp,
                 onReturnToCreateStart: discardCurrentFormToCreateStartWithAnimation,
                 onDocumentDeleted: presentDeleteFormVideo,
-                onDocumentSaved: navigateToPreviewAfterSave
+                onDocumentSaved: navigateToPreviewAfterSave,
+                onPreviewCurrent: navigateToPreviewFromEditor
             )
         } else {
             CreateFormStartScreen(language: interfaceLanguage, onSelect: startNewForm)
@@ -569,6 +575,8 @@ struct ShokoFormsRootView: View {
                 isOnboardingGuidePresented: $isOnboardingGuidePresented,
                 language: interfaceLanguage
             )
+        } else if selectedSection == .scan {
+            scanFormContent
         } else if selectedSection == .data {
             DataManagementHubScreen(
                 store: store,
@@ -577,7 +585,13 @@ struct ShokoFormsRootView: View {
                 onBack: navigateBackInApp
             )
         } else if selectedSection == .reports {
-            ReportExportScreen(store: store, language: interfaceLanguage, onBack: navigateBackInApp)
+            ReportExportScreen(
+                store: store,
+                language: interfaceLanguage,
+                onBack: navigateBackInApp,
+                onPreviewDocument: navigateToPreviewFromList,
+                onEditDocument: navigateToEditorFromReminder
+            )
         } else if selectedSection == .company {
             CompanyManagementScreen(store: store, onBack: navigateBackInApp, onAppliedToForm: navigateToFormAfterManagementApply)
         } else if selectedSection == .files {
@@ -630,6 +644,15 @@ struct ShokoFormsRootView: View {
         }
     }
 
+    private var compactPreviewPresentation: Binding<Bool> {
+        Binding {
+            selectedSection == .preview && store.hasActiveDocument
+        } set: { isPresented in
+            guard !isPresented, selectedSection == .preview else { return }
+            navigateBackInApp()
+        }
+    }
+
     @ViewBuilder
     private var iPadEditorModalContent: some View {
         GeometryReader { proxy in
@@ -648,7 +671,8 @@ struct ShokoFormsRootView: View {
                     onBack: requestIpadEditorExit,
                     onReturnToCreateStart: discardCurrentFormToCreateStartWithAnimation,
                     onDocumentDeleted: presentDeleteFormVideo,
-                    onDocumentSaved: navigateToPreviewAfterSave
+                    onDocumentSaved: navigateToPreviewAfterSave,
+                    onPreviewCurrent: navigateToPreviewFromEditor
                 )
                 .frame(width: panelWidth, height: panelHeight)
                 .background(Color.appBackground)
@@ -742,6 +766,12 @@ struct ShokoFormsRootView: View {
         }
     }
 
+    private var scanFormContent: some View {
+        ScanFormScreen(store: store, language: interfaceLanguage, onBack: navigateBackInApp) { draft in
+            createDocumentFromScan(draft)
+        }
+    }
+
     private func previewIntroKey(for document: BusinessDocument) -> String {
         "\(document.id.uuidString)-\(document.updatedAt.timeIntervalSinceReferenceDate)-\(store.pdfLanguage.rawValue)"
     }
@@ -757,6 +787,60 @@ struct ShokoFormsRootView: View {
         store.select(document)
         isListPreviewNavigation = false
         selectedSection = .preview
+    }
+
+    private func navigateToPreviewFromEditor(_ document: BusinessDocument) {
+        registerPreviewIntroForSavedDocument(document)
+        store.select(document)
+        isListPreviewNavigation = false
+        selectedSection = .preview
+    }
+
+    private func createDocumentFromScan(_ draft: ScanFormDraft) {
+        store.newDocument(type: draft.documentType)
+        store.current.projectDirection = draft.direction
+
+        let partner = draft.text(for: .partner)
+        let issuer = draft.text(for: .issuer)
+        let project = draft.text(for: .project)
+        let item = draft.text(for: .item)
+        let content = draft.text(for: .content)
+        let payment = draft.text(for: .payment)
+        let note = draft.text(for: .note)
+        let terms = draft.text(for: .terms)
+
+        if !partner.isEmpty {
+            let firstLine = partner.components(separatedBy: .newlines).first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? partner
+            store.current.customerName = firstLine
+            store.current.customerContact = partner
+        }
+        if !issuer.isEmpty {
+            let firstLine = issuer.components(separatedBy: .newlines).first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? issuer
+            store.current.issuerName = firstLine
+            store.current.issuerContact = issuer
+        }
+        if !project.isEmpty {
+            store.current.projectName = project.components(separatedBy: .newlines).first?.trimmingCharacters(in: .whitespacesAndNewlines)
+            store.current.documentMemo = [store.current.documentMemo, project].filter { !$0.isEmpty }.joined(separator: "\n\n")
+        }
+        if !item.isEmpty {
+            store.current.lines = [LineItem(name: item.components(separatedBy: .newlines).first ?? item, quantity: 1, unitPrice: 0)]
+        }
+        if !content.isEmpty {
+            store.current.notes = [store.current.notes, content].filter { !$0.isEmpty }.joined(separator: "\n\n")
+        }
+        if !payment.isEmpty {
+            store.current.paymentDetails = payment
+        }
+        if !note.isEmpty {
+            store.current.notes = [store.current.notes, note].filter { !$0.isEmpty }.joined(separator: "\n\n")
+        }
+        if !terms.isEmpty {
+            store.current.documentMemo = [store.current.documentMemo, terms].filter { !$0.isEmpty }.joined(separator: "\n\n")
+        }
+
+        isListPreviewNavigation = false
+        selectedSection = .form
     }
 
     private func openRecentProject(_ project: ProjectArchive) {
@@ -833,7 +917,13 @@ struct ShokoFormsRootView: View {
         case .stamp:
             StampManagementScreen(language: interfaceLanguage, onBack: navigateBackInApp)
         case .reports:
-            ReportExportScreen(store: store, language: interfaceLanguage, onBack: navigateBackInApp)
+            ReportExportScreen(
+                store: store,
+                language: interfaceLanguage,
+                onBack: navigateBackInApp,
+                onPreviewDocument: navigateToPreviewFromList,
+                onEditDocument: navigateToEditorFromReminder
+            )
         default:
             DataManagementHubScreen(
                 store: store,
@@ -899,6 +989,14 @@ struct ShokoFormsRootView: View {
         case .japanese: return "データ管理"
         case .simplifiedChinese, .traditionalChinese: return "数据管理"
         case .english, .korean, .nepali, .french, .vietnamese: return "Data"
+        }
+    }
+
+    private var localizedScanFormTitle: String {
+        switch interfaceLanguage {
+        case .japanese: return "スキャン帳票"
+        case .simplifiedChinese, .traditionalChinese: return "扫描表单"
+        case .english, .korean, .nepali, .french, .vietnamese: return "Scan Form"
         }
     }
 
@@ -1240,6 +1338,7 @@ struct ShokoFormsRootView: View {
 enum AppSection: Hashable {
     case menu
     case form
+    case scan
     case preview
     case account
     case data
@@ -2445,42 +2544,88 @@ private struct ReportExportScreen: View {
     @ObservedObject var store: DocumentStore
     let language: AppLanguage
     let onBack: () -> Void
+    let onPreviewDocument: (BusinessDocument) -> Void
+    let onEditDocument: (BusinessDocument) -> Void
     @State private var selectedReport: ReportDesign?
     @State private var selectedDataList: ReportDataListKind?
+    @State private var completingTask: ReportDashboardTask?
+    @State private var isCompleteConfirmationPresented = false
+    @State private var sharePayload: SharePayload?
+    @State private var exportError = ""
+    @State private var isExportErrorPresented = false
+    @AppStorage("native.shokoForms.completedReportTaskIDs.v1") private var completedTaskIDsRaw = ""
 
     private var reports: [ReportDesign] {
         ReportDesign.templates(language: language, store: store)
     }
 
+    private var completedTaskIDs: Set<String> {
+        Set(completedTaskIDsRaw.split(separator: ",").map(String.init))
+    }
+
+    private var dashboardTasks: [ReportDashboardTask] {
+        store.documents
+            .filter { !$0.type.isAttachmentRecord }
+            .compactMap { ReportDashboardTask(document: $0, language: language) }
+            .filter { !completedTaskIDs.contains($0.id) }
+            .sorted { $0.dueDate < $1.dueDate }
+    }
+
+    private var customerReceivableTotal: Double {
+        dashboardTasks.filter { $0.kind == .receivable }.reduce(0) { $0 + $1.amount }
+    }
+
+    private var vendorPayableTotal: Double {
+        dashboardTasks.filter { $0.kind == .payable }.reduce(0) { $0 + $1.amount }
+    }
+
     var body: some View {
         ManagementScroll(title: localizedTitle, subtitle: localizedSubtitle, onBack: onBack) {
+            SectionCard(title: localizedDashboardTitle, titleWeight: .regular) {
+                VStack(spacing: 12) {
+                    HStack(spacing: 10) {
+                        dashboardMetric(title: localizedReceivableMetric, value: currencyText(customerReceivableTotal), systemImage: "tray.and.arrow.down.fill", tint: .appBlue)
+                        dashboardMetric(title: localizedPayableMetric, value: currencyText(vendorPayableTotal), systemImage: "creditcard.fill", tint: .appMint)
+                    }
+                    dashboardMetric(title: localizedPendingMetric, value: "\(dashboardTasks.count)", systemImage: "checklist", tint: .orange)
+                }
+            }
+
             SectionCard(title: localizedOverviewTitle, titleWeight: .regular) {
                 VStack(spacing: 10) {
                     Button {
                         selectedDataList = .documents
                     } label: {
-                        ReportDataSummaryRow(title: localizedFormsMetric, detail: localizedFormsDetail, value: "\(store.documents.count)", systemImage: "doc.text")
+                        ReportDataSummaryRow(title: localizedFormsMetric, detail: localizedFormsDetail, value: "\(store.documents.count)", systemImage: "doc.text", csvTitle: localizedCSVActionTitle) {
+                            exportCSV(.documents)
+                        }
                     }
                     .buttonStyle(PlainButtonStyle())
 
                     Button {
                         selectedDataList = .projects
                     } label: {
-                        ReportDataSummaryRow(title: localizedProjectsMetric, detail: localizedProjectsDetail, value: "\(store.projects.count)", systemImage: "folder")
+                        ReportDataSummaryRow(title: localizedProjectsMetric, detail: localizedProjectsDetail, value: "\(store.projects.count)", systemImage: "folder", csvTitle: localizedCSVActionTitle) {
+                            exportCSV(.projects)
+                        }
                     }
                     .buttonStyle(PlainButtonStyle())
 
                     Button {
                         selectedDataList = .partners
                     } label: {
-                        ReportDataSummaryRow(title: localizedPartnersMetric, detail: localizedPartnersDetail, value: "\(store.customers.count)", systemImage: "building.2")
+                        ReportDataSummaryRow(title: localizedPartnersMetric, detail: localizedPartnersDetail, value: "\(store.customers.count)", systemImage: "building.2", csvTitle: localizedCSVActionTitle) {
+                            exportCSV(.partners)
+                        }
                     }
                     .buttonStyle(PlainButtonStyle())
 
                     Button {
                         selectedDataList = .products
                     } label: {
-                        ReportDataSummaryRow(title: localizedProductsMetric, detail: localizedProductsDetail, value: "\(store.products.count)", systemImage: "shippingbox")
+                        ReportDataSummaryRow(title: localizedProductsMetric, detail: localizedProductsDetail, value: "\(store.products.count)", systemImage: "shippingbox", csvTitle: localizedCSVActionTitle) {
+                            exportCSV(.products)
+                        }
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
@@ -2507,6 +2652,145 @@ private struct ReportExportScreen: View {
         .sheet(item: $selectedDataList) { listKind in
             ReportDataListSheet(store: store, kind: listKind, language: language)
         }
+        .sheet(item: $sharePayload) { payload in
+            ShareSheet(url: payload.url)
+        }
+        .alert(localizedExportErrorTitle, isPresented: $isExportErrorPresented) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(exportError)
+        }
+        .confirmationDialog(localizedCompleteConfirmTitle, isPresented: $isCompleteConfirmationPresented, titleVisibility: .visible) {
+            Button(localizedCompleteActionTitle) {
+                if let completingTask {
+                    complete(completingTask)
+                }
+            }
+            Button(localizedCancelTitle, role: .cancel) {}
+        } message: {
+            Text(completingTask?.partner ?? "")
+        }
+    }
+
+    private func dashboardMetric(title: String, value: String, systemImage: String, tint: Color) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(tint)
+                .frame(width: 34, height: 34)
+                .background(tint.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.appMuted)
+                    .lineLimit(1)
+                Text(value)
+                    .font(.headline.weight(.semibold))
+                    .foregroundColor(.appInk)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 66)
+        .background(Color.appInputBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func reportTaskRow(_ task: ReportDashboardTask) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: task.kind == .receivable ? "tray.and.arrow.down.fill" : "creditcard.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(task.kind == .receivable ? .appBlue : .appMint)
+                    .frame(width: 36, height: 36)
+                    .background((task.kind == .receivable ? Color.appBlue : Color.appMint).opacity(0.12))
+                    .clipShape(Circle())
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(task.partner)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.appInk)
+                        .lineLimit(1)
+                    Text("\(task.kind.localizedTitle(language)) / \(task.document.type.localizedTitle(language)) / \(AppFormatters.shortDate(task.dueDate))")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.appMuted)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Text(currencyText(task.amount))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.appInk)
+                    .lineLimit(1)
+            }
+
+            HStack(spacing: 8) {
+                Button {
+                    onPreviewDocument(task.document)
+                } label: {
+                    Label(localizedPreviewActionTitle, systemImage: "doc.richtext")
+                        .font(.caption.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .foregroundColor(.appBlue)
+                .background(Color.appBlue.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                Button {
+                    onEditDocument(task.document)
+                } label: {
+                    Label(localizedEditActionTitle, systemImage: "square.and.pencil")
+                        .font(.caption.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .foregroundColor(.appInk)
+                .background(Color.appInputBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                Button {
+                    completingTask = task
+                    isCompleteConfirmationPresented = true
+                } label: {
+                    Label(localizedCompleteActionTitle, systemImage: "checkmark.circle.fill")
+                        .font(.caption.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .foregroundColor(.white)
+                .background(Color.appMint)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+        }
+        .padding(12)
+        .background(Color.appInputBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func complete(_ task: ReportDashboardTask) {
+        var ids = completedTaskIDs
+        ids.insert(task.id)
+        completedTaskIDsRaw = ids.sorted().joined(separator: ",")
+        completingTask = nil
+    }
+
+    private func currencyText(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "JPY"
+        formatter.maximumFractionDigits = 0
+        return formatter.string(from: NSNumber(value: value)) ?? "JPY \(Int(value))"
+    }
+
+    private func exportCSV(_ kind: ReportDataListKind) {
+        do {
+            sharePayload = SharePayload(url: try ReportDataCSVExporter.export(kind: kind, store: store, language: language))
+        } catch {
+            exportError = localized(japanese: "CSVを書き出せませんでした。", chinese: "无法输出 CSV。", english: "Could not export CSV.")
+            isExportErrorPresented = true
+        }
     }
 
     private var localizedTitle: String { localized(japanese: "レポート出力", chinese: "输出报告", english: "Export Reports") }
@@ -2519,6 +2803,19 @@ private struct ReportExportScreen: View {
     }
     private var localizedOverviewTitle: String { localized(japanese: "現在のデータ", chinese: "当前数据", english: "Current Data") }
     private var localizedListTitle: String { localized(japanese: "設計できるレポート", chinese: "可设计的报告", english: "Report Designs") }
+    private var localizedDashboardTitle: String { localized(japanese: "入出金ダッシュボード", chinese: "收付款仪表板", english: "Cashflow Dashboard") }
+    private var localizedTaskListTitle: String { localized(japanese: "未処理タスク", chinese: "待处理任务", english: "Open Tasks") }
+    private var localizedReceivableMetric: String { localized(japanese: "顧客からの未収", chinese: "客户待收款", english: "Customer Receivables") }
+    private var localizedPayableMetric: String { localized(japanese: "仕入先への未払", chinese: "厂商待付款", english: "Vendor Payables") }
+    private var localizedPendingMetric: String { localized(japanese: "待处理件数", chinese: "待处理件数", english: "Open Items") }
+    private var localizedEmptyTaskText: String { localized(japanese: "未処理の入出金タスクはありません。", chinese: "目前没有待处理的收付款任务。", english: "No open cashflow tasks.") }
+    private var localizedPreviewActionTitle: String { localized(japanese: "プレビュー", chinese: "预览", english: "Preview") }
+    private var localizedEditActionTitle: String { localized(japanese: "編集", chinese: "修改", english: "Edit") }
+    private var localizedCompleteActionTitle: String { localized(japanese: "完了", chinese: "完成", english: "Complete") }
+    private var localizedCompleteConfirmTitle: String { localized(japanese: "完了にしますか？", chinese: "确认已经完成？", english: "Mark Complete?") }
+    private var localizedCancelTitle: String { localized(japanese: "キャンセル", chinese: "取消", english: "Cancel") }
+    private var localizedCSVActionTitle: String { localized(japanese: "CSV", chinese: "CSV", english: "CSV") }
+    private var localizedExportErrorTitle: String { localized(japanese: "出力エラー", chinese: "输出错误", english: "Export Error") }
     private var localizedListHelp: String {
         localized(
             japanese: "各レポートは期間、取引先、プロジェクト、帳票種類などで絞り込める想定です。CSV、PDF、表計算出力に拡張できます。",
@@ -2568,6 +2865,56 @@ private struct ReportExportScreen: View {
         case .korean: return KoreanGlossary.value(for: english)
         case .nepali, .french, .vietnamese: return AppInlineLocalization.value(english: english, chinese: chinese, language: language)
         }
+    }
+}
+
+private struct ReportDashboardTask: Identifiable {
+    enum Kind {
+        case receivable
+        case payable
+
+        func localizedTitle(_ language: AppLanguage) -> String {
+            switch self {
+            case .receivable:
+                switch language {
+                case .japanese: return "未収"
+                case .simplifiedChinese, .traditionalChinese: return "待收款"
+                case .english, .korean, .nepali, .french, .vietnamese: return "Receivable"
+                }
+            case .payable:
+                switch language {
+                case .japanese: return "未払"
+                case .simplifiedChinese, .traditionalChinese: return "待付款"
+                case .english, .korean, .nepali, .french, .vietnamese: return "Payable"
+                }
+            }
+        }
+    }
+
+    let id: String
+    let kind: Kind
+    let document: BusinessDocument
+    let partner: String
+    let amount: Double
+    let dueDate: Date
+
+    init?(document: BusinessDocument, language: AppLanguage) {
+        switch document.type {
+        case .invoice:
+            kind = .receivable
+        case .purchaseOrder, .vendorInvoice, .paymentNotice:
+            kind = .payable
+        default:
+            return nil
+        }
+
+        self.id = document.id.uuidString
+        self.document = document
+        self.partner = document.customerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? document.type.localizedTitle(language)
+            : document.customerName
+        self.amount = document.total
+        self.dueDate = document.type.showsDueDate ? document.dueDate : document.transactionDate
     }
 }
 
@@ -2847,6 +3194,8 @@ private struct ReportDataSummaryRow: View {
     let detail: String
     let value: String
     let systemImage: String
+    let csvTitle: String
+    let onExportCSV: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -2864,10 +3213,25 @@ private struct ReportDataSummaryRow: View {
                         .foregroundColor(.appInk)
                         .lineLimit(1)
                     Spacer(minLength: 8)
-                    Text(value)
-                        .font(.title3.weight(.semibold))
-                        .foregroundColor(.appInk)
-                        .lineLimit(1)
+                    HStack(spacing: 8) {
+                        Text(value)
+                            .font(.title3.weight(.semibold))
+                            .foregroundColor(.appInk)
+                            .lineLimit(1)
+                        Button {
+                            onExportCSV()
+                        } label: {
+                            Label(csvTitle, systemImage: "square.and.arrow.down")
+                                .font(.caption.weight(.semibold))
+                                .labelStyle(.iconOnly)
+                                .foregroundColor(.appBlue)
+                                .frame(width: 34, height: 34)
+                                .background(Color.appBlue.opacity(0.10))
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        }
+                        .buttonStyle(BorderlessButtonStyle())
+                        .accessibilityLabel(Text(csvTitle))
+                    }
                 }
 
                 Text(detail)
@@ -2898,6 +3262,9 @@ private struct ReportDataListSheet: View {
     let kind: ReportDataListKind
     let language: AppLanguage
     @Environment(\.dismiss) private var dismiss
+    @State private var sharePayload: SharePayload?
+    @State private var exportError = ""
+    @State private var isExportErrorPresented = false
 
     var body: some View {
         NavigationView {
@@ -2919,7 +3286,22 @@ private struct ReportDataListSheet: View {
                         dismiss()
                     }
                 }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        exportCSV()
+                    } label: {
+                        Label(localizedCSVTitle, systemImage: "square.and.arrow.down")
+                    }
+                }
             }
+        }
+        .sheet(item: $sharePayload) { payload in
+            ShareSheet(url: payload.url)
+        }
+        .alert(localizedExportErrorTitle, isPresented: $isExportErrorPresented) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(exportError)
         }
     }
 
@@ -3002,6 +3384,14 @@ private struct ReportDataListSheet: View {
         localized(japanese: "完了", chinese: "完成", english: "Done")
     }
 
+    private var localizedCSVTitle: String {
+        localized(japanese: "CSV", chinese: "CSV", english: "CSV")
+    }
+
+    private var localizedExportErrorTitle: String {
+        localized(japanese: "出力エラー", chinese: "输出错误", english: "Export Error")
+    }
+
     private var recordCount: Int {
         switch kind {
         case .documents: return store.documents.count
@@ -3041,6 +3431,15 @@ private struct ReportDataListSheet: View {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .joined(separator: " / ")
+    }
+
+    private func exportCSV() {
+        do {
+            sharePayload = SharePayload(url: try ReportDataCSVExporter.export(kind: kind, store: store, language: language))
+        } catch {
+            exportError = localized(japanese: "CSVを書き出せませんでした。", chinese: "无法输出 CSV。", english: "Could not export CSV.")
+            isExportErrorPresented = true
+        }
     }
 
     private func localized(japanese: String, chinese: String, english: String) -> String {
@@ -3096,6 +3495,107 @@ private struct ReportDataListRow: View {
         .background(Color.appPanel)
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appDivider))
         .cornerRadius(8)
+    }
+}
+
+private enum ReportDataCSVExporter {
+    static func export(kind: ReportDataListKind, store: DocumentStore, language: AppLanguage) throws -> URL {
+        let rows = csvRows(kind: kind, store: store, language: language)
+        let csv = rows.map { row in
+            row.map(csvEscape).joined(separator: ",")
+        }.joined(separator: "\n")
+        let data = Data(("\u{FEFF}" + csv + "\n").utf8)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(fileName(for: kind))
+            .appendingPathExtension("csv")
+        try data.write(to: url, options: .atomic)
+        return url
+    }
+
+    private static func csvRows(kind: ReportDataListKind, store: DocumentStore, language: AppLanguage) -> [[String]] {
+        switch kind {
+        case .documents:
+            return [
+                ["type", "number", "partner", "issue_date", "transaction_date", "due_date", "project", "subtotal", "tax", "total", "updated_at"]
+            ] + store.documents.sorted { $0.updatedAt > $1.updatedAt }.map { document in
+                [
+                    document.type.localizedTitle(language),
+                    document.number,
+                    document.customerName,
+                    dateText(document.issueDate),
+                    dateText(document.transactionDate),
+                    dateText(document.dueDate),
+                    document.projectName ?? "",
+                    amountText(document.subtotal),
+                    amountText(document.tax),
+                    amountText(document.total),
+                    dateText(document.updatedAt)
+                ]
+            }
+        case .projects:
+            return [
+                ["project", "direction", "partner", "document_count", "total", "updated_at"]
+            ] + store.projects.map { project in
+                [
+                    project.name,
+                    project.direction.localizedTitle(language),
+                    project.customerName,
+                    "\(project.documents.count)",
+                    amountText(project.documents.reduce(0) { $0 + $1.total }),
+                    dateText(project.updatedAt)
+                ]
+            }
+        case .partners:
+            return [
+                ["name", "contact", "phone", "email", "address", "updated_at"]
+            ] + store.customers.sorted { $0.updatedAt > $1.updatedAt }.map { customer in
+                [
+                    customer.name,
+                    customer.contact,
+                    customer.phone ?? "",
+                    customer.email ?? "",
+                    customer.address,
+                    dateText(customer.updatedAt)
+                ]
+            }
+        case .products:
+            return [
+                ["name", "model", "specification", "unit_price", "updated_at"]
+            ] + store.products.sorted { $0.updatedAt > $1.updatedAt }.map { product in
+                [
+                    product.name,
+                    product.model,
+                    product.specification,
+                    amountText(product.unitPrice),
+                    dateText(product.updatedAt)
+                ]
+            }
+        }
+    }
+
+    private static func fileName(for kind: ReportDataListKind) -> String {
+        let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        return "shoko-\(kind.rawValue)-\(stamp)"
+    }
+
+    private static func dateText(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
+
+    private static func amountText(_ value: Double) -> String {
+        String(format: "%.0f", value)
+    }
+
+    private static func csvEscape(_ value: String) -> String {
+        let escaped = value.replacingOccurrences(of: "\"", with: "\"\"")
+        if escaped.contains(",") || escaped.contains("\n") || escaped.contains("\"") {
+            return "\"\(escaped)\""
+        }
+        return escaped
     }
 }
 
@@ -4018,6 +4518,7 @@ struct AccountManagementScreen: View {
     @State private var isDSASettingsPresented = false
     @State private var isDeveloperStoryPresented = false
     @State private var isPreservationGuidePresented = false
+    @State private var isReminderSettingsPresented = false
     @State private var isClearDataFirstConfirmationPresented = false
     @State private var isClearDataFinalConfirmationPresented = false
     @State private var backupStatus = ""
@@ -4068,6 +4569,8 @@ struct AccountManagementScreen: View {
                     .padding(.vertical, 4)
                 }
             }
+
+            reminderSettingsSection
 
             SectionCard(title: AppText.value(.tableColor, language), titleWeight: .regular) {
                 LazyVGrid(columns: colorTemplateColumns, alignment: .leading, spacing: 10) {
@@ -4133,6 +4636,13 @@ struct AccountManagementScreen: View {
         .sheet(isPresented: $isPreservationGuidePresented) {
             ElectronicBookkeepingGuideSheet(language: language) {
                 isOnboardingGuidePresented = true
+            }
+        }
+        .sheet(isPresented: $isReminderSettingsPresented) {
+            ReminderCenterSheet(store: store, language: language) { document in
+                isReminderSettingsPresented = false
+                store.select(document)
+                selectedSection = .form
             }
         }
         .sheet(isPresented: $isDeveloperStoryPresented) {
@@ -4260,6 +4770,21 @@ struct AccountManagementScreen: View {
                 .background(Color.appInputBackground)
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appDivider))
                 .cornerRadius(8)
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+    }
+
+    private var reminderSettingsSection: some View {
+        SectionCard(title: localizedReminderSettingsTitle, titleWeight: .regular) {
+            Button {
+                isReminderSettingsPresented = true
+            } label: {
+                LegalLinkButtonContent(
+                    title: localizedReminderSettingsActionTitle,
+                    systemImage: "bell.badge.fill",
+                    trailingSystemImage: "chevron.right"
+                )
             }
             .buttonStyle(PlainButtonStyle())
         }
@@ -4972,6 +5497,8 @@ struct AccountManagementScreen: View {
 
     private var localizedSubscriptionTitle: String { localized(japanese: "契約・Pro", chinese: "订阅与 Pro", english: "Subscription and Pro") }
     private var localizedProTitle: String { localized(japanese: "Pro 管理", chinese: "Pro 管理", english: "Manage Pro") }
+    private var localizedReminderSettingsTitle: String { localized(japanese: "提醒設定", chinese: "提醒设置", english: "Reminder Settings") }
+    private var localizedReminderSettingsActionTitle: String { localized(japanese: "支払・入帳提醒", chinese: "支付与到账提醒", english: "Payment and receipt reminders") }
     private var localizedProStatusText: String {
         switch language {
         case .japanese: return purchaseService.hasProAccess ? "有効" : "プレビュー共有、Google Driveバックアップ"
@@ -6004,9 +6531,9 @@ private struct DeveloperStoryReviewScreen: View {
     private var localizedDeveloperTitle: String { localized(japanese: "開発の背景", chinese: "开发背后的故事", english: "Behind the Development") }
     private var localizedDeveloperEyebrow: String {
         localized(
-            japanese: "台湾出身の開発者 Kody Chang と NIIX より",
-            chinese: "来自台湾的开发者 Kody Chang 与 NIIX",
-            english: "From Kody Chang of Taiwan and NIIX"
+            japanese: "台湾出身の開発者 Kody Chang と NIIX からのメッセージ",
+            chinese: "来自台湾的开发者 Kody Chang 与 NIIX 的开发者寄语",
+            english: "A developer message from Kody Chang of Taiwan and NIIX"
         )
     }
     private var localizedCloseTitle: String { localized(japanese: "閉じる", chinese: "关闭", english: "Close") }
@@ -6026,6 +6553,11 @@ private struct DeveloperStoryReviewScreen: View {
                 japanese: "App Store のレビューは、次に直す場所や追加する機能を決める大切な参考になります。",
                 chinese: "App Store 的评价会帮助我们决定下一版该修哪里、增加什么功能。",
                 english: "App Store reviews help decide what to fix and what to improve next."
+            ),
+            localized(
+                japanese: "今回の更新では、プレビュー入口を編集画面に寄せ、入出金ダッシュボード、未処理タスク、スキャン帳票を追加しました。現場で迷う時間と、プレビューが空白に見える不安を減らすためです。",
+                chinese: "这次更新把预览入口放到编辑表单旁边，新增收付款仪表板、待处理任务与扫描表单。原因是减少现场操作时的迷路，也降低预览看起来没有出纸的不安。",
+                english: "This update moves preview into the editor, adds the cashflow dashboard, open tasks, and scan form. The reason is to reduce on-site navigation friction and make blank preview states less confusing."
             )
         ]
     }
@@ -6043,6 +6575,7 @@ private struct DeveloperStoryReviewScreen: View {
         [
             localized(japanese: "写真と PDF の整理をもっと速く", chinese: "让照片与 PDF 整理更快", english: "Faster photo and PDF organization"),
             localized(japanese: "現場入力をさらに迷わない形に", chinese: "让现场输入更不容易迷路", english: "Clearer on-site input flows"),
+            localized(japanese: "スキャンから編集できる帳票化を安定させる", chinese: "让扫描转换成可编辑表单更稳定", english: "More reliable scanned-to-editable forms"),
             localized(japanese: "帳票テンプレートと共有の改善", chinese: "改善表单模板与分享体验", english: "Better templates and sharing")
         ]
     }

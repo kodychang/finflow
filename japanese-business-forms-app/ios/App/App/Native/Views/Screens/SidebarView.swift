@@ -21,6 +21,12 @@ struct SidebarView: View {
     @State private var pendingPreviewDocument: BusinessDocument?
     @State private var pendingDeleteDocument: BusinessDocument?
     @State private var isReminderCenterPresented = false
+    @State private var completingCashflowTask: HomeCashflowTask?
+    @State private var isCashflowCompleteConfirmationPresented = false
+    @State private var isCashflowExpandedPresented = false
+    @State private var isCashflowUrgencyPulseVisible = true
+    @AppStorage("native.shokoForms.completedReportTaskIDs.v1") private var completedCashflowTaskIDsRaw = ""
+    @AppStorage(FormReminderNotificationSettings.leadDaysKey) private var cashflowReminderLeadDays = 1
     private var language: AppLanguage { store.interfaceLanguage }
 
     private let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
@@ -68,6 +74,14 @@ struct SidebarView: View {
                 pendingPreviewDocument = nil
             }
         }
+        .confirmationDialog(localizedCashflowCompleteConfirmTitle, isPresented: $isCashflowCompleteConfirmationPresented, titleVisibility: .visible) {
+            Button(localizedCashflowCompleteActionTitle) {
+                completeCashflowTask()
+            }
+            Button(localized(japanese: "キャンセル", chinese: "取消", english: "Cancel"), role: .cancel) {}
+        } message: {
+            Text(completingCashflowTask?.partner ?? "")
+        }
         .sheet(isPresented: $isServiceSupportPresented) {
             ServiceSupportScreen(language: language) {
                 isServiceSupportPresented = false
@@ -87,6 +101,20 @@ struct SidebarView: View {
                 }
             }
         }
+        .sheet(isPresented: $isCashflowExpandedPresented) {
+            HomeCashflowTaskListSheet(
+                tasks: homeCashflowTasks,
+                language: language,
+                reminderLeadDays: cashflowReminderLeadDays,
+                onPreview: openCashflowPreview,
+                onEdit: openCashflowEditor,
+                onComplete: { task in
+                    completingCashflowTask = task
+                    isCashflowCompleteConfirmationPresented = true
+                    isCashflowExpandedPresented = false
+                }
+            )
+        }
         .sheet(item: $pendingProjectDocumentType) { documentType in
             ProjectSelectionSheet(
                 store: store,
@@ -103,6 +131,9 @@ struct SidebarView: View {
                     pendingProjectDocumentType = nil
                 }
             )
+        }
+        .onAppear {
+            startCashflowUrgencyPulse()
         }
     }
 
@@ -143,7 +174,6 @@ struct SidebarView: View {
                         .font(AppFont.pageTitle(.semibold))
                         .foregroundColor(.appInk)
                     Spacer()
-                    reminderBellButton(size: 44, shape: .circle)
                     Button {
                         isServiceSupportPresented = true
                     } label: {
@@ -167,6 +197,8 @@ struct SidebarView: View {
                 recentPreviewSection(direction: .vendor)
             }
 
+            homeCashflowTaskSection
+
             if includeManagement {
                 mobileManagementSection
             }
@@ -188,11 +220,215 @@ struct SidebarView: View {
         VStack(alignment: .leading, spacing: 8) {
             desktopNavigationRow(title: localizedFileManagementTitle, subtitle: localizedManagementSubtitle(.files), systemImage: "archivebox", tint: .appBlue, section: .files)
             desktopNavigationRow(title: AppText.value(.projects, language), subtitle: localizedManagementSubtitle(.projects), systemImage: "folder", tint: buttonAccent, section: .projects)
+            desktopNavigationRow(title: localizedScanFormTitle, subtitle: localizedScanFormSubtitle, systemImage: "viewfinder", tint: .appMint, section: .scan)
             desktopNavigationRow(title: AppText.value(.customers, language), subtitle: localizedManagementSubtitle(.customers), systemImage: "building.2", tint: .appMint, section: .customers)
             desktopNavigationRow(title: AppText.value(.products, language), subtitle: localizedManagementSubtitle(.products), systemImage: "shippingbox", tint: .appBlue, section: .products)
             desktopNavigationRow(title: localizedTemplateShortTitle, subtitle: localizedManagementSubtitle(.templates), systemImage: "text.badge.plus", tint: buttonAccent, section: .templates)
             desktopNavigationRow(title: localizedStampTitle, subtitle: localizedStampSubtitle, systemImage: "seal", tint: .appMint, section: .stamp)
             desktopNavigationRow(title: localizedReportTitle, subtitle: localizedReportSubtitle, systemImage: "square.and.arrow.up.on.square", tint: .appBlue, section: .reports)
+        }
+    }
+
+    @ViewBuilder
+    private var homeCashflowTaskSection: some View {
+        if !homeCashflowTasks.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    sectionHeading(localizedCashflowTaskTitle, actionTitle: nil)
+                    Spacer(minLength: 8)
+                    if homeCashflowTasks.count > 5 {
+                        Button {
+                            isCashflowExpandedPresented = true
+                        } label: {
+                            Text(localizedCashflowExpandTitle)
+                                .font(AppFont.small(.semibold))
+                                .foregroundColor(homeCashflowOverallUrgency == .normal ? buttonAccent : homeCashflowOverallUrgency.textColor)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(homeCashflowOverallUrgency == .normal ? buttonAccent.opacity(0.10) : homeCashflowOverallUrgency.badgeColor.opacity(isCashflowUrgencyPulseVisible ? 0.20 : 0.08))
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .opacity(homeCashflowOverallUrgency == .normal ? 1 : (isCashflowUrgencyPulseVisible ? 1 : 0.55))
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+
+                HStack(spacing: 10) {
+                    homeCashflowMetricCard(kind: .receivable)
+                    homeCashflowMetricCard(kind: .payable)
+                }
+
+                ForEach(homeCashflowTasks.prefix(5)) { task in
+                    homeCashflowTaskRow(task)
+                }
+            }
+        }
+    }
+
+    private var homeCashflowTasks: [HomeCashflowTask] {
+        let completed = Set(completedCashflowTaskIDsRaw.split(separator: ",").map(String.init))
+        return store.documents
+            .filter { !$0.type.isAttachmentRecord }
+            .compactMap { HomeCashflowTask(document: $0, language: language) }
+            .filter { !completed.contains($0.id) }
+            .sorted { $0.dueDate < $1.dueDate }
+    }
+
+    private var homeCashflowOverallUrgency: HomeCashflowTask.Urgency {
+        let urgencies = homeCashflowTasks.map { $0.urgency(reminderLeadDays: cashflowReminderLeadDays) }
+        if urgencies.contains(.overdue) { return .overdue }
+        if urgencies.contains(.dueSoon) { return .dueSoon }
+        return .normal
+    }
+
+    private func homeCashflowMetricCard(kind: HomeCashflowTask.Kind) -> some View {
+        let tasks = homeCashflowTasks.filter { $0.kind == kind }
+        let total = tasks.reduce(0) { $0 + $1.amount }
+        let tint: Color = kind == .receivable ? .appBlue : .appMint
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: kind == .receivable ? "tray.and.arrow.down.fill" : "creditcard.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(tint)
+                    .frame(width: 24, height: 24)
+                    .background(tint.opacity(0.12))
+                    .clipShape(Circle())
+                Text(kind.dashboardTitle(language))
+                    .font(AppFont.small(.semibold))
+                    .foregroundColor(.appMuted)
+                    .lineLimit(1)
+            }
+            Text(AppFormatters.yen(total, language: language))
+                .font(AppFont.secondary(.semibold))
+                .foregroundColor(.appInk)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+            Text(localized(japanese: "\(tasks.count)件", chinese: "\(tasks.count) 件", english: "\(tasks.count) items"))
+                .font(AppFont.small(.semibold))
+                .foregroundColor(.appMuted)
+                .lineLimit(1)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
+        .background(Color.appSidebarCard)
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.appDivider))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func homeCashflowTaskRow(_ task: HomeCashflowTask) -> some View {
+        let urgency = task.urgency(reminderLeadDays: cashflowReminderLeadDays)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: task.kind == .receivable ? "tray.and.arrow.down.fill" : "creditcard.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(task.kind == .receivable ? .appBlue : .appMint)
+                    .frame(width: 42, height: 42)
+                    .background((task.kind == .receivable ? Color.appBlue : Color.appMint).opacity(0.12))
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(task.partner)
+                        .font(AppFont.secondary(.semibold))
+                        .foregroundColor(.appInk)
+                        .lineLimit(1)
+                    Text("\(task.kind.localizedTitle(language)) / \(task.document.type.localizedTitle(language)) / \(AppFormatters.shortDate(task.dueDate))")
+                        .font(AppFont.small(.semibold))
+                        .foregroundColor(.appMuted)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                Text(AppFormatters.yen(task.amount, language: language))
+                    .font(AppFont.secondary(.semibold))
+                    .foregroundColor(.appInk)
+                    .lineLimit(1)
+            }
+
+            if urgency != .normal {
+                homeCashflowUrgencyBadge(urgency)
+            }
+
+            HStack(spacing: 8) {
+                homeCashflowActionButton(title: localizedCashflowPreviewActionTitle, systemImage: "doc.richtext", tint: .appBlue) {
+                    openCashflowPreview(task.document)
+                }
+                homeCashflowActionButton(title: localizedCashflowEditActionTitle, systemImage: "square.and.pencil", tint: .appInk) {
+                    openCashflowEditor(task.document)
+                }
+                homeCashflowActionButton(title: localizedCashflowCompleteActionTitle, systemImage: "checkmark.circle.fill", tint: .appMint, filled: true) {
+                    completingCashflowTask = task
+                    isCashflowCompleteConfirmationPresented = true
+                }
+            }
+        }
+        .padding(12)
+        .background(Color.appSidebarCard)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(urgency.borderColor.opacity(urgency == .normal ? 1 : (isCashflowUrgencyPulseVisible ? 0.95 : 0.35)), lineWidth: urgency == .normal ? 1 : 2)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func homeCashflowUrgencyBadge(_ urgency: HomeCashflowTask.Urgency) -> some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(urgency.badgeColor)
+                .frame(width: 8, height: 8)
+            Text(urgency.localizedTitle(language))
+                .font(AppFont.small(.semibold))
+                .foregroundColor(urgency.textColor)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(urgency.badgeColor.opacity(isCashflowUrgencyPulseVisible ? 0.18 : 0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .opacity(isCashflowUrgencyPulseVisible ? 1 : 0.55)
+    }
+
+    private func homeCashflowActionButton(title: String, systemImage: String, tint: Color, filled: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.body.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 36)
+                .foregroundColor(filled ? .white : tint)
+                .background(filled ? tint : tint.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel(Text(title))
+    }
+
+    private func openCashflowPreview(_ document: BusinessDocument) {
+        if let onPreviewDocument {
+            onPreviewDocument(document)
+        } else {
+            store.select(document)
+            selectedSection = .preview
+        }
+    }
+
+    private func openCashflowEditor(_ document: BusinessDocument) {
+        if let onOpenReminderDocument {
+            onOpenReminderDocument(document)
+        } else {
+            store.select(document)
+            selectedSection = .form
+        }
+    }
+
+    private func completeCashflowTask() {
+        guard let task = completingCashflowTask else { return }
+        var completed = Set(completedCashflowTaskIDsRaw.split(separator: ",").map(String.init))
+        completed.insert(task.id)
+        completedCashflowTaskIDsRaw = completed.sorted().joined(separator: ",")
+        completingCashflowTask = nil
+    }
+
+    private func startCashflowUrgencyPulse() {
+        withAnimation(.easeInOut(duration: 1.35).repeatForever(autoreverses: true)) {
+            isCashflowUrgencyPulseVisible.toggle()
         }
     }
 
@@ -204,6 +440,7 @@ struct SidebarView: View {
                 desktopRecentProjectsSection
                 desktopRecentFormsSection(direction: .customer)
                 desktopRecentFormsSection(direction: .vendor)
+                homeCashflowTaskSection
                 desktopAllFunctionsSection
                 desktopManagementSection
             }
@@ -224,7 +461,6 @@ struct SidebarView: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
-            reminderBellButton(size: 42, shape: .roundedRectangle)
             Button {
                 isServiceSupportPresented = true
             } label: {
@@ -264,6 +500,14 @@ struct SidebarView: View {
                     tint: .appBlue
                 ) {
                     selectedSection = .files
+                }
+                desktopActionButton(
+                    title: localizedScanFormTitle,
+                    subtitle: localized(japanese: "OCR", chinese: "OCR", english: "OCR"),
+                    systemImage: "viewfinder",
+                    tint: .appBlue
+                ) {
+                    selectedSection = .scan
                 }
                 desktopActionButton(
                     title: localized(japanese: "案件", chinese: "项目", english: "Projects"),
@@ -372,7 +616,7 @@ struct SidebarView: View {
             sectionHeading(localizedAllFunctionsTitle, actionTitle: nil)
             VStack(spacing: 6) {
                 desktopNavigationRow(title: localizedDataManagementTitle, subtitle: localizedAllDataSubtitle, systemImage: "externaldrive", tint: .appBlue, section: .data)
-                desktopNavigationRow(title: localizedPreviewTitle, subtitle: localizedPreviewSubtitle, systemImage: "doc.richtext", tint: .appMint, section: .preview)
+                desktopNavigationRow(title: localizedScanFormTitle, subtitle: localizedScanFormSubtitle, systemImage: "viewfinder", tint: .appMint, section: .scan)
                 desktopNavigationRow(title: localizedFileManagementTitle, subtitle: localizedManagementSubtitle(.files), systemImage: "archivebox", tint: .appBlue, section: .files)
                 desktopNavigationRow(title: AppText.value(.projects, language), subtitle: localizedManagementSubtitle(.projects), systemImage: "folder", tint: buttonAccent, section: .projects)
                 desktopNavigationRow(title: AppText.value(.customers, language), subtitle: localizedManagementSubtitle(.customers), systemImage: "building.2", tint: .appMint, section: .customers)
@@ -1303,6 +1547,14 @@ struct SidebarView: View {
         localized(japanese: "保存前後の帳票確認", chinese: "确认保存前后的表单", english: "Review forms before and after saving")
     }
 
+    private var localizedScanFormTitle: String {
+        localized(japanese: "スキャン帳票", chinese: "扫描表单", english: "Scan Form")
+    }
+
+    private var localizedScanFormSubtitle: String {
+        localized(japanese: "画像から編集帳票を作成", chinese: "从图片建立编辑表单", english: "Create forms from images")
+    }
+
     private var localizedTemplateShortTitle: String {
         localized(japanese: "テンプレート", chinese: "模板", english: "Templates")
     }
@@ -1321,6 +1573,30 @@ struct SidebarView: View {
 
     private var localizedReportSubtitle: String {
         localized(japanese: "帳票、案件、取引先の集計", chinese: "表单、项目、客户汇总", english: "Forms, projects, and partners")
+    }
+
+    private var localizedCashflowTaskTitle: String {
+        localized(japanese: "未処理の入出金", chinese: "待处理收付款", english: "Open Cashflow Tasks")
+    }
+
+    private var localizedCashflowExpandTitle: String {
+        localized(japanese: "展開", chinese: "展开", english: "Expand")
+    }
+
+    private var localizedCashflowPreviewActionTitle: String {
+        localized(japanese: "プレビュー", chinese: "预览", english: "Preview")
+    }
+
+    private var localizedCashflowEditActionTitle: String {
+        localized(japanese: "編集", chinese: "修改", english: "Edit")
+    }
+
+    private var localizedCashflowCompleteActionTitle: String {
+        localized(japanese: "完了", chinese: "完成", english: "Complete")
+    }
+
+    private var localizedCashflowCompleteConfirmTitle: String {
+        localized(japanese: "完了にしますか？", chinese: "确认已经完成？", english: "Mark Complete?")
     }
 
     private var localizedProTitle: String {
@@ -2686,7 +2962,277 @@ private struct SidebarDocumentPreviewCard: View {
     }
 }
 
-private struct ReminderCenterSheet: View {
+private struct HomeCashflowTask: Identifiable {
+    enum Urgency: Equatable {
+        case normal
+        case dueSoon
+        case overdue
+
+        var badgeColor: Color {
+            switch self {
+            case .normal: return .appMuted
+            case .dueSoon: return .yellow
+            case .overdue: return .red
+            }
+        }
+
+        var borderColor: Color {
+            switch self {
+            case .normal: return .appDivider
+            case .dueSoon: return .yellow
+            case .overdue: return .red
+            }
+        }
+
+        var textColor: Color {
+            switch self {
+            case .normal: return .appMuted
+            case .dueSoon: return .appInk
+            case .overdue: return .red
+            }
+        }
+
+        func localizedTitle(_ language: AppLanguage) -> String {
+            switch self {
+            case .normal:
+                switch language {
+                case .japanese: return "通常"
+                case .simplifiedChinese, .traditionalChinese: return "一般"
+                case .english, .korean, .nepali, .french, .vietnamese: return "Normal"
+                }
+            case .dueSoon:
+                switch language {
+                case .japanese: return "提醒期間内"
+                case .simplifiedChinese, .traditionalChinese: return "提醒时间内"
+                case .english, .korean, .nepali, .french, .vietnamese: return "Due soon"
+                }
+            case .overdue:
+                switch language {
+                case .japanese: return "期限超過"
+                case .simplifiedChinese, .traditionalChinese: return "已过期"
+                case .english, .korean, .nepali, .french, .vietnamese: return "Overdue"
+                }
+            }
+        }
+    }
+
+    enum Kind {
+        case receivable
+        case payable
+
+        func dashboardTitle(_ language: AppLanguage) -> String {
+            switch self {
+            case .receivable:
+                switch language {
+                case .japanese: return "未入金"
+                case .simplifiedChinese, .traditionalChinese: return "未入款"
+                case .english, .korean, .nepali, .french, .vietnamese: return "Unreceived"
+                }
+            case .payable:
+                switch language {
+                case .japanese: return "未払い"
+                case .simplifiedChinese, .traditionalChinese: return "未付款"
+                case .english, .korean, .nepali, .french, .vietnamese: return "Unpaid"
+                }
+            }
+        }
+
+        func localizedTitle(_ language: AppLanguage) -> String {
+            switch self {
+            case .receivable:
+                switch language {
+                case .japanese: return "未収"
+                case .simplifiedChinese, .traditionalChinese: return "待收款"
+                case .english, .korean, .nepali, .french, .vietnamese: return "Receivable"
+                }
+            case .payable:
+                switch language {
+                case .japanese: return "未払"
+                case .simplifiedChinese, .traditionalChinese: return "待付款"
+                case .english, .korean, .nepali, .french, .vietnamese: return "Payable"
+                }
+            }
+        }
+    }
+
+    let id: String
+    let kind: Kind
+    let document: BusinessDocument
+    let partner: String
+    let amount: Double
+    let dueDate: Date
+
+    init?(document: BusinessDocument, language: AppLanguage) {
+        switch document.type {
+        case .invoice:
+            kind = .receivable
+        case .purchaseOrder, .vendorInvoice, .paymentNotice:
+            kind = .payable
+        default:
+            return nil
+        }
+
+        id = document.id.uuidString
+        self.document = document
+        partner = document.customerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? document.type.localizedTitle(language)
+            : document.customerName
+        amount = document.total
+        dueDate = document.type.showsDueDate ? document.dueDate : document.transactionDate
+    }
+
+    func urgency(reminderLeadDays: Int) -> Urgency {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let dueDay = calendar.startOfDay(for: dueDate)
+        if dueDay < today {
+            return .overdue
+        }
+        let leadDays = max(0, min(reminderLeadDays, 30))
+        let reminderLimit = calendar.date(byAdding: .day, value: leadDays, to: today) ?? today
+        if dueDay <= reminderLimit {
+            return .dueSoon
+        }
+        return .normal
+    }
+}
+
+private struct HomeCashflowTaskListSheet: View {
+    let tasks: [HomeCashflowTask]
+    let language: AppLanguage
+    let reminderLeadDays: Int
+    let onPreview: (BusinessDocument) -> Void
+    let onEdit: (BusinessDocument) -> Void
+    let onComplete: (HomeCashflowTask) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var isUrgencyPulseVisible = true
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(tasks) { task in
+                        taskRow(task)
+                    }
+                }
+                .padding(18)
+            }
+            .background(Color.appBackground.edgesIgnoringSafeArea(.all))
+            .navigationTitle(localized(japanese: "未処理の入出金", chinese: "待处理收付款", english: "Open Cashflow Tasks"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(localized(japanese: "閉じる", chinese: "关闭", english: "Close")) {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.35).repeatForever(autoreverses: true)) {
+                isUrgencyPulseVisible.toggle()
+            }
+        }
+    }
+
+    private func taskRow(_ task: HomeCashflowTask) -> some View {
+        let urgency = task.urgency(reminderLeadDays: reminderLeadDays)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: task.kind == .receivable ? "tray.and.arrow.down.fill" : "creditcard.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(task.kind == .receivable ? .appBlue : .appMint)
+                    .frame(width: 42, height: 42)
+                    .background((task.kind == .receivable ? Color.appBlue : Color.appMint).opacity(0.12))
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(task.partner)
+                        .font(AppFont.secondary(.semibold))
+                        .foregroundColor(.appInk)
+                        .lineLimit(1)
+                    Text("\(task.kind.localizedTitle(language)) / \(task.document.type.localizedTitle(language)) / \(AppFormatters.shortDate(task.dueDate))")
+                        .font(AppFont.small(.semibold))
+                        .foregroundColor(.appMuted)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                Text(AppFormatters.yen(task.amount, language: language))
+                    .font(AppFont.secondary(.semibold))
+                    .foregroundColor(.appInk)
+                    .lineLimit(1)
+            }
+
+            if urgency != .normal {
+                urgencyBadge(urgency)
+            }
+
+            HStack(spacing: 8) {
+                actionButton(title: localized(japanese: "プレビュー", chinese: "预览", english: "Preview"), systemImage: "doc.richtext", tint: .appBlue) {
+                    dismiss()
+                    onPreview(task.document)
+                }
+                actionButton(title: localized(japanese: "編集", chinese: "修改", english: "Edit"), systemImage: "square.and.pencil", tint: .appInk) {
+                    dismiss()
+                    onEdit(task.document)
+                }
+                actionButton(title: localized(japanese: "完了", chinese: "完成", english: "Complete"), systemImage: "checkmark.circle.fill", tint: .appMint, filled: true) {
+                    onComplete(task)
+                }
+            }
+        }
+        .padding(12)
+        .background(Color.appPanel)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(urgency.borderColor.opacity(urgency == .normal ? 1 : (isUrgencyPulseVisible ? 0.95 : 0.35)), lineWidth: urgency == .normal ? 1 : 2)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func urgencyBadge(_ urgency: HomeCashflowTask.Urgency) -> some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(urgency.badgeColor)
+                .frame(width: 8, height: 8)
+            Text(urgency.localizedTitle(language))
+                .font(AppFont.small(.semibold))
+                .foregroundColor(urgency.textColor)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(urgency.badgeColor.opacity(isUrgencyPulseVisible ? 0.18 : 0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .opacity(isUrgencyPulseVisible ? 1 : 0.55)
+    }
+
+    private func actionButton(title: String, systemImage: String, tint: Color, filled: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.body.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 36)
+                .foregroundColor(filled ? .white : tint)
+                .background(filled ? tint : tint.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel(Text(title))
+    }
+
+    private func localized(japanese: String, chinese: String, english: String) -> String {
+        switch language {
+        case .japanese: return japanese
+        case .simplifiedChinese, .traditionalChinese: return chinese
+        case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return english
+        }
+    }
+}
+
+struct ReminderCenterSheet: View {
     @ObservedObject var store: DocumentStore
     let language: AppLanguage
     let onOpen: (BusinessDocument) -> Void

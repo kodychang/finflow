@@ -450,13 +450,30 @@ struct PreviewScreen: View {
                     multipagePreview(size: size)
                 }
             } else {
-                ProgressView(AppText.value(.previewGenerating, interfaceLanguage))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                previewPlaceholder
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .background(Color.appPanel)
+    }
+
+    private var previewPlaceholder: some View {
+        VStack(spacing: 12) {
+            if exportError.isEmpty && !document.type.isAttachmentRecord {
+                ProgressView(AppText.value(.previewGenerating, interfaceLanguage))
+            } else {
+                Image(systemName: "doc.richtext")
+                    .font(.largeTitle.weight(.semibold))
+                    .foregroundColor(.appMuted)
+                Text(exportError.isEmpty ? localized(japanese: "この記録はPDF紙面プレビュー対象外です。", chinese: "此记录不支持 PDF 纸面预览。", english: "This record does not have a PDF paper preview.") : exportError)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.appMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func singlePagePreview(_ image: UIImage, size: CGSize) -> some View {
@@ -505,7 +522,7 @@ struct PreviewScreen: View {
     private func renderPreviewImage() {
         guard !document.type.isAttachmentRecord else {
             previewImages = []
-            exportError = ""
+            exportError = localized(japanese: "この記録はPDF紙面プレビュー対象外です。", chinese: "此记录不支持 PDF 纸面预览。", english: "This record does not have a PDF paper preview.")
             return
         }
         do {

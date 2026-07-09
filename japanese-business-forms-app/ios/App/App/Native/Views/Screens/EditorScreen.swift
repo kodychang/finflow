@@ -14,6 +14,7 @@ struct EditorScreen: View {
     let onReturnToCreateStart: () -> Void
     let onDocumentDeleted: () -> Void
     var onDocumentSaved: ((BusinessDocument) -> Void)? = nil
+    var onPreviewCurrent: ((BusinessDocument) -> Void)? = nil
     @Environment(\.appButtonAccent) private var buttonAccent
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var saveStatus: String
@@ -74,7 +75,8 @@ struct EditorScreen: View {
         onBack: @escaping () -> Void,
         onReturnToCreateStart: @escaping () -> Void,
         onDocumentDeleted: @escaping () -> Void = {},
-        onDocumentSaved: ((BusinessDocument) -> Void)? = nil
+        onDocumentSaved: ((BusinessDocument) -> Void)? = nil,
+        onPreviewCurrent: ((BusinessDocument) -> Void)? = nil
     ) {
         self.store = store
         self.purchaseService = purchaseService
@@ -84,6 +86,7 @@ struct EditorScreen: View {
         self.onReturnToCreateStart = onReturnToCreateStart
         self.onDocumentDeleted = onDocumentDeleted
         self.onDocumentSaved = onDocumentSaved
+        self.onPreviewCurrent = onPreviewCurrent
         _saveStatus = State(initialValue: AppText.value(.draftAutosaving, language))
         UITextView.appearance().backgroundColor = .clear
     }
@@ -408,14 +411,6 @@ struct EditorScreen: View {
         }
         .sheet(item: $sharePayload) { payload in
             ShareSheet(url: payload.url)
-        }
-        .confirmationDialog(localizedSavePreviewConfirmTitle, isPresented: $isSavePreviewConfirmationPresented, titleVisibility: .visible) {
-            Button(localizedGoToPreviewTitle) {
-                onDocumentSaved?(store.current)
-            }
-            Button(localizedStayOnFormTitle, role: .cancel) {}
-        } message: {
-            Text(localizedSavePreviewConfirmMessage)
         }
         .confirmationDialog(shareProPromptTitle, isPresented: $isShareProPromptPresented, titleVisibility: .visible) {
             Button(shareProPromptPurchaseTitle) {
@@ -1179,6 +1174,19 @@ struct EditorScreen: View {
             .accessibilityLabel(Text(AppText.value(.save, language)))
 
             Button {
+                previewCurrentDocument()
+            } label: {
+                bottomActionTile(
+                    title: AppText.value(.preview, language),
+                    systemImage: "doc.richtext",
+                    foreground: .appInk,
+                    iconForeground: buttonAccent
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel(Text(AppText.value(.preview, language)))
+
+            Button {
                 isDeleteConfirmationPresented = true
             } label: {
                 bottomActionTile(
@@ -1437,7 +1445,17 @@ struct EditorScreen: View {
         didSave = true
         saveStatus = AppText.value(.saveComplete, language)
         showSaveToast()
-        isSavePreviewConfirmationPresented = true
+    }
+
+    private func previewCurrentDocument() {
+        if !isAttachmentRecord {
+            rememberNoteTemplates()
+        }
+        store.saveCurrent()
+        didSave = true
+        saveStatus = AppText.value(.saveComplete, language)
+        showSaveToast()
+        onPreviewCurrent?(store.current)
     }
 
     private func showSaveToast() {
