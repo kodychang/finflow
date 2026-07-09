@@ -7,7 +7,7 @@ Shoko Forms
 Biểu mẫu kinh doanh Nhật
 
 ## Văn bản quảng bá (tối đa 170 ký tự)
-Tạo báo giá, hóa đơn, biên nhận và phiếu giao hàng trên iPhone. Bản 1.55 cải thiện OCR, nhắc việc, chỉnh sửa và dự án.
+Tạo báo giá, hóa đơn, biên nhận và phiếu giao hàng trên iPhone. Bản 1.56 tăng cường OCR, theo dõi thu chi và xuất CSV.
 
 ## Mô tả
 Shoko Forms giúp tạo và quản lý các biểu mẫu kinh doanh theo quy trình thương mại của Nhật Bản.
@@ -39,16 +39,16 @@ Shoko Forms phù hợp với freelancer, doanh nghiệp nhỏ và nhân viên hi
 hóa đơn,báo giá,biên nhận,giao hàng,mua hàng,PDF,Nhật Bản,thuế,biểu mẫu,khách hàng
 
 ## Có gì mới
-Phiên bản 1.55 cải thiện OCR, nhắc việc và chỉnh sửa biểu mẫu hằng ngày.
+Phiên bản 1.56 tăng cường OCR, theo dõi thu chi và quản lý dữ liệu.
 
-- Nhập OCR từ ảnh, tệp hình ảnh và PDF nhỏ
-- Chọn ngôn ngữ OCR: Nhật, Anh, Trung hoặc Hàn
-- Màn hình kết quả OCR rõ hơn, có thể chọn văn bản
-- Thêm lối vào nhắc thanh toán và nhận tiền, có chuông trên màn hình chính
-- Sau khi xóa hoặc bỏ biểu mẫu, màn hình tạo quay về trạng thái mặc định
-- Cải thiện dự án, số tham chiếu, trường thuế và chiều cao ô nhập một dòng
-- Thêm chia sẻ tệp nguồn biểu mẫu từ xem trước PDF
-- Sắp xếp lại cài đặt, mẫu màu và hiển thị ngôn ngữ
+- Thêm lựa chọn nội dung cần quét trong OCR của màn hình chỉnh sửa, phù hợp từng loại biểu mẫu
+- Thêm màn hình xem trước OCR ảnh riêng, hỗ trợ phóng to, di chuyển, chọn vùng, phân tích lại và sửa văn bản
+- Văn bản OCR từ vùng chọn có thể nhập thẳng vào thông tin khách hàng, bên phát hành, dòng hàng, ghi chú, thanh toán hoặc điều kiện
+- Cải thiện chọn ngôn ngữ OCR và vùng nhận dạng có màu trong quét biểu mẫu
+- Thêm bảng điều khiển trên Home cho khoản chưa thu và chưa trả, hiển thị rõ quá hạn và sắp đến hạn
+- Danh sách thu chi chưa xử lý ưu tiên theo hạn gần nhất, cải thiện mở danh sách đầy đủ và xác nhận hoàn tất
+- Thêm xuất CSV cho biểu mẫu đã lưu, dự án, đối tác gợi ý và sản phẩm gợi ý
+- Điều chỉnh lối vào xem trước PDF và chỉnh sửa để xem trước ổn định hơn
 
 ## Đề xuất danh mục
 Chính: Kinh doanh

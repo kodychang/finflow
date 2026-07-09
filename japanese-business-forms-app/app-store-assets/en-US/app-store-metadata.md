@@ -7,7 +7,7 @@ Shoko Forms
 Japanese business forms
 
 ## Promotional Text (170 characters max)
-Create quotes, invoices, receipts, and delivery notes on iPhone. Version 1.55 improves OCR import, reminders, form editing, and project workflows.
+Create quotes, invoices, receipts, and delivery notes on iPhone. Version 1.56 strengthens OCR selection, cashflow tasks, and data export.
 
 ## Description
 Shoko Forms helps you create and manage business documents used in Japanese commercial workflows.
@@ -39,16 +39,16 @@ The app includes fields that can help with daily document preparation around Jap
 invoice,quote,receipt,delivery,purchase order,PDF,Japan,tax,business,forms
 
 ## What's New
-Version 1.55 improves OCR entry, reminders, and everyday form editing.
+Version 1.56 strengthens OCR entry, cashflow monitoring, and data management.
 
-- Added OCR import from photos, images, and small PDF files
-- Added OCR language selection for Japanese, English, Chinese, and Korean
-- Improved OCR review with selectable recognized text and cleaner apply actions
-- Added payment and receivable reminder entry points, including a home bell shortcut
-- Improved form delete and discard flows so the Create tab returns to the default start screen
-- Refined project links, reference number input, tax fields, and compact form controls
-- Improved PDF preview sharing options, including original form source sharing
-- Polished settings layout, color template controls, and localized language handling
+- Added a scan-content selector to editor OCR so each form can choose the target field before importing
+- Added a dedicated photo OCR preview with zoom, pan, area selection, re-analysis, and editable text
+- Applies selected OCR text directly into customer info, issuer info, line items, notes, payment details, or terms
+- Improved scan-form language selection and color-coded recognition areas for easier review
+- Added a home dashboard for unpaid receivables and payables, with clearer overdue and upcoming states
+- Prioritized pending cashflow tasks by due date and improved full-list expansion and completion flow
+- Added CSV export for saved forms, projects, partner candidates, and product candidates
+- Refined PDF preview and editor entry points for more stable preview behavior
 
 ## Category Candidates
 Primary: Business

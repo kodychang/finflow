@@ -7,7 +7,7 @@ Shoko Forms
 Formulaires pro japonais
 
 ## Texte promotionnel (170 caractères max)
-Créez devis, factures, reçus et bons de livraison sur iPhone. La version 1.55 améliore l'OCR, les rappels, l'édition et les projets.
+Créez devis, factures, reçus et bons de livraison sur iPhone. La version 1.56 renforce l'OCR, les encaissements et l'export CSV.
 
 ## Description
 Shoko Forms aide à créer et gérer des documents commerciaux utilisés dans les flux de travail japonais.
@@ -39,16 +39,16 @@ L'app aide à préparer et gérer des documents autour des pratiques japonaises 
 facture,devis,reçu,livraison,commande,PDF,Japon,taxe,business,formulaire
 
 ## Nouveautés
-La version 1.55 améliore l'OCR, les rappels et l'édition quotidienne des formulaires.
+La version 1.56 renforce l'OCR, le suivi des encaissements et la gestion des données.
 
-- Import OCR depuis photos, images et petits fichiers PDF
-- Choix de langue OCR : japonais, anglais, chinois ou coréen
-- Écran de résultat OCR plus clair avec texte sélectionnable
-- Nouveaux accès aux rappels de paiement et d'encaissement
-- Retour à l'écran de création par défaut après suppression ou abandon
-- Améliorations des projets, références, champs de taxe et champs sur une ligne
-- Partage du fichier source du formulaire depuis l'aperçu PDF
-- Réglages, couleurs et affichage des langues mieux organisés
+- Ajout d'un choix du contenu à scanner dans l'OCR de l'éditeur, adapté au type de formulaire
+- Nouvel écran d'aperçu OCR photo avec zoom, déplacement, sélection de zone, nouvelle analyse et texte modifiable
+- Application directe du texte reconnu vers client, émetteur, lignes, notes, informations de paiement ou conditions
+- Amélioration du choix de langues OCR et des zones colorées dans le scan de formulaire
+- Nouveau tableau de bord d'accueil pour montants à encaisser et à payer, avec états en retard ou proches de l'échéance
+- Liste des entrées/sorties à traiter priorisée par urgence, avec affichage complet et confirmation plus clairs
+- Export CSV ajouté pour formulaires enregistrés, projets, partenaires candidats et produits candidats
+- Ajustements de l'aperçu PDF et de l'entrée d'édition pour une prévisualisation plus stable
 
 ## Catégories candidates
 Principale : Business
