@@ -45,6 +45,8 @@ struct EditorScreen: View {
     @State private var isRecognizingOCR = false
     @State private var ocrProcessingPreview: OCRProcessingPreview?
     @State private var ocrProcessingPhase: OCRProcessingPhase = .scanning
+    @State private var selectedOCRImportTarget: OCRImportTarget = .customer
+    @State private var ocrRegionImageImport: OCRRegionImageImport?
     @AppStorage("native.shokoForms.ocrRecognitionLanguageProfile.v1") private var ocrRecognitionLanguageProfileID = OCRRecognitionLanguageProfile.auto.rawValue
 
     private let fieldSpacing: CGFloat = 14
@@ -330,6 +332,7 @@ struct EditorScreen: View {
         }
         .onChange(of: store.current.type) { _ in
             ensurePaymentProofDefaults()
+            normalizeSelectedOCRImportTarget()
         }
         .fileImporter(
             isPresented: $isAttachmentFileImporterPresented,
@@ -349,13 +352,17 @@ struct EditorScreen: View {
             OCRLanguageSelectionSheet(
                 language: language,
                 selectedProfile: ocrRecognitionLanguageProfileBinding,
+                selectedTarget: $selectedOCRImportTarget,
+                availableTargets: availableOCRImportTargets,
                 onChoosePhoto: {
+                    normalizeSelectedOCRImportTarget()
                     isOCRLanguageSheetPresented = false
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                         isOCRPhotoPickerPresented = true
                     }
                 },
                 onStart: {
+                    normalizeSelectedOCRImportTarget()
                     isOCRLanguageSheetPresented = false
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                         isOCRFileImporterPresented = true
@@ -380,6 +387,17 @@ struct EditorScreen: View {
             OCRPhotoPicker { imageData in
                 handleOCRPhotoImport(imageData)
             }
+        }
+        .sheet(item: $ocrRegionImageImport) { importRequest in
+            OCRRegionSelectionSheet(
+                importRequest: importRequest,
+                availableTargets: availableOCRImportTargets,
+                language: language,
+                onApply: { target, text in
+                    applyOCRText(target, text: text)
+                    ocrRegionImageImport = nil
+                }
+            )
         }
         .sheet(isPresented: $isPaymentProofPhotoPickerPresented) {
             PaymentProofPhotoPicker { imageData in
@@ -488,6 +506,24 @@ struct EditorScreen: View {
             get: { ocrRecognitionLanguageProfile },
             set: { ocrRecognitionLanguageProfileID = $0.rawValue }
         )
+    }
+
+    private var availableOCRImportTargets: [OCRImportTarget] {
+        var targets: [OCRImportTarget] = [.customer, .issuer]
+        if showsLinePrices {
+            targets.append(.lineItem)
+        }
+        if showsPaymentDetails || isVendorForm {
+            targets.append(.paymentTemplate)
+        }
+        targets.append(contentsOf: [.noteTemplate, .termsTemplate])
+        return targets
+    }
+
+    private func normalizeSelectedOCRImportTarget() {
+        guard !availableOCRImportTargets.contains(selectedOCRImportTarget),
+              let fallback = availableOCRImportTargets.first else { return }
+        selectedOCRImportTarget = fallback
     }
 
     private var pullToCreateStartMarker: some View {
@@ -1275,20 +1311,14 @@ struct EditorScreen: View {
             presentShareError(ocrImportErrorMessage(for: OCRImportValidationError.unsupportedFile))
             return
         }
-        let startedAt = Date()
-        isRecognizingOCR = true
-        ocrProcessingPreview = OCRProcessingPreview(data: imageData, filename: localized(japanese: "写真", chinese: "照片", english: "Photo"), isPDF: false)
-        ocrProcessingPhase = .scanning
         let profile = ocrRecognitionLanguageProfile
-        let recognitionLanguages = profile.recognitionLanguages(interfaceLanguage: language)
-        Task {
-            do {
-                let text = try await OCRTextRecognizer.recognizeText(fromImageData: imageData, recognitionLanguages: recognitionLanguages)
-                await completeOCRProcessing(.success(text), startedAt: startedAt)
-            } catch {
-                await completeOCRProcessing(.failure(ocrImportErrorMessage(for: error)), startedAt: startedAt)
-            }
-        }
+        normalizeSelectedOCRImportTarget()
+        ocrRegionImageImport = OCRRegionImageImport(
+            data: imageData,
+            target: selectedOCRImportTarget,
+            recognitionLanguages: profile.recognitionLanguages(interfaceLanguage: language),
+            recognitionLanguageTitle: profile.localizedTitle(language)
+        )
     }
 
     private func handleOCRImport(_ result: Result<[URL], Error>) {
@@ -1435,6 +1465,11 @@ struct EditorScreen: View {
             expandedSection = .notes
         }
         isOCRReviewPresented = false
+    }
+
+    private func applyOCRText(_ target: OCRImportTarget, text: String) {
+        recognizedOCRText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        applyOCRText(target)
     }
 
     private func saveDocument() {
@@ -2046,6 +2081,8 @@ private enum OCRRecognitionLanguageProfile: String, CaseIterable, Identifiable {
 private struct OCRLanguageSelectionSheet: View {
     let language: AppLanguage
     @Binding var selectedProfile: OCRRecognitionLanguageProfile
+    @Binding var selectedTarget: OCRImportTarget
+    let availableTargets: [OCRImportTarget]
     let onChoosePhoto: () -> Void
     let onStart: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -2076,6 +2113,48 @@ private struct OCRLanguageSelectionSheet: View {
                 .foregroundColor(.appMuted)
                 .lineLimit(1)
                 .minimumScaleFactor(0.76)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(localized(japanese: "読み取る内容", chinese: "要扫描的内容", english: "Scan Content"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.appMuted)
+
+                Menu {
+                    ForEach(availableTargets) { target in
+                        Button {
+                            selectedTarget = target
+                        } label: {
+                            HStack {
+                                Text(target.shortTitle(language: language))
+                                if selectedTarget == target {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "rectangle.and.text.magnifyingglass")
+                            .font(.body.weight(.semibold))
+                            .foregroundColor(buttonAccent)
+                        Text(selectedTarget.shortTitle(language: language))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.appInk)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                        Spacer()
+                        Image(systemName: "chevron.down")
+                            .font(.caption.weight(.bold))
+                            .foregroundColor(.appMuted)
+                    }
+                    .padding(.horizontal, 14)
+                    .frame(height: 48)
+                    .background(Color.appInputBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.appDivider, lineWidth: 1))
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
 
             Text(localized(japanese: "PDF 5MB / 2ページ", chinese: "PDF 5MB / 2 页", english: "PDF 5 MB / 2 pages"))
                 .font(.caption.weight(.semibold))
@@ -2121,7 +2200,7 @@ private extension View {
     func compactBottomSheet() -> some View {
         if #available(iOS 16.0, *) {
             self
-                .presentationDetents([.height(360), .medium])
+                .presentationDetents([.height(440), .medium])
                 .presentationDragIndicator(.visible)
         } else {
             self
@@ -2202,7 +2281,451 @@ private enum OCRImportTarget: String, CaseIterable, Identifiable {
         }
     }
 
+    func shortTitle(language: AppLanguage) -> String {
+        switch self {
+        case .customer:
+            return localized(language, japanese: "取引先情報", chinese: "客户信息", english: "Customer Info")
+        case .issuer:
+            return localized(language, japanese: "自社情報", chinese: "自己的信息", english: "Issuer Info")
+        case .lineItem:
+            return localized(language, japanese: "商品・項目", chinese: "品项目", english: "Line Items")
+        case .noteTemplate:
+            return localized(language, japanese: "備考", chinese: "备考", english: "Notes")
+        case .paymentTemplate:
+            return localized(language, japanese: "振込情報", chinese: "汇款信息", english: "Payment Info")
+        case .termsTemplate:
+            return localized(language, japanese: "条件", chinese: "条件", english: "Terms")
+        }
+    }
+
     private func localized(_ language: AppLanguage, japanese: String, chinese: String, english: String) -> String {
+        switch language {
+        case .japanese: return japanese
+        case .simplifiedChinese, .traditionalChinese: return chinese
+        case .english: return english
+        case .korean: return KoreanGlossary.value(for: english)
+        case .nepali, .french, .vietnamese: return english
+        }
+    }
+}
+
+private struct OCRRegionImageImport: Identifiable {
+    let id = UUID()
+    let data: Data
+    let target: OCRImportTarget
+    let recognitionLanguages: [String]
+    let recognitionLanguageTitle: String
+}
+
+private enum OCRRegionInteractionMode {
+    case select
+    case move
+}
+
+private struct OCRRegionSelectionSheet: View {
+    let importRequest: OCRRegionImageImport
+    let availableTargets: [OCRImportTarget]
+    let language: AppLanguage
+    let onApply: (OCRImportTarget, String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.appButtonAccent) private var buttonAccent
+    @State private var selectedTarget: OCRImportTarget
+    @State private var mode: OCRRegionInteractionMode = .select
+    @State private var scale: CGFloat = 1
+    @State private var lastScale: CGFloat = 1
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+    @State private var selectionRect: CGRect?
+    @State private var recognizedText = ""
+    @State private var isRecognizing = false
+    @State private var errorMessage = ""
+
+    init(
+        importRequest: OCRRegionImageImport,
+        availableTargets: [OCRImportTarget],
+        language: AppLanguage,
+        onApply: @escaping (OCRImportTarget, String) -> Void
+    ) {
+        self.importRequest = importRequest
+        self.availableTargets = availableTargets
+        self.language = language
+        self.onApply = onApply
+        _selectedTarget = State(initialValue: importRequest.target)
+    }
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    targetPicker
+
+                    if let image = UIImage(data: importRequest.data) {
+                        regionCanvas(image: image)
+                        controlRow
+                        actionPanel(image: image)
+                    } else {
+                        Text(localized(japanese: "画像を読み込めませんでした。", chinese: "无法读取图片。", english: "Could not load the image."))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.red)
+                            .frame(maxWidth: .infinity, minHeight: 180)
+                            .background(Color.appInputBackground)
+                            .cornerRadius(12)
+                    }
+                }
+                .padding(18)
+            }
+            .background(Color.appBackground)
+            .navigationTitle(localized(japanese: "OCR範囲を選択", chinese: "选择 OCR 范围", english: "Select OCR Area"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(localized(japanese: "閉じる", chinese: "关闭", english: "Close")) {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Text(importRequest.recognitionLanguageTitle)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(.appMuted)
+                }
+            }
+            .onAppear {
+                if !availableTargets.contains(selectedTarget), let fallback = availableTargets.first {
+                    selectedTarget = fallback
+                }
+            }
+        }
+    }
+
+    private var targetPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(localized(japanese: "読み取る内容", chinese: "要扫描的内容", english: "Scan Content"))
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.appMuted)
+
+            Menu {
+                ForEach(availableTargets) { target in
+                    Button {
+                        selectedTarget = target
+                    } label: {
+                        HStack {
+                            Text(target.shortTitle(language: language))
+                            if selectedTarget == target {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "rectangle.and.text.magnifyingglass")
+                        .font(.body.weight(.semibold))
+                        .foregroundColor(buttonAccent)
+                    Text(selectedTarget.shortTitle(language: language))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.appInk)
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(.appMuted)
+                }
+                .padding(.horizontal, 14)
+                .frame(height: 48)
+                .background(Color.appPanel)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.appDivider, lineWidth: 1))
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+    }
+
+    private func regionCanvas(image: UIImage) -> some View {
+        GeometryReader { proxy in
+            let size = proxy.size
+            let imageRect = fittedImageRect(imageSize: image.size, containerSize: size)
+            ZStack {
+                Color.black.opacity(0.04)
+
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: size.width, height: size.height)
+                    .scaleEffect(scale)
+                    .offset(offset)
+
+                if let selectionRect {
+                    let frame = selectionFrame(selectionRect, in: imageRect)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(buttonAccent.opacity(0.18))
+                        .frame(width: frame.width, height: frame.height)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(buttonAccent, style: StrokeStyle(lineWidth: 2, dash: [7, 4]))
+                        )
+                        .position(x: frame.midX, y: frame.midY)
+                        .scaleEffect(scale)
+                        .offset(offset)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.appDivider, lineWidth: 1))
+            .contentShape(Rectangle())
+            .gesture(dragGesture(containerSize: size, imageRect: imageRect))
+            .simultaneousGesture(zoomGesture)
+        }
+        .frame(height: 430)
+    }
+
+    private var controlRow: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                modeButton(.select, title: localized(japanese: "範囲選択", chinese: "选择范围", english: "Select"), systemImage: "crop")
+                modeButton(.move, title: localized(japanese: "移動", chinese: "移动", english: "Move"), systemImage: "hand.draw")
+            }
+
+            HStack(spacing: 10) {
+                iconControl(systemImage: "minus.magnifyingglass") {
+                    scale = max(1, scale - 0.25)
+                    lastScale = scale
+                    if scale == 1 {
+                        offset = .zero
+                        lastOffset = .zero
+                    }
+                }
+                iconControl(systemImage: "plus.magnifyingglass") {
+                    scale = min(4, scale + 0.25)
+                    lastScale = scale
+                }
+                iconControl(systemImage: "arrow.counterclockwise") {
+                    resetViewport()
+                }
+                Spacer()
+                Button {
+                    selectionRect = nil
+                    recognizedText = ""
+                    errorMessage = ""
+                } label: {
+                    Text(localized(japanese: "選び直す", chinese: "重选区域", english: "Reselect"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.appInk)
+                        .padding(.horizontal, 14)
+                        .frame(height: 38)
+                        .background(Color.appPanel)
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(Color.appDivider, lineWidth: 1))
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+    }
+
+    private func actionPanel(image: UIImage) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                recognizeSelection(in: image)
+            } label: {
+                HStack {
+                    if isRecognizing {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Image(systemName: "text.viewfinder")
+                            .font(.body.weight(.semibold))
+                    }
+                    Text(isRecognizing ? localized(japanese: "解析中", chinese: "分析中", english: "Analyzing") : localized(japanese: "選択範囲を解析", chinese: "分析选取范围", english: "Analyze Selection"))
+                        .font(.subheadline.weight(.semibold))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity, minHeight: 50)
+                .background(selectionRect == nil ? Color.appMuted.opacity(0.45) : buttonAccent)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .disabled(selectionRect == nil || isRecognizing)
+            .buttonStyle(PlainButtonStyle())
+
+            if !errorMessage.isEmpty {
+                Text(errorMessage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.red)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(localized(japanese: "識別した文字", chinese: "识别到的文字", english: "Recognized Text"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.appMuted)
+                TextEditor(text: $recognizedText)
+                    .font(.body)
+                    .foregroundColor(.appInk)
+                    .frame(minHeight: 120)
+                    .padding(8)
+                    .background(Color.appPanel)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.appDivider, lineWidth: 1))
+            }
+
+            Button {
+                onApply(selectedTarget, recognizedText)
+                dismiss()
+            } label: {
+                Label(localized(japanese: "フォームに入力", chinese: "输入到表单", english: "Apply to Form"), systemImage: "checkmark.circle.fill")
+                    .font(.headline.weight(.semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity, minHeight: 54)
+                    .background(recognizedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.appMuted.opacity(0.45) : Color.green)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .disabled(recognizedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .buttonStyle(PlainButtonStyle())
+        }
+    }
+
+    private func modeButton(_ value: OCRRegionInteractionMode, title: String, systemImage: String) -> some View {
+        Button {
+            mode = value
+        } label: {
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(mode == value ? .white : .appInk)
+                .frame(maxWidth: .infinity, minHeight: 40)
+                .background(mode == value ? buttonAccent : Color.appPanel)
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(mode == value ? buttonAccent : Color.appDivider, lineWidth: 1))
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private func iconControl(systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.body.weight(.semibold))
+                .foregroundColor(.appInk)
+                .frame(width: 42, height: 38)
+                .background(Color.appPanel)
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(Color.appDivider, lineWidth: 1))
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private func dragGesture(containerSize: CGSize, imageRect: CGRect) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                switch mode {
+                case .move:
+                    offset = CGSize(
+                        width: lastOffset.width + value.translation.width,
+                        height: lastOffset.height + value.translation.height
+                    )
+                case .select:
+                    let start = normalizedPoint(value.startLocation, containerSize: containerSize, imageRect: imageRect)
+                    let current = normalizedPoint(value.location, containerSize: containerSize, imageRect: imageRect)
+                    selectionRect = CGRect(
+                        x: min(start.x, current.x),
+                        y: min(start.y, current.y),
+                        width: abs(current.x - start.x),
+                        height: abs(current.y - start.y)
+                    )
+                    errorMessage = ""
+                }
+            }
+            .onEnded { _ in
+                if mode == .move {
+                    lastOffset = offset
+                } else if let rect = selectionRect, (rect.width < 0.02 || rect.height < 0.02) {
+                    selectionRect = nil
+                }
+            }
+    }
+
+    private var zoomGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { value in
+                scale = min(4, max(1, lastScale * value))
+            }
+            .onEnded { _ in
+                lastScale = scale
+                if scale == 1 {
+                    offset = .zero
+                    lastOffset = .zero
+                }
+            }
+    }
+
+    private func recognizeSelection(in image: UIImage) {
+        guard let selectionRect else {
+            errorMessage = localized(japanese: "先に範囲を選択してください。", chinese: "请先选择范围。", english: "Select an area first.")
+            return
+        }
+        guard let croppedData = image.jpegData(croppedToNormalizedRect: selectionRect) else {
+            errorMessage = localized(japanese: "選択範囲を読み込めませんでした。", chinese: "无法读取选取范围。", english: "Could not read the selected area.")
+            return
+        }
+
+        isRecognizing = true
+        errorMessage = ""
+        Task {
+            do {
+                let text = try await OCRTextRecognizer.recognizeText(fromImageData: croppedData, recognitionLanguages: importRequest.recognitionLanguages)
+                await MainActor.run {
+                    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    recognizedText = trimmed
+                    isRecognizing = false
+                    if trimmed.isEmpty {
+                        errorMessage = localized(japanese: "文字を認識できませんでした。範囲を選び直してください。", chinese: "没有识别到文字。请重选区域。", english: "No text was recognized. Reselect the area.")
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    isRecognizing = false
+                    errorMessage = localized(japanese: "OCRを実行できませんでした。", chinese: "无法执行 OCR。", english: "Could not run OCR.")
+                }
+            }
+        }
+    }
+
+    private func resetViewport() {
+        scale = 1
+        lastScale = 1
+        offset = .zero
+        lastOffset = .zero
+    }
+
+    private func normalizedPoint(_ point: CGPoint, containerSize: CGSize, imageRect: CGRect) -> CGPoint {
+        let center = CGPoint(x: containerSize.width / 2, y: containerSize.height / 2)
+        let untransformed = CGPoint(
+            x: (point.x - center.x - offset.width) / scale + center.x,
+            y: (point.y - center.y - offset.height) / scale + center.y
+        )
+        let x = min(1, max(0, (untransformed.x - imageRect.minX) / max(imageRect.width, 1)))
+        let y = min(1, max(0, (untransformed.y - imageRect.minY) / max(imageRect.height, 1)))
+        return CGPoint(x: x, y: y)
+    }
+
+    private func fittedImageRect(imageSize: CGSize, containerSize: CGSize) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0, containerSize.width > 0, containerSize.height > 0 else {
+            return CGRect(origin: .zero, size: containerSize)
+        }
+        let scale = min(containerSize.width / imageSize.width, containerSize.height / imageSize.height)
+        let width = imageSize.width * scale
+        let height = imageSize.height * scale
+        return CGRect(
+            x: (containerSize.width - width) / 2,
+            y: (containerSize.height - height) / 2,
+            width: width,
+            height: height
+        )
+    }
+
+    private func selectionFrame(_ rect: CGRect, in imageRect: CGRect) -> CGRect {
+        CGRect(
+            x: imageRect.minX + rect.minX * imageRect.width,
+            y: imageRect.minY + rect.minY * imageRect.height,
+            width: rect.width * imageRect.width,
+            height: rect.height * imageRect.height
+        )
+    }
+
+    private func localized(japanese: String, chinese: String, english: String) -> String {
         switch language {
         case .japanese: return japanese
         case .simplifiedChinese, .traditionalChinese: return chinese
@@ -2580,6 +3103,32 @@ private extension UIImage {
         case .rightMirrored: return .rightMirrored
         @unknown default: return .up
         }
+    }
+
+    func jpegData(croppedToNormalizedRect normalizedRect: CGRect) -> Data? {
+        let normalizedImage = imageOrientation == .up ? self : UIGraphicsImageRenderer(size: size).image { _ in
+            draw(in: CGRect(origin: .zero, size: size))
+        }
+        guard let cgImage = normalizedImage.cgImage else { return nil }
+        let clampedRect = CGRect(
+            x: min(1, max(0, normalizedRect.minX)),
+            y: min(1, max(0, normalizedRect.minY)),
+            width: min(1, max(0, normalizedRect.width)),
+            height: min(1, max(0, normalizedRect.height))
+        )
+        let pixelRect = CGRect(
+            x: clampedRect.minX * CGFloat(cgImage.width),
+            y: clampedRect.minY * CGFloat(cgImage.height),
+            width: clampedRect.width * CGFloat(cgImage.width),
+            height: clampedRect.height * CGFloat(cgImage.height)
+        )
+        .integral
+        .intersection(CGRect(x: 0, y: 0, width: cgImage.width, height: cgImage.height))
+
+        guard pixelRect.width >= 2,
+              pixelRect.height >= 2,
+              let cropped = cgImage.cropping(to: pixelRect) else { return nil }
+        return UIImage(cgImage: cropped).jpegData(compressionQuality: 0.95)
     }
 }
 
