@@ -1,6 +1,14 @@
 .DS_Store
 .idea/
 node_modules/
+.venv/
+**/.venv/
+logs/
+**/logs/
+.pdf-cache/
+**/.pdf-cache/
+pdfthumbs/
+**/pdfthumbs/
 .env
 .env.*
 dist/

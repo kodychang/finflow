@@ -1,0 +1,13 @@
+.sync/
+android/.gradle/
+android/.idea/
+android/app/build/
+android/build/
+android/*.hprof
+android/local.properties
+.xcode-derived-mac/
+web-desktop/node_modules/
+web-desktop/dist/
+web-desktop/src-tauri/target/
+web-desktop/license-keys/
+**/.DS_Store

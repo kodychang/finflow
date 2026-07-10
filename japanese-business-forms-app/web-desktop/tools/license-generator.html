@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shoko Forms 序號生成器</title>
+    <style>
+      :root {
+        color: #18212b;
+        background: #eef2f6;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+      }
+
+      button {
+        align-items: center;
+        background: #1f6feb;
+        border: 0;
+        border-radius: 7px;
+        color: #fff;
+        cursor: pointer;
+        display: inline-flex;
+        font-weight: 700;
+        justify-content: center;
+        min-height: 38px;
+        padding: 9px 13px;
+      }
+
+      button:hover {
+        background: #195fc9;
+      }
+
+      .secondary {
+        background: #56616f;
+      }
+
+      .secondary:hover {
+        background: #45505d;
+      }
+
+      .shell {
+        margin: 0 auto;
+        max-width: 1180px;
+        padding: 26px;
+      }
+
+      header {
+        align-items: flex-end;
+        display: flex;
+        gap: 18px;
+        justify-content: space-between;
+        margin-bottom: 18px;
+      }
+
+      h1,
+      h2 {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 28px;
+        line-height: 1.15;
+      }
+
+      h2 {
+        font-size: 17px;
+      }
+
+      p {
+        color: #57606a;
+        line-height: 1.55;
+        margin: 7px 0 0;
+      }
+
+      .grid {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: minmax(320px, 0.85fr) minmax(420px, 1.15fr);
+      }
+
+      .panel {
+        background: #fff;
+        border: 1px solid #d7dde4;
+        border-radius: 8px;
+        padding: 18px;
+      }
+
+      .panel + .panel {
+        margin-top: 14px;
+      }
+
+      label {
+        color: #39424e;
+        display: flex;
+        flex-direction: column;
+        font-size: 13px;
+        font-weight: 700;
+        gap: 6px;
+        margin-top: 12px;
+      }
+
+      input,
+      select,
+      textarea {
+        background: #fff;
+        border: 1px solid #c9d1d9;
+        border-radius: 7px;
+        min-height: 38px;
+        padding: 8px 10px;
+      }
+
+      textarea {
+        min-height: 124px;
+        resize: vertical;
+      }
+
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+
+      .row {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 9px;
+        margin-top: 14px;
+      }
+
+      .status {
+        background: #f6f8fa;
+        border: 1px solid #d7dde4;
+        border-radius: 8px;
+        color: #57606a;
+        line-height: 1.45;
+        margin-top: 14px;
+        min-height: 44px;
+        overflow-wrap: anywhere;
+        padding: 11px 12px;
+      }
+
+      .output {
+        min-height: 520px;
+        white-space: pre-wrap;
+        width: 100%;
+      }
+
+      .hint {
+        color: #6a737d;
+        font-size: 12px;
+      }
+
+      .danger {
+        border-color: #f0c7c7;
+        background: #fff7f7;
+        color: #8a2525;
+      }
+
+      @media (max-width: 900px) {
+        .shell {
+          padding: 18px;
+        }
+
+        header,
+        .grid {
+          display: block;
+        }
+
+        .panel {
+          margin-top: 14px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <header>
+        <div>
+          <h1>Shoko Forms 序號生成器</h1>
+          <p>本工具在本機瀏覽器內完成簽章，不會把私鑰或序號送到網路。</p>
+        </div>
+        <button class="secondary" id="clearButton" type="button">清除畫面</button>
+      </header>
+
+      <section class="grid">
+        <div>
+          <section class="panel">
+            <h2>1. 私鑰</h2>
+            <p class="hint">載入 `license-keys/private-key.json`，或直接貼入 JSON。私鑰不要傳給客戶。</p>
+            <label>
+              載入 private-key.json
+              <input id="privateKeyFile" type="file" accept=".json,application/json" />
+            </label>
+            <label>
+              私鑰 JSON
+              <textarea id="privateKeyJson" class="mono" spellcheck="false" placeholder='{"algorithm":"ed25519","publicKey":"...","secretKey":"..."}'></textarea>
+            </label>
+            <div class="actions">
+              <button id="generateKeyPairButton" type="button">產生新公私鑰</button>
+              <button class="secondary" id="downloadPrivateKeyButton" type="button">下載私鑰</button>
+            </div>
+            <div class="status danger">
+              如果產生新公私鑰，需要把新的 publicKey 寫回 app 的 `src/license-public-key.js` 並重新打包；舊序號會失效。
+            </div>
+          </section>
+
+          <section class="panel">
+            <h2>2. 授權資料</h2>
+            <div class="row">
+              <label>
+                客戶名稱
+                <input id="customer" value="Customer A" />
+              </label>
+              <label>
+                Email
+                <input id="email" type="email" placeholder="customer@example.com" />
+              </label>
+            </div>
+            <div class="row">
+              <label>
+                有效期間
+                <select id="durationPreset">
+                  <option value="3">3 個月</option>
+                  <option value="6" selected>半年</option>
+                  <option value="12">1 年</option>
+                  <option value="custom">自訂</option>
+                </select>
+              </label>
+              <label>
+                自訂月份
+                <input id="customMonths" type="number" min="1" max="60" value="6" />
+              </label>
+            </div>
+            <div class="row">
+              <label>
+                數量
+                <input id="quantity" type="number" min="1" max="500" value="1" />
+              </label>
+              <label>
+                發行日
+                <input id="issuedAt" type="date" />
+              </label>
+            </div>
+            <label>
+              方案名稱
+              <input id="plan" placeholder="例如 6-month / reseller-batch" />
+            </label>
+            <div class="actions">
+              <button id="generateButton" type="button">生成序號</button>
+              <button class="secondary" id="downloadTextButton" type="button">下載 TXT</button>
+              <button class="secondary" id="downloadCsvButton" type="button">下載 CSV</button>
+            </div>
+            <div id="status" class="status">請先載入私鑰，再生成序號。</div>
+          </section>
+        </div>
+
+        <section class="panel">
+          <h2>3. 生成結果</h2>
+          <p class="hint">把 `License Key` 後面完整 `SHOKO-...` 字串傳給客戶。</p>
+          <textarea id="output" class="output mono" spellcheck="false"></textarea>
+        </section>
+      </section>
+    </main>
+
+    <script src="../node_modules/tweetnacl/nacl-fast.min.js"></script>
+    <script>
+      const LICENSE_PREFIX = "SHOKO-";
+      const appId = "shoko-forms-desktop";
+      const encoder = new TextEncoder();
+      let rows = [];
+
+      const elements = {
+        privateKeyFile: document.querySelector("#privateKeyFile"),
+        privateKeyJson: document.querySelector("#privateKeyJson"),
+        customer: document.querySelector("#customer"),
+        email: document.querySelector("#email"),
+        durationPreset: document.querySelector("#durationPreset"),
+        customMonths: document.querySelector("#customMonths"),
+        quantity: document.querySelector("#quantity"),
+        issuedAt: document.querySelector("#issuedAt"),
+        plan: document.querySelector("#plan"),
+        output: document.querySelector("#output"),
+        status: document.querySelector("#status"),
+        generateButton: document.querySelector("#generateButton"),
+        generateKeyPairButton: document.querySelector("#generateKeyPairButton"),
+        downloadPrivateKeyButton: document.querySelector("#downloadPrivateKeyButton"),
+        downloadTextButton: document.querySelector("#downloadTextButton"),
+        downloadCsvButton: document.querySelector("#downloadCsvButton"),
+        clearButton: document.querySelector("#clearButton"),
+      };
+
+      elements.issuedAt.valueAsDate = new Date();
+
+      elements.privateKeyFile.addEventListener("change", async (event) => {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+        elements.privateKeyJson.value = await file.text();
+        setStatus("已載入私鑰。");
+      });
+
+      elements.durationPreset.addEventListener("change", () => {
+        elements.customMonths.disabled = elements.durationPreset.value !== "custom";
+        if (elements.durationPreset.value !== "custom") {
+          elements.customMonths.value = elements.durationPreset.value;
+        }
+      });
+      elements.durationPreset.dispatchEvent(new Event("change"));
+
+      elements.generateButton.addEventListener("click", () => {
+        try {
+          const key = readPrivateKey();
+          const months = readMonths();
+          const quantity = readQuantity();
+          const customer = elements.customer.value.trim();
+          if (!customer) throw new Error("請輸入客戶名稱。");
+
+          const issuedAt = readIssuedAt();
+          const plan = elements.plan.value.trim() || `${months}-month`;
+          rows = [];
+
+          for (let index = 0; index < quantity; index += 1) {
+            const payload = {
+              v: 1,
+              app: appId,
+              customer,
+              email: elements.email.value.trim(),
+              plan,
+              durationMonths: months,
+              issuedAt: issuedAt.toISOString(),
+              expiresAt: addMonths(issuedAt, months).toISOString(),
+              licenseId: crypto.randomUUID(),
+              nonce: randomHex(12),
+            };
+            rows.push({
+              customer: payload.customer,
+              email: payload.email,
+              months,
+              licenseId: payload.licenseId,
+              expiresAt: payload.expiresAt,
+              licenseKey: makeLicenseKey(payload, key.secretKey),
+            });
+          }
+
+          elements.output.value = formatRows(rows);
+          setStatus(`已生成 ${rows.length} 組序號。`);
+        } catch (error) {
+          setStatus(error.message, true);
+        }
+      });
+
+      elements.generateKeyPairButton.addEventListener("click", () => {
+        if (!window.nacl) {
+          setStatus("tweetnacl 尚未載入。請確認 node_modules 已存在。", true);
+          return;
+        }
+        const pair = nacl.sign.keyPair();
+        const key = {
+          algorithm: "ed25519",
+          createdAt: new Date().toISOString(),
+          publicKey: base64UrlEncode(pair.publicKey),
+          secretKey: base64UrlEncode(pair.secretKey),
+        };
+        elements.privateKeyJson.value = JSON.stringify(key, null, 2);
+        setStatus(`已產生新金鑰。publicKey: ${key.publicKey}`);
+      });
+
+      elements.downloadPrivateKeyButton.addEventListener("click", () => {
+        const key = readPrivateKey();
+        downloadFile("private-key.json", JSON.stringify(key, null, 2) + "\n", "application/json");
+      });
+
+      elements.downloadTextButton.addEventListener("click", () => {
+        if (!rows.length) return setStatus("目前沒有可下載的序號。", true);
+        downloadFile("shoko-license-keys.txt", formatRows(rows) + "\n", "text/plain");
+      });
+
+      elements.downloadCsvButton.addEventListener("click", () => {
+        if (!rows.length) return setStatus("目前沒有可下載的序號。", true);
+        const csv = [
+          ["customer", "email", "months", "licenseId", "expiresAt", "licenseKey"],
+          ...rows.map((row) => [
+            row.customer,
+            row.email,
+            row.months,
+            row.licenseId,
+            row.expiresAt,
+            row.licenseKey,
+          ]),
+        ]
+          .map((line) => line.map(csvCell).join(","))
+          .join("\n");
+        downloadFile("shoko-license-keys.csv", csv + "\n", "text/csv");
+      });
+
+      elements.clearButton.addEventListener("click", () => {
+        rows = [];
+        elements.output.value = "";
+        elements.status.textContent = "已清除生成結果。";
+        elements.status.classList.remove("danger");
+      });
+
+      function readPrivateKey() {
+        if (!window.nacl) {
+          throw new Error("tweetnacl 尚未載入。請先執行 npm install，並用本機檔案打開這個 HTML。");
+        }
+        let key;
+        try {
+          key = JSON.parse(elements.privateKeyJson.value);
+        } catch {
+          throw new Error("私鑰 JSON 格式不正確。");
+        }
+        if (key.algorithm !== "ed25519") {
+          throw new Error("私鑰 algorithm 必須是 ed25519。");
+        }
+        if (!key.publicKey || !key.secretKey) {
+          throw new Error("私鑰 JSON 缺少 publicKey 或 secretKey。");
+        }
+        const secretKey = base64UrlToBytes(key.secretKey);
+        if (secretKey.length !== 64) {
+          throw new Error("secretKey 長度不正確，應該是 Ed25519 64 bytes。");
+        }
+        return key;
+      }
+
+      function readMonths() {
+        const value = elements.durationPreset.value === "custom"
+          ? elements.customMonths.value
+          : elements.durationPreset.value;
+        const months = Number(value);
+        if (!Number.isInteger(months) || months < 1 || months > 60) {
+          throw new Error("有效月份必須是 1 到 60 的整數。");
+        }
+        return months;
+      }
+
+      function readQuantity() {
+        const quantity = Number(elements.quantity.value);
+        if (!Number.isInteger(quantity) || quantity < 1 || quantity > 500) {
+          throw new Error("數量必須是 1 到 500 的整數。");
+        }
+        return quantity;
+      }
+
+      function readIssuedAt() {
+        if (!elements.issuedAt.value) return new Date();
+        const date = new Date(`${elements.issuedAt.value}T00:00:00.000Z`);
+        if (Number.isNaN(date.getTime())) {
+          throw new Error("發行日格式不正確。");
+        }
+        return date;
+      }
+
+      function makeLicenseKey(payload, secretKeyBase64Url) {
+        const payloadJson = JSON.stringify(payload);
+        const payloadPart = base64UrlEncode(encoder.encode(payloadJson));
+        const secretKey = base64UrlToBytes(secretKeyBase64Url);
+        const signature = nacl.sign.detached(encoder.encode(payloadPart), secretKey);
+        return `${LICENSE_PREFIX}${payloadPart}.${base64UrlEncode(signature)}`;
+      }
+
+      function addMonths(date, months) {
+        const next = new Date(date);
+        const originalDay = next.getUTCDate();
+        next.setUTCMonth(next.getUTCMonth() + months);
+        if (next.getUTCDate() !== originalDay) {
+          next.setUTCDate(0);
+        }
+        return next;
+      }
+
+      function formatRows(value) {
+        return value
+          .map((row) => [
+            `Customer: ${row.customer}`,
+            row.email ? `Email: ${row.email}` : "",
+            `Months: ${row.months}`,
+            `License ID: ${row.licenseId}`,
+            `Expires At: ${row.expiresAt}`,
+            `License Key: ${row.licenseKey}`,
+          ].filter(Boolean).join("\n"))
+          .join("\n\n");
+      }
+
+      function randomHex(byteLength) {
+        const bytes = new Uint8Array(byteLength);
+        crypto.getRandomValues(bytes);
+        return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+      }
+
+      function base64UrlEncode(bytes) {
+        let binary = "";
+        for (const byte of bytes) {
+          binary += String.fromCharCode(byte);
+        }
+        return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+      }
+
+      function base64UrlToBytes(value) {
+        const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+        const binary = atob(padded);
+        const bytes = new Uint8Array(binary.length);
+        for (let index = 0; index < binary.length; index += 1) {
+          bytes[index] = binary.charCodeAt(index);
+        }
+        return bytes;
+      }
+
+      function csvCell(value) {
+        return `"${String(value ?? "").replace(/"/g, '""')}"`;
+      }
+
+      function downloadFile(fileName, text, mimeType) {
+        const blob = new Blob([text], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = fileName;
+        anchor.click();
+        URL.revokeObjectURL(url);
+      }
+
+      function setStatus(message, isError = false) {
+        elements.status.textContent = message;
+        elements.status.classList.toggle("danger", isError);
+      }
+    </script>
+  </body>
+</html>

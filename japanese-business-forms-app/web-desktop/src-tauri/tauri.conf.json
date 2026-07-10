@@ -1,0 +1,86 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Shoko Forms Desktop",
+  "version": "0.1.0",
+  "identifier": "com.shoko.forms.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Shoko Forms Desktop",
+        "width": 1200,
+        "height": 780,
+        "minWidth": 980,
+        "minHeight": 660,
+        "center": true,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Business",
+    "shortDescription": "Shoko Forms backup manager",
+    "longDescription": "Read, create, and export Shoko Forms backup files for iOS.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["pdf"],
+        "name": "PDF Document",
+        "description": "PDF Document",
+        "contentTypes": ["com.adobe.pdf"],
+        "mimeType": "application/pdf",
+        "role": "Editor"
+      },
+      {
+        "ext": ["png", "jpg", "jpeg", "webp", "gif", "heic", "heif"],
+        "name": "Image Files",
+        "description": "Image Files",
+        "contentTypes": ["public.image"],
+        "mimeType": "image/*",
+        "role": "Editor"
+      }
+    ],
+    "macOS": {
+      "dmg": {
+        "background": "installer-assets/dmg-background.png",
+        "windowSize": {
+          "width": 960,
+          "height": 540
+        },
+        "appPosition": {
+          "x": 690,
+          "y": 250
+        },
+        "applicationFolderPosition": {
+          "x": 820,
+          "y": 250
+        }
+      }
+    },
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "installer-assets/nsis-header.bmp",
+        "sidebarImage": "installer-assets/nsis-sidebar.bmp"
+      }
+    }
+  }
+}
