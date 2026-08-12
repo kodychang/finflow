@@ -281,6 +281,12 @@ GET /creator/earnings?period=2026-09
   "play_count": 4821,
   "weighted_ms": 892340000,
   "amount_jpy": 12430,
+  "pool_rate": 0.30,
+  "next_tier": {
+    "rate": 0.35,
+    "paying_venues_required": 500,
+    "paying_venues_current": 312
+  },
   "top_tracks": [
     { "track_id": "...", "title": "朝の光", "play_count": 892, "venue_count": 34 }
   ]
@@ -288,6 +294,8 @@ GET /creator/earnings?period=2026-09
 ```
 
 > `venue_count` 顯示店舖**數量**，不揭露店名 —— 店家的營運資訊不對創作者公開。
+
+> `pool_rate` 與 `next_tier` 為**必填**。段階的分配率は公表を前提とした設計であり、現在の分配率と次の段階を隠すと制度そのものが不信の対象になる（[08 第 3.2 節](08-payouts-and-billing.md#32-段階的分配率)）。最高段階（45%）到達後は `next_tier` を `null` とする。
 
 ---
 

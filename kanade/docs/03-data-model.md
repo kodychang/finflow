@@ -351,7 +351,10 @@ CREATE TABLE payout_periods (
   period_start   date NOT NULL,
   period_end     date NOT NULL,
   net_revenue_jpy bigint NOT NULL,               -- 訂閱淨收入（已扣 Stripe 手續費與退款）
-  pool_rate      numeric(4,3) NOT NULL DEFAULT 0.450,
+  -- 段階的分配率。期末の有料店舗数から決定し、確定後は遡及変更しない。
+  -- 級距と運用ルールは 08-payouts-and-billing.md 第 3.2 節。
+  paying_venues  integer NOT NULL,               -- 判定根拠となった期末店舗数
+  pool_rate      numeric(4,3) NOT NULL DEFAULT 0.300,
   pool_jpy       bigint NOT NULL,
   total_weighted_ms bigint NOT NULL,
   status         payout_status NOT NULL DEFAULT 'draft',
