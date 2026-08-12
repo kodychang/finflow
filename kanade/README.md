@@ -35,6 +35,8 @@ AI 創作者的音樂曲庫 + 日本店舖的合法 BGM 服務。
 | 08 | [訂閱與分潤](docs/08-payouts-and-billing.md) | Stripe 架構、分潤池計算、稅務 |
 | 09 | [路線圖](docs/09-roadmap.md) | 分階段交付與驗收標準 |
 | 10 | [風險登記表](docs/10-risk-register.md) | 已知風險、待律師確認事項 |
+| 11 | [P2P 評估與決定記錄](docs/11-p2p-evaluation.md) | 為何不採用 P2P、三種情境的分別評估、重啟條件 |
+| 12 | [連鎖店內部快取共享](docs/12-chain-cache-sharing.md) | CICS 規格。連鎖客戶的銷售功能 |
 
 ---
 

@@ -52,7 +52,7 @@
 
 ### 明確不採用
 
-- **P2P / WebTorrent** — 見 [01-product 第 5 節](01-product.md#5-明確不做的事)
+- **P2P / WebTorrent（商用串流）** — 完整評估與重啟條件見 [11-p2p-evaluation](11-p2p-evaluation.md)。唯一採用的例外是連鎖店內部的快取共享（[12](12-chain-cache-sharing.md)），且僅限預取、不用於播放中傳輸
 - **微服務** — 單一 Next.js app + worker 池即可支撐到數千店舖規模
 - **Kubernetes** — 營運複雜度不成比例
 
